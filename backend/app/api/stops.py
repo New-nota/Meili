@@ -1,0 +1,122 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, delete
+from uuid import UUID
+
+from app.core.database import get_db
+from app.core.security import get_current_user
+from app.models.trip import Trip, TripStop
+from app.models.place import Place
+from app.models.user import User
+from app.schemas.stops import StopCreate, StopResponse, StopReorder
+from geoalchemy2.shape import to_shape
+
+router = APIRouter(prefix="/trips", tags=["stops"])
+
+def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
+    result = {
+        "id": stop.id,
+        "trip_id": stop.place_id,
+        "place_id": stop.place_id,
+        "position": stop.position,
+        "visit_date": stop.visit_date,
+        "visit_time": stop.visit_time,
+        "duration_minutes": stop.duration_minutes,
+        "transport_to_next": stop.transport_to_next,
+        "notes": stop.notes,
+        "is_booked": stop.is_booked,
+        "place_name": None,
+        "place_lat": None,
+        "place_lon": None,
+        "place_address": None,
+    }
+    if place:
+        result["place_name"] = place.name
+        result["place_address"] = place.address
+        if place.location:
+            point = to_shape(place.location)
+            result["place_lon"] = point.x
+            result["place_lat"] = point.y
+
+    return result
+
+async def get_trip_or_404(trip_id: UUID, user_id: UUID, db: AsyncSession) -> Trip:
+    result = await db.execute(
+        select(Trip).where(Trip.id == trip_id, Trip.user_id == user_id)
+    )
+    trip = result.scalar_one_or_none()
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+    return trip
+
+@router.get("/{trip_id}/stops", response_model=list[StopResponse])
+async def get_stops(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # все остановки отсортированные по позициям
+    await get_trip_or_404(trip_id, current_user.id, db)
+    result = await db.execute(
+        select(TripStop, Place).join(Place, TripStop.place_id == Place.id).where(TripStop.trip_id == trip_id).order_by(TripStop.position)
+    )
+    rows = result.all()
+    return [stop_to_dict(stop, place) for stop, place in rows]
+
+@router.post("/{trip_id}/stops", response_model=StopResponse)
+async def add_stop(
+    trip_id: UUID,
+    data: StopCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # add stop to visit list
+    await get_trip_or_404(trip_id, current_user.id, db)
+    place_result = await db.execute(select(Place).where(Place.id == data.place_id))
+    place = place_result.scalar_one_or_none()
+    if not place:
+        HTTPException(status_code=404, detail="Place not found")
+    max_result = await db.execute(
+        select(func.max(TripStop.position)).where(TripStop.trip_id == trip_id)
+    )
+    max_position = max_result.scalar() or 0 # в случае если в поездку еще ничего не добавили
+    next_position = max_position + 1
+    stop = TripStop(
+        trip_id=trip_id,
+        place_id=data.place_id,
+        position=next_position,
+        visit_date=data.visit_date,
+        visit_time=data.visit_time,
+        duration_minutes=data.duration_minutes,
+        transport_to_next=data.transport_to_next,
+        notes=data.notes,
+    )
+    db.add(stop)
+    await db.commit()
+    await db.refresh(stop)
+    return stop_to_dict(stop, place)
+
+@router.delete("/{trip_id}/stops/{stop_id}", status_code=204)
+async def remove_stop(
+    trip_id: UUID,
+    stop_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # удаляем и переназначаем позиции у оставшихся
+    await get_trip_or_404(trip_id, current_user.id, db)
+    result = await db.execute(
+        select(TripStop).where(TripStop.id == stop_id, TripStop.trip_id == trip_id)
+    )
+    stop = result.scalar_one_or_none()
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found")
+    deleted_position = stop.position
+    await db.delete(stop)
+    remaining = await db.execute(
+        select(TripStop).where(TripStop.trip_id == trip_id, TripStop.position > deleted_position)
+    )
+    for s in remaining.scalars().all():
+        s.position -= 1
+    
+    await db.commit()

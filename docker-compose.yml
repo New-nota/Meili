@@ -1,0 +1,44 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://wanderown:Frenchfries0728@postgres:5432/wanderown_db
+      - REDIS_URL=redis://redis:6379
+      - VALHALLA_URL=http://valhalla:8002
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgis/postgis:15-3.3-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=wanderown
+      - POSTGRES_PASSWORD=Frenchfries0728
+      - POSTGRES_DB=wanderown_db
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+  valhalla:
+    image: ghcr.io/valhalla/valhalla:latest
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./valhalla_data:/custom_files
+    command: valhalla_service /custom_files/valhalla.json 1
+    depends_on: []
+volumes:
+  postgres_data:

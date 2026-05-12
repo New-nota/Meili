@@ -1,0 +1,21 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+*.egg-info
+
+valhalla_data/
+
+node_modules/
+frontend/dist/
+postgres_data/
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumds.db
+
+TTL
+KEYS
+PROGRESS (2).md
