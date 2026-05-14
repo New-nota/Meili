@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from uuid import UUID
-
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.trip import Trip, TripStop
@@ -120,3 +120,28 @@ async def remove_stop(
         s.position -= 1
     
     await db.commit()
+
+class ReorderRequest(BaseModel):
+    stop_ids: list[str]
+
+@router.post("/{trip_id}/stops/reorder", status_code=204)
+async def reorder_stops(
+    trip_id: str,
+    body: ReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Trip).where(Trip.id == trip_id, Trip.user_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Trip not found")
+    for new_pos, stop_id in enumerate(body.stop_ids):
+        result = await db.execute(
+            select(TripStop).where(TripStop.id == stop_id, TripStop.trip_id == trip_id)
+        )
+        stop = result.scalar_one_or_none()
+        if stop:
+            stop.position = new_pos
+    await db.commit()
+    return {"ok": True}

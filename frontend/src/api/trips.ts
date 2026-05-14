@@ -33,8 +33,12 @@ export const getValhallaRoute = async (stops: Stop[], costing: string = 'pedestr
     })
     if (!res.ok) return []
     const data = await res.json()
-    const shape = data.trip.legs[0].shape
-    return decodePolyline(shape)
+    const allCoords: number[][] = []
+    for (const leg of data.trip.legs){
+        const coords = decodePolyline(leg.shape)
+        allCoords.push(...coords)
+    }
+    return allCoords
 }
 
 function decodePolyline(encoded: string, precision = 6): number[][] {
@@ -64,4 +68,32 @@ function decodePolyline(encoded: string, precision = 6): number[][] {
         coords.push([lng / factor, lat / factor])
     }
     return coords
+}
+
+export async function optimizeTrip(tripId: string): Promise<string[]> {
+    const response = await fetch(`${API_URL}/trips/${tripId}/optimize`, {
+        method: 'POST',
+        headers: {'Authorization': `Bearer ${authToken}`}
+    })
+    if(!response.ok) throw new Error('Optimize failed')
+    const data = await response.json()
+return data.optimized_order
+}
+
+export async function reorderStops(tripId: string, stopIds: string[]): Promise<void> {
+    const response = await fetch(`${API_URL}/trips/${tripId}/stops/reorder`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({stop_ids: stopIds})
+    })
+    if(!response.ok) throw new Error('Reorder failed')
+}
+
+export async function updateStopTransport(tripId: string, stopId: string, transport: string): Promise<void> {
+    const response = await fetch(`${API_URL}/trips/${tripId}/stops/${stopId}`, {
+        method: 'PUT',
+        headers: headers(),
+        body: JSON.stringify({transport_to_next: transport})
+    })
+    if(!response.ok) throw new Error('Update transport failed')   
 }

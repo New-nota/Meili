@@ -3,6 +3,7 @@ from datetime import datetime, date, time
 from sqlalchemy import String, Integer, Boolean, ARRAY, TIMESTAMP, DATE, TIME, TEXT, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
+from app.models.place import Place
 
 class Trip(Base):
     __tablename__ = "trips"
@@ -39,4 +40,5 @@ class TripStop(Base):
     booking_ref: Mapped[str | None] = mapped_column(String, nullable=True)
 
     trip: Mapped["Trip"] = relationship("Trip", back_populates="stops")
+    place: Mapped["Place"] = relationship("Place")
     
