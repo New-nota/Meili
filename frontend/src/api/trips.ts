@@ -2,15 +2,10 @@ import type { Stop, Trip } from '../types/index'
 
 const API_URL = 'http://localhost:8000'
 
-let authToken: string | null = null
-
-export const setToken = (token: string) => {
-    authToken = token
-}
 
 const headers = () => ({
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${authToken}`
+    'Authorization': `Bearer ${localStorage.getItem('access_token')?? ''}`
 })
 
 export const getStops = async (tripId: string): Promise<Stop[]> => {
@@ -73,7 +68,7 @@ function decodePolyline(encoded: string, precision = 6): number[][] {
 export async function optimizeTrip(tripId: string): Promise<string[]> {
     const response = await fetch(`${API_URL}/trips/${tripId}/optimize`, {
         method: 'POST',
-        headers: {'Authorization': `Bearer ${authToken}`}
+        headers: headers()
     })
     if(!response.ok) throw new Error('Optimize failed')
     const data = await response.json()
