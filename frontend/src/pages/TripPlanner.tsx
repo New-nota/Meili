@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -8,6 +8,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlaceSearch from '../components/PlaceSearch'
+import StartPoint from '../components/StartPoint'
 
 const TRANSPORT_OPTIONS = [
     {value: 'pedestrian', label: '🚶'},
@@ -68,6 +69,18 @@ export default function TripPlanner() {
     const [error, setError] = useState<string | null>(null)
     const [isOptimizing, setIsOptimizing] = useState(false)
     const sensors = useSensors(useSensor(PointerSensor))
+    const [trip, setTrip] = useState<{start_lat?: number, start_lon?: number, start_address?: string, start_time?: string} | null>(null)
+
+    useEffect(()=> {
+        const load = async () => {
+            const res = await fetch(`http://localhost:8000/trips/${tripId}`, {
+                headers: {'Authorization': `Bearer ${localStorage.getItem('access_token')}`}
+            })
+            if (res.ok) setTrip(await res.json())
+        }
+    load()
+    }, [] )
+
     useEffect(()=> {
         if(!mapContainer.current) return
         const map = new maplibregl.Map({
@@ -137,6 +150,7 @@ export default function TripPlanner() {
         })
         return () => map.remove()
     }, [])
+
     useEffect(() => {
         const load = async () => {
             try {
@@ -147,6 +161,7 @@ export default function TripPlanner() {
         }
         load()
     }, [])
+
     useEffect(() => {
     const map = mapRef.current
     if (!map || stops.length === 0) return
@@ -200,6 +215,17 @@ export default function TripPlanner() {
                 const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map) 
                 markersRef.current.push(marker)
             })
+            if (trip?.start_lat && trip?.start_lon) {
+                const el = document.createElement('div')
+                el.style.cssText = `
+                    width: 32px; height: 32px; background: #10b981; border: 2px solid white;
+                    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                    font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                `
+                el.textContent = '🏠'
+                const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>Дом</strong><p style="font-size: 12px; color: #6b7280">${trip.start_address || ''}</p></div>`)
+                new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map)
+            }
             // выравниваем чтобы пользователь видел все точки
                 const lons = stops.filter(s => s.place_lon).map(s => s.place_lon!)
                 const lats = stops.filter(s => s.place_lat).map( s => s.place_lat!)
@@ -223,7 +249,7 @@ export default function TripPlanner() {
         }
         drawRoute()
 
-    }, [stops])
+    }, [stops, trip])
     
     const handleDragEnd = async (event: DragEndEvent) => {
         const {active, over} = event
@@ -285,6 +311,7 @@ export default function TripPlanner() {
                 </button>
                 </div>
                 </div>
+                <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>
                 <PlaceSearch tripId={tripId} onPlaceAdded={reloadStops}/>
                 {/*Сприсок остановок скролится  */}
                 <div style={{flex: 1, overflowY: 'auto', padding: 16}}>

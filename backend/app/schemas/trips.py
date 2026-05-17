@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, time
 
 class TripCreate(BaseModel):
     title: str
@@ -12,6 +12,10 @@ class TripCreate(BaseModel):
     adults_count: int = 1
     children_count: int = 0
     children_ages: Optional[list[int]] = None
+    start_address: Optional[str] = None
+    start_lat: Optional[float] = None
+    start_lon: Optional[float] = None
+    start_time: Optional[time] = None 
 
 class TripUpdate(BaseModel):
     title: Optional[str] = None
@@ -22,6 +26,10 @@ class TripUpdate(BaseModel):
     adults_count: Optional[int] = None
     children_count: Optional[int] = None
     children_ages: Optional[list[int]] = None
+    start_address: Optional[str] = None
+    start_lat: Optional[float] = None
+    start_lon: Optional[float] = None
+    start_time: Optional[time] = None 
 
 class TripResponse(BaseModel):
     id: UUID
@@ -35,6 +43,10 @@ class TripResponse(BaseModel):
     children_ages: Optional[list[int]]
     is_public: bool
     created_at: datetime
+    start_address: Optional[str] = None
+    start_lat: Optional[float] = None
+    start_lon: Optional[float] = None
+    start_time: Optional[time] = None 
 
     class Config:
         from_attributes = True

@@ -19,6 +19,10 @@ class Trip(Base):
     children_count: Mapped[int] = mapped_column(Integer, default=0)
     children_ages: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
     transport_default: Mapped[str | None] = mapped_column(String, nullable=True)
+    start_address: Mapped[str| None] = mapped_column(String, nullable=True)
+    start_lat: Mapped[float | None] = mapped_column(nullable=True)
+    start_lon: Mapped[float| None] = mapped_column(nullable=True)
+    start_time: Mapped[time|None] = mapped_column(TIME, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
 
