@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 from app.core.config import settings
-from app.models import Base, User, Place, Trip, TripStop
+from app.models import Base, User, Place, Trip, TripStop, TripLike, UserVisitedPlace
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
