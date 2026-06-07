@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete as sql_delete
 from uuid import UUID
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.trip import Trip
 from app.models.user import User
 from app.schemas.trips import TripCreate, TripUpdate, TripResponse
+from app.models.social import TripLike
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -82,3 +84,28 @@ async def delete_trip(
         raise HTTPException(status_code=404, detail="Trip not found")
     await db.delete(trip)
     await db.commit()
+
+@router.post("/{trip_id}/like", status_code=204)
+async def like_trip(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    like = TripLike(user_id=current_user.id, trip_id=trip_id)
+    db.add(like)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+       
+@router.delete("/{trip_id}/like", status_code=204)
+async def unlike_trip(
+    trip_id:UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    unlike = sql_delete(TripLike).where(TripLike.user_id==current_user.id, TripLike.trip_id==trip_id)
+    res = await db.execute(unlike)
+    await db.commit()
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Like not found")

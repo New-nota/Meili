@@ -1,9 +1,9 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Stop } from '../types/index'
-import { getStops, getValhallaRoute, optimizeTrip, reorderStops, updateStopTransport } from '../api/trips'
+import { getStops, getValhallaRoute, optimizeTrip, reorderStops, updateStopTransport, getTrip } from '../api/trips'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -70,13 +70,12 @@ export default function TripPlanner() {
     const [isOptimizing, setIsOptimizing] = useState(false)
     const sensors = useSensors(useSensor(PointerSensor))
     const [trip, setTrip] = useState<{start_lat?: number, start_lon?: number, start_address?: string, start_time?: string} | null>(null)
+    const navigate = useNavigate()
 
     useEffect(()=> {
         const load = async () => {
-            const res = await fetch(`http://localhost:8000/trips/${tripId}`, {
-                headers: {'Authorization': `Bearer ${localStorage.getItem('access_token')}`}
-            })
-            if (res.ok) setTrip(await res.json())
+            const res = await getTrip(tripId!)
+            if (res) setTrip(res)
         }
     load()
     }, [] )
@@ -286,6 +285,7 @@ export default function TripPlanner() {
         })
         await reloadStops()
     }
+
     if (!tripId) return <div>Поездка не найдена</div>
     return (
         <div style={{ display: 'flex', width: '100vw', height: '100vh'}}>
@@ -302,13 +302,14 @@ export default function TripPlanner() {
                 {/* Заголовок */}
                 <div style={{padding: '16px', borderBottom: '1px solid #e5e7eb'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
+                    <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 20, color:'#6b7280'}}>&#9881;</button>
                 <h3 style={{margin: '0',fontSize: 16}}>Маршрут </h3>
                 <button onClick={handleOptimize} disabled={isOptimizing} style={{
                     padding: '6px 12px', background: isOptimizing ? '#9ca3af':'#3b82f6',
                     color: 'white', border: 'none', borderRadius: 6, cursor: isOptimizing ? 'not-allowed': 'pointer', fontSize: 13
                 }}>
                     {isOptimizing ? '⏳...' : '✨ Оптимизировать'}
-                </button>
+                </button> 
                 </div>
                 </div>
                 <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>

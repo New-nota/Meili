@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 from typing import Optional, Any
 from uuid import UUID
 
@@ -40,3 +40,5 @@ class PlaceResponse(BaseModel):
         return v
     
 
+class VisitedPlaceRequest(BaseModel):
+    rating: int | None = Field(None, ge=1, le=5)

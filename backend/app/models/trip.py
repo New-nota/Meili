@@ -26,7 +26,7 @@ class Trip(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
 
-    stops: Mapped[list["TripStop"]] = relationship("TripStop", back_populates="trip")
+    stops: Mapped[list["TripStop"]] = relationship("TripStop", back_populates="trip", passive_deletes=True)
 
 class TripStop(Base):
     __tablename__ = "trip_stops"

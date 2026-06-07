@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
@@ -31,14 +31,10 @@ async def optimize_trip(
     if len(stops) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 stops to optimize")
     
-    optimal_order = await optimize_trip_stops(stops)
+    optimal_order = await optimize_trip_stops(stops, trip)
 
     for new_pos, stop_id in enumerate(optimal_order):
-        result = await db.execute(
-            select(TripStop).where(TripStop.id == stop_id)
-        )
-        stop = result.scalar_one()
-        stop.position = new_pos
+        await db.execute(sql_update(TripStop).where(TripStop.id == stop_id).values(position=new_pos))
     await db.commit()
 
     return {"optimized_order": optimal_order}

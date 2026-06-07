@@ -5,6 +5,7 @@ import Auth from './pages/Auth'
 import Profile from './pages/Profile'
 import Discover from './pages/Discover'
 import ProtectedRoute from "./components/ProtectedRoute"
+import TripSettings from "./pages/TripSettings"
 
 function App() {
   return(
@@ -15,6 +16,7 @@ function App() {
       <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/discover" replace />} />
+      <Route path="/trips/:tripId/settings" element={<ProtectedRoute><TripSettings /></ProtectedRoute>} />
     </Routes>
     </BrowserRouter>
   )

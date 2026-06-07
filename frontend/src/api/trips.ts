@@ -92,3 +92,24 @@ export async function updateStopTransport(tripId: string, stopId: string, transp
     })
     if(!response.ok) throw new Error('Update transport failed')   
 }
+
+export async function getTrip(tripId:string) {
+    const res = await fetch(`http://localhost:8000/trips/${tripId}`, {
+        headers: headers()
+    })
+    if (!res.ok) throw new Error('Failed to fetch trip')
+        return res.json()
+}
+
+export async function updateTrip(tripId: string, data: Record<string, unknown>) {
+    const res = await fetch(`http://localhost:8000/trips/${tripId}`,
+        {
+            method: 'PUT',
+            headers: headers(),
+            body: JSON.stringify(data)
+        }
+    )
+    if(!res.ok) throw new Error('Failed to update trip')
+    return res.json()
+    
+}
