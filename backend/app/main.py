@@ -7,7 +7,7 @@ from app.api.places import router as places_router
 from app.api.stops import router as stops_router
 from app.api.route import router as route_router
 from app.api.optimize import router as optimize_router
-
+from app.api.recommendations import router as recommendations_router
 
 app = FastAPI(
     title="WanderOwn API",
@@ -27,6 +27,7 @@ app.include_router(places_router)
 app.include_router(stops_router)
 app.include_router(route_router)
 app.include_router(optimize_router)
+app.include_router(recommendations_router)
 @app.get("/health")
 async def health():
     return {"status":"ok"}
@@ -47,7 +48,7 @@ def custom_openapi():
         }
     }
     openapi_schema["security"] = [{"bearerAuth": []}]
-    app.openapi_shema = openapi_schema
-    return app.openapi_shema
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
 app.openapi = custom_openapi

@@ -113,3 +113,12 @@ export async function updateTrip(tripId: string, data: Record<string, unknown>) 
     return res.json()
     
 }
+
+export async function cloneTrip(tripId:string): Promise<Trip> {
+    const res = await fetch(`${API_URL}/trips/${tripId}/clone`, {
+        method: 'POST',
+        headers: headers()
+    })
+    if(!res.ok) throw new Error('Failed to clone trip')
+    return res.json()
+}

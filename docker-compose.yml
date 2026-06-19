@@ -13,6 +13,9 @@ services:
     depends_on:
       - postgres
       - redis
+      - valhalla
+    env_file:
+      - ./backend/.env
 
   postgres:
     image: postgis/postgis:15-3.3-alpine
@@ -32,13 +35,26 @@ services:
       - "6379:6379"
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
   valhalla:
-    image: ghcr.io/valhalla/valhalla:latest
+    image: ghcr.io/valhalla/valhalla-scripted:latest
     restart: unless-stopped
     ports:
       - "8002:8002"
     volumes:
       - ./valhalla_data:/custom_files
-    command: valhalla_service /custom_files/valhalla.json 1
-    depends_on: []
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    profiles: ["tools"]
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
 volumes:
   postgres_data:
+  pgadmin_data:

@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.trip import Trip
+from app.models.trip import Trip, TripStop
 from app.models.user import User
 from app.schemas.trips import TripCreate, TripUpdate, TripResponse
 from app.models.social import TripLike
@@ -109,3 +109,38 @@ async def unlike_trip(
     await db.commit()
     if res.rowcount == 0:
         raise HTTPException(status_code=404, detail="Like not found")
+    
+@router.post("/{trip_id}/clone", response_model=TripResponse)
+async def clone_trip(trip_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ):
+    source = (
+        await db.execute(select(Trip).where(Trip.id == UUID(trip_id)))
+    ).scalar_one_or_none()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    
+    if not source.is_public and source.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot clone a private trip")
+    
+    new_trip = Trip(
+        user_id=current_user.id, title=f"{source.title} (копия)", description=source.description,
+        city=source.city, country=source.country, is_public=False, adults_count=source.adults_count,
+        children_count=source.children_count, children_ages=source.children_ages, transport_default=source.transport_default,
+        start_address=source.start_address, start_lat=source.start_lat, start_lon=source.start_lon, start_time=source.start_time,
+    )
+    db.add(new_trip)
+    await db.flush()
+
+    stops = (
+        await db.execute(select(TripStop).where(TripStop.trip_id == source.id).order_by(TripStop.position))
+        ).scalars().all()
+
+    for new_pos, s in enumerate(stops):
+        db.add(TripStop(
+            trip_id=new_trip.id, place_id=s.place_id, position=new_pos, visit_date=s.visit_date,
+            visit_time=s.visit_time, duration_minutes=s.duration_minutes, transport_to_next=s.transport_to_next,
+            notes=s.notes, is_booked=False, booking_ref=None,
+        ))
+    await db.commit()
+    await db.refresh(new_trip)
+    return new_trip
+    
