@@ -44,6 +44,12 @@ EXPECTED_ROUTES = [
     ("POST", "/places/{place_id}/visited"),
     ("GET", "/recommendations/places"),
     ("GET", "/recommendations/trips"),
+    # Sprint 6 — бронирование
+    ("PUT", "/trips/{trip_id}/stops/{stop_id}"),
+    ("POST", "/bookings/"),
+    ("GET", "/bookings/"),
+    ("POST", "/bookings/{booking_id}/confirm"),
+    ("POST", "/bookings/{booking_id}/cancel"),
 ]
 
 
@@ -64,8 +70,7 @@ def test_all_expected_routes_registered():
     assert not missing, f"Не зарегистрированы роуты: {missing}"
 
 
-def test_booking_router_not_wired_yet():
-    """Документирует текущее состояние С6: модель есть, но роутер бронирования
-    ещё НЕ подключён. Если появится /bookings — тест напомнит обновить PROGRESS."""
-    paths = {getattr(r, "path", "") for r in app.routes}
-    assert not any(p.startswith("/bookings") for p in paths)
+def test_booking_endpoints_require_auth():
+    """Все booking-эндпоинты закрыты JWT."""
+    assert client.get("/bookings/").status_code == 401
+    assert client.post("/bookings/", json={}).status_code == 401

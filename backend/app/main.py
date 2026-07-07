@@ -8,6 +8,7 @@ from app.api.stops import router as stops_router
 from app.api.route import router as route_router
 from app.api.optimize import router as optimize_router
 from app.api.recommendations import router as recommendations_router
+from app.api.bookings import router as bookings_router
 
 app = FastAPI(
     title="WanderOwn API",
@@ -28,6 +29,7 @@ app.include_router(stops_router)
 app.include_router(route_router)
 app.include_router(optimize_router)
 app.include_router(recommendations_router)
+app.include_router(bookings_router)
 @app.get("/health")
 async def health():
     return {"status":"ok"}

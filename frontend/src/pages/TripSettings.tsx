@@ -27,7 +27,7 @@ export default function TripSettings() {
             setCountry(trip.country || '')
             setAdultsCount(trip.adults_count || 1)
             setChildrenCount(trip.children_count || 0)
-            setChildrenAges(trip.childrens_ages || [])
+            setChildrenAges(trip.children_ages || [])
             setIsPublic(trip.is_public || false)
             setIsLoading(false)
         }

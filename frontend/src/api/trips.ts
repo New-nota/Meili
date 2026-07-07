@@ -74,11 +74,15 @@ export async function reorderStops(tripId: string, stopIds: string[]): Promise<v
     })
 }
 
-export async function updateStopTransport(tripId: string, stopId: string, transport: string): Promise<void> {
-     await apiFetch(`/trips/${tripId}/stops/${stopId}`, {
+export async function updateStop(tripId: string, stopId: string, data: Record<string, unknown>): Promise<Stop> {
+    return apiFetch<Stop>(`/trips/${tripId}/stops/${stopId}`, {
         method: 'PUT',
-        body: JSON.stringify({transport_to_next: transport})
+        body: JSON.stringify(data)
     })
+}
+
+export async function updateStopTransport(tripId: string, stopId: string, transport: string): Promise<void> {
+    await updateStop(tripId, stopId, {transport_to_next: transport})
 }
 
 export async function getTrip(tripId:string): Promise<Trip> {

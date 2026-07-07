@@ -31,3 +31,10 @@ class StopResponse(BaseModel):
     
 class StopReorder(BaseModel):
     stops_ids: list[UUID]
+
+class StopUpdate(BaseModel):
+    visit_date: Optional[date] = None
+    visit_time: Optional[time] = None
+    duration_minutes: Optional[int] = None
+    transport_to_next: Optional[str] = None
+    notes: Optional[str] = None

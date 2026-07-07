@@ -60,6 +60,7 @@ export default function Discover() {
                 Запланировать поездку
             </button>
         </div>
+        {error && <p style={{color: 'red', fontSize: 13, marginBottom: 12}}>{error}</p>}
         {isCreating && (
             <div style={{padding: 16, border: '1px solid #e5e7ed', borderRadius: 8, marginBottom: 24,
                 display: 'flex', flexDirection: 'column', gap: 8

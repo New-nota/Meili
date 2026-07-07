@@ -8,7 +8,7 @@ from app.core.security import get_current_user
 from app.models.trip import Trip, TripStop
 from app.models.place import Place
 from app.models.user import User
-from app.schemas.stops import StopCreate, StopResponse, StopReorder
+from app.schemas.stops import StopCreate, StopResponse, StopReorder, StopUpdate
 from geoalchemy2.shape import to_shape
 
 router = APIRouter(prefix="/trips", tags=["stops"])
@@ -95,6 +95,29 @@ async def add_stop(
     await db.commit()
     await db.refresh(stop)
     return stop_to_dict(stop, place)
+
+@router.put("/{trip_id}/stops/{stop_id}", response_model=StopResponse)
+async def update_stop(
+    trip_id: UUID,
+    stop_id: UUID,
+    data: StopUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # частичное обновление: дата/время визита, транспорт, заметки
+    await get_trip_or_404(trip_id, current_user.id, db)
+    result = await db.execute(
+        select(TripStop).where(TripStop.id == stop_id, TripStop.trip_id == trip_id)
+    )
+    stop = result.scalar_one_or_none()
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(stop, field, value)
+    await db.commit()
+    await db.refresh(stop)
+    place_result = await db.execute(select(Place).where(Place.id == stop.place_id))
+    return stop_to_dict(stop, place_result.scalar_one_or_none())
 
 @router.delete("/{trip_id}/stops/{stop_id}", status_code=204)
 async def remove_stop(

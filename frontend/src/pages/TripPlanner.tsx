@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -9,6 +9,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
+import StopDetailPanel from '../components/StopDetailPanel'
 import { apiFetch } from '../api/client'
 import type { Place } from '../types/index'
 
@@ -23,9 +24,10 @@ interface SortableStopProps {
     isLast: boolean
     onTransportChange: (stopId: string, transport: string) => void
     onDelete: (stopId: string) => void
+    onSelect: (stop: Stop) => void
 }
 
-function SortableStop({stop, index, isLast, onTransportChange, onDelete }: SortableStopProps){
+function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelect }: SortableStopProps){
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: stop.id})
     return (
@@ -43,7 +45,10 @@ function SortableStop({stop, index, isLast, onTransportChange, onDelete }: Sorta
                 }}>
                     { index + 1}
                 </div>
-                <span style={{fontSize: 14}}>{stop.place_name || 'Без названия'}</span>
+                <span onClick={() => onSelect(stop)} style={{fontSize: 14, cursor: 'pointer', flex: 1}}>
+                    {stop.place_name || 'Без названия'}
+                    {stop.is_booked && <span title="Забронировано"> 🎟</span>}
+                </span>
                 <button onClick={() => onDelete(stop.id)} style={{background: 'none', border: 'none', cursor: 'pointer',
                     color: '#9ca3af', fontSize: 16, padding: '0 4px', lineHeight: 1
                 }}>✕</button>
@@ -71,7 +76,8 @@ export default function TripPlanner() {
     const [error, setError] = useState<string | null>(null)
     const [isOptimizing, setIsOptimizing] = useState(false)
     const sensors = useSensors(useSensor(PointerSensor))
-    const [trip, setTrip] = useState<{start_lat?: number, start_lon?: number, start_address?: string, start_time?: string} | null>(null)
+    const [trip, setTrip] = useState<{start_lat?: number, start_lon?: number, start_address?: string, start_time?: string, adults_count?: number, children_count?: number} | null>(null)
+    const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
     const navigate = useNavigate()
 
     useEffect(()=> {
@@ -274,7 +280,10 @@ export default function TripPlanner() {
         setStops(await getStops(tripId!))
     }
      const reloadStops = async () => {
-        setStops(await getStops(tripId!))
+        const fresh = await getStops(tripId!)
+        setStops(fresh)
+        // выбранная остановка могла измениться (например, is_booked)
+        setSelectedStop(prev => prev ? fresh.find(s => s.id === prev.id) ?? null : null)
     }
     const handleDelete = async (stopId: string) => {
         await apiFetch(`/trips/${tripId!}/stops/${stopId}`, {
@@ -309,6 +318,18 @@ export default function TripPlanner() {
                 </button> 
                 </div>
                 </div>
+                {selectedStop ? (
+                    /* Детали остановки + бронирование (Sprint 6) */
+                    <div style={{flex: 1, overflowY: 'auto'}}>
+                        <StopDetailPanel
+                            stop={selectedStop}
+                            trip={trip}
+                            onClose={() => setSelectedStop(null)}
+                            onChanged={reloadStops}
+                        />
+                    </div>
+                ) : (
+                <>
                 <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>
                 <PlaceSearch tripId={tripId} onPlaceAdded={reloadStops}/>
                 {/*Сприсок остановок скролится  */}
@@ -317,11 +338,13 @@ export default function TripPlanner() {
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                     <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
                         {stops.map((stop, i)=>(
-                            <SortableStop key={stop.id} stop={stop} index={i} isLast={i === stops.length - 1} onTransportChange={handleTransportChange} onDelete={handleDelete}/>
+                            <SortableStop key={stop.id} stop={stop} index={i} isLast={i === stops.length - 1} onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
                             ))}
                     </SortableContext>
                 </DndContext>
                 </div>
+                </>
+                )}
                 </div>
                 {/* Карта все остальное место займет*/}
                 <div ref={mapContainer} style={{flex: 1}} />
