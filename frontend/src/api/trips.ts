@@ -1,37 +1,33 @@
 import type { Stop, Trip } from '../types/index'
+import { apiFetch } from "./client"
 
-const API_URL = 'http://localhost:8000'
 
 
-const headers = () => ({
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('access_token')?? ''}`
-})
 
-export const getStops = async (tripId: string): Promise<Stop[]> => {
-    const res = await fetch(`${API_URL}/trips/${tripId}/stops`, {headers: headers()})
-    if (!res.ok) throw new Error('Failed to fetch stops')
-    return res.json()
-}
+
+
+export const getStops = async (tripId: string): Promise<Stop[]> => 
+    apiFetch<Stop[]>(`/trips/${tripId}/stops`)
+
+type ValhallaRouteResponse = {trip: {legs: { shape: string}[]}}
 
 export const getValhallaRoute = async (stops: Stop[], costing: string = 'pedestrian'): Promise<number[][]> => {
     const locations = stops
         .filter(s => s.place_lat && s.place_lon)
         .map(s => ({lat: s.place_lat!, lon: s.place_lon!}))
     if (locations.length < 2) return []
-    const res = await fetch('http://localhost:8000/route', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            locations, costing, directions_options: {units: 'km'}
+    let data: ValhallaRouteResponse
+    try {
+        data = await apiFetch<ValhallaRouteResponse>('/route',{
+            method: 'POST',
+            body: JSON.stringify({locations, costing, directions_options:{units: 'km'} }),
         })
-    })
-    if (!res.ok) return []
-    const data = await res.json()
+    } catch {
+        return []
+    }
     const allCoords: number[][] = []
     for (const leg of data.trip.legs){
-        const coords = decodePolyline(leg.shape)
-        allCoords.push(...coords)
+        allCoords.push(...decodePolyline(leg.shape))
     }
     return allCoords
 }
@@ -66,59 +62,39 @@ function decodePolyline(encoded: string, precision = 6): number[][] {
 }
 
 export async function optimizeTrip(tripId: string): Promise<string[]> {
-    const response = await fetch(`${API_URL}/trips/${tripId}/optimize`, {
-        method: 'POST',
-        headers: headers()
-    })
-    if(!response.ok) throw new Error('Optimize failed')
-    const data = await response.json()
-return data.optimized_order
+    const data = await apiFetch<{optimized_order: string[]}>(`/trips/${tripId}/optimize`, {
+        method: 'POST',})
+        return data.optimized_order
 }
 
 export async function reorderStops(tripId: string, stopIds: string[]): Promise<void> {
-    const response = await fetch(`${API_URL}/trips/${tripId}/stops/reorder`, {
+     await apiFetch(`/trips/${tripId}/stops/reorder`, {
         method: 'POST',
-        headers: headers(),
         body: JSON.stringify({stop_ids: stopIds})
     })
-    if(!response.ok) throw new Error('Reorder failed')
 }
 
 export async function updateStopTransport(tripId: string, stopId: string, transport: string): Promise<void> {
-    const response = await fetch(`${API_URL}/trips/${tripId}/stops/${stopId}`, {
+     await apiFetch(`/trips/${tripId}/stops/${stopId}`, {
         method: 'PUT',
-        headers: headers(),
         body: JSON.stringify({transport_to_next: transport})
     })
-    if(!response.ok) throw new Error('Update transport failed')   
 }
 
-export async function getTrip(tripId:string) {
-    const res = await fetch(`http://localhost:8000/trips/${tripId}`, {
-        headers: headers()
-    })
-    if (!res.ok) throw new Error('Failed to fetch trip')
-        return res.json()
+export async function getTrip(tripId:string): Promise<Trip> {
+    return apiFetch<Trip>(`/trips/${tripId}`) 
 }
 
-export async function updateTrip(tripId: string, data: Record<string, unknown>) {
-    const res = await fetch(`http://localhost:8000/trips/${tripId}`,
+export async function updateTrip(tripId: string, data: Record<string, unknown>): Promise<Trip> {
+    return apiFetch<Trip>(`/trips/${tripId}`,
         {
             method: 'PUT',
-            headers: headers(),
             body: JSON.stringify(data)
         }
     )
-    if(!res.ok) throw new Error('Failed to update trip')
-    return res.json()
-    
 }
 
 export async function cloneTrip(tripId:string): Promise<Trip> {
-    const res = await fetch(`${API_URL}/trips/${tripId}/clone`, {
-        method: 'POST',
-        headers: headers()
-    })
-    if(!res.ok) throw new Error('Failed to clone trip')
-    return res.json()
+    return apiFetch<Trip>(`/trips/${tripId}/clone`, {
+        method: 'POST'})
 }

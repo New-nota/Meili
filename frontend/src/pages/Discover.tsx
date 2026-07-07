@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { RecommendedTrips } from "../components/RecommendedTrips"
+import { apiFetch } from "../api/client"
 
 interface Trip {
     id: string
@@ -18,37 +19,38 @@ export default function Discover() {
     const [newCity, setNewCity] = useState('')
     const navigate = useNavigate()
     const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         const load = async () => {
-            const res = await fetch('http://localhost:8000/trips/', {
-                headers: {'Authorization': `Bearer ${localStorage.getItem('access_token')}`} 
-            })
-            if (res.ok) setTrips(await res.json())
-        }
+            try {
+                const data = await apiFetch<Trip[]>('/trips/') 
+                setTrips(data)
+        } catch {
+            setError('Не смогли загрузить данные')
+        }}
     load()
     }, [])
     const createTrip = async () => {
-        const res = await fetch('http://localhost:8000/trips/', {
+        try {const trip = await apiFetch<Trip>('/trips/', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            },
             body: JSON.stringify({title: newTitle, city: newCity})
         })
-    
-        if (!res.ok) return
-        const trip = await res.json()
+        
         navigate(`/trips/${trip.id}`)
+        } catch {
+            setError('Не удалось создать поездку')
+        }
+        
     }
     const deleteTrip = async (id: string) => {
-        await fetch(`http://localhost:8000/trips/${id}`, {
-            method: 'DELETE',
-            headers: {'Authorization': `Bearer ${localStorage.getItem('access_token')}`}
-        })
-        setTrips(prev => prev.filter(t => t.id !== id))
-        setDeletingId(null)
+        try { await apiFetch(`/trips/${id}`, {method: 'DELETE' })
+        setTrips(prev => prev.filter(t => t.id !== id)) }catch {setError('Не удалость удалить поездку')
+
+        } finally {
+            setDeletingId(null)
+        }
+
     }
     return (<div style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>

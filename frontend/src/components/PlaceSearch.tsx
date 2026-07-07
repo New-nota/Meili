@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react"
+import { apiFetch } from "../api/client"
+import type { Place } from "../types"
 
 interface NominatimResult {
     place_id: number
@@ -40,29 +42,19 @@ export default function PlaceSearch({tripId, onPlaceAdded}: Props) {
     const addPlace = async(result: NominatimResult) => {
         setIsAdding(result.place_id)
         try {
-            const placeRes = await fetch('http://localhost:8000/places', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`},
-                    body: JSON.stringify({
+            const place = await apiFetch<Place>('/places', {
+                method: 'POST', body: JSON.stringify({
                         name: result.display_name.split(',')[0],
                         lat: parseFloat(result.lat),
                         lon: parseFloat(result.lon),
                         address: result.display_name
                     })
                 })
-                if(!placeRes.ok) throw new Error()
-                const place = await placeRes.json()
-                const stopRes = await fetch(`http://localhost:8000/trips/${tripId}/stops`, {
+                
+            await apiFetch(`trips/${tripId}/stops`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                    },
                     body: JSON.stringify({place_id: place.id})
                 })
-                if(!stopRes.ok) throw new Error()
                 
                 setQuery('')
                 setResults([])

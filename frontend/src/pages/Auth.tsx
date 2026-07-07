@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { apiFetch } from "../api/client"
 
 export default function Auth() {
     const [email, setEmail] = useState('')
@@ -9,19 +10,17 @@ export default function Auth() {
 
     const handleLogin = async () => {
         setError(null)
-        const res = await fetch('http://localhost:8000/auth/login', {
+        try {
+        const data= await apiFetch<{access_token: string}>('/auth/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json'},
             body: JSON.stringify({email, password})
         })
-        if (!res.ok) {
-            setError('Неверный email или пароль')
-            return
-        }
-        const data = await res.json()
+
         localStorage.setItem('access_token', data.access_token)
         navigate('/discover')
-    }
+    } catch {
+        setError('Неверный email или пароль')
+    }}
     return (
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80, gap: 12}}>
             <h2>Войти</h2>

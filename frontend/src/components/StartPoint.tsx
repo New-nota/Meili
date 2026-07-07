@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { apiFetch } from "../api/client";
 
 interface Props {
     tripId: string
@@ -32,12 +33,8 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
     const save = async(lat: number, lon: number, addr: string) => {
         setIsSaving(true)
         try{
-            await fetch(`http://localhost:8000/trips/${tripId}`, {
+            await apiFetch(`/trips/${tripId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type' : 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                },
                 body: JSON.stringify({
                     start_address: addr,
                     start_lat: lat,

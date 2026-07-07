@@ -9,6 +9,8 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
+import { apiFetch } from '../api/client'
+import type { Place } from '../types/index'
 
 const TRANSPORT_OPTIONS = [
     {value: 'pedestrian', label: '🚶'},
@@ -119,25 +121,21 @@ export default function TripPlanner() {
                     const lat = parseFloat(btn.dataset.lat!)
                     const lon = parseFloat(btn.dataset.lon!)
                     const address = btn.dataset.address!
-                    const placeRes = await fetch('http://localhost:8000/places', {
+                    try { const place = await apiFetch<Place>('/places', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                        },
                         body: JSON.stringify({name, lat, lon, address})
                     })
-                    if (!placeRes.ok) return
-                    const place = await placeRes.json()
-                    await fetch(`http://localhost:8000/trips/${tripId}/stops`, {
+                        await apiFetch(`/trips/${tripId}/stops`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                        },
                         body: JSON.stringify({place_id: place.id})
                     })
                     reloadStops()
+                } catch {
+                        setError('Не удалось добавить место')
+                    }
+                
+                    
+                    
                 })
             }, 50)
         })
@@ -279,9 +277,8 @@ export default function TripPlanner() {
         setStops(await getStops(tripId!))
     }
     const handleDelete = async (stopId: string) => {
-        await fetch (`http://localhost:8000/trips/${tripId!}/stops/${stopId}`, {
+        await apiFetch(`/trips/${tripId!}/stops/${stopId}`, {
             method: 'DELETE',
-            headers: {'Authorization': `Bearer ${localStorage.getItem('access_token')}`}
         })
         await reloadStops()
     }

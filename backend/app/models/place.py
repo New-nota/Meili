@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import String, Integer, Boolean, ARRAY, DECIMAL, JSON
+from sqlalchemy import String, Integer, Boolean, ARRAY, DECIMAL, JSON, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
 from app.core.database import Base
@@ -7,6 +7,9 @@ from app.core.database import Base
 class Place(Base):
     __tablename__ = "places"
 
+    __table_args__ = (
+        Index("uq_places_osm_id", "osm_id", unique=True, postgresql_where=text("osm_id IS NOT NULL"),),
+    )
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     osm_id: Mapped[str | None] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)

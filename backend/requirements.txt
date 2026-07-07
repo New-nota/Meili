@@ -19,3 +19,5 @@ shapely>=2.0.0
 httpx
 redis[asyncio]
 ortools==9.8.3296
+pytest==8.2.0
+pytest-asyncio==0.23.7

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {getTrip, updateTrip} from "../api/trips"
+import { apiFetch } from "../api/client";
 
 
 export default function TripSettings() {
@@ -53,9 +54,8 @@ export default function TripSettings() {
     }
 
     const deleteTrip = async () => {
-        await fetch(`http://localhost:8000/trips/${tripId}`, {
+        await apiFetch(`/trips/${tripId}`, {
             method: 'DELETE',
-            headers: {'Authorization': `Bearer ${localStorage.getItem('access_token')}`}
         })
         navigate('/discover')
     }
