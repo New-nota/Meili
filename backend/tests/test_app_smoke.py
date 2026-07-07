@@ -26,6 +26,8 @@ def test_openapi_schema_builds():
 EXPECTED_ROUTES = [
     ("POST", "/auth/register"),
     ("POST", "/auth/login"),
+    ("GET", "/auth/google/login"),
+    ("GET", "/auth/google/callback"),
     ("GET", "/trips/"),
     ("POST", "/trips/"),
     ("GET", "/trips/{trip_id}"),

@@ -1,12 +1,22 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { apiFetch } from "../api/client"
+import { apiFetch, API_URL } from "../api/client"
 
 export default function Auth() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [error, setError] = useState<string | null>(null)
     const navigate = useNavigate()
+
+    // возврат из Google OAuth: бэкенд редиректит на /auth#token=<jwt>
+    useEffect(() => {
+        const match = window.location.hash.match(/token=([^&]+)/)
+        if (match) {
+            localStorage.setItem('access_token', match[1])
+            window.history.replaceState(null, '', window.location.pathname)
+            navigate('/discover')
+        }
+    }, [navigate])
 
     const handleLogin = async () => {
         setError(null)
@@ -25,13 +35,21 @@ export default function Auth() {
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80, gap: 12}}>
             <h2>Войти</h2>
             <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)}
-                style={{padding: 8, width: 280, borderRadius: 6, border: '1px solid #e5e7eb' }}/>
+                style={{padding: 8, width: 280, maxWidth: '85vw', borderRadius: 6, border: '1px solid #e5e7eb' }}/>
             <input placeholder="Пароль" type="password" value={password} onChange={e => setPassword(e.target.value)}
-                style={{padding:8, width: 280, borderRadius: 6, border: '1px solid #e5e7eb'}} />
+                style={{padding:8, width: 280, maxWidth: '85vw', borderRadius: 6, border: '1px solid #e5e7eb'}} />
             {error && <p style={{color: 'red', fontSize: 13}}>{error}</p>}
             <button onClick={handleLogin}
             style={{padding: '8px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer'}}>
                 Войти
+            </button>
+            {/* Google OAuth (S7): бэкенд ответит 501, если ключи не настроены */}
+            <button onClick={() => { window.location.href = `${API_URL}/auth/google/login` }}
+            style={{padding: '8px 24px', background: 'white', color: '#374151',
+                border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8}}>
+                <span style={{fontWeight: 'bold', color: '#4285F4'}}>G</span>
+                Войти через Google
             </button>
         </div>
     )

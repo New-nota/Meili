@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from starlette.middleware.sessions import SessionMiddleware
+from app.core.config import settings
 from app.api.auth import router as auth_router
 from app.api.trips import router as trip_router
 from app.api.places import router as places_router
@@ -15,6 +17,8 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# сессии нужны authlib для хранения OAuth state (CSRF-защита флоу)
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],

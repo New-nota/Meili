@@ -19,3 +19,7 @@ Thumds.db
 TTL
 KEYS
 PROGRESS (2).md
+# playwright / pwa артефакты
+frontend/test-results/
+frontend/playwright-report/
+frontend/dev-dist/

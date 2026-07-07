@@ -52,7 +52,7 @@ export default function Discover() {
         }
 
     }
-    return (<div style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
+    return (<div className="discover-page" style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
             <h2 style={{margin: 0}}>Мои поездки</h2>
             <button onClick={() => setIsCreating(true)} style={{padding: '8px 16px', background: '#3b82f6',

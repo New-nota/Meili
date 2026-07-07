@@ -15,6 +15,7 @@ from app.services.booking import (
     create_booking,
     list_bookings,
 )
+from app.services.email import send_booking_confirmation
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -52,6 +53,16 @@ async def confirm(
         booking = await confirm_booking(db, current_user.id, booking_id, data)
     except BookingError as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
+
+    # email-подтверждение — best effort, сбой почты не роняет бронь (S7)
+    details = booking.booking_details or {}
+    await send_booking_confirmation(
+        to=current_user.email,
+        place_name=details.get("place_name"),
+        provider=booking.provider,
+        booking_ref=booking.external_id or str(booking.id)[:8],
+        visit_date=details.get("visit_date"),
+    )
     return booking_to_dict(booking)
 
 

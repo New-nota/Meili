@@ -294,17 +294,9 @@ export default function TripPlanner() {
 
     if (!tripId) return <div>Поездка не найдена</div>
     return (
-        <div style={{ display: 'flex', width: '100vw', height: '100vh'}}>
-            {/*Left pannel*/}
-            <div style={{
-                width: 320,
-                flexShrink: 0,
-                background: 'white',
-                borderRight: '1px solid #e5e7eb',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden'
-            }}>
+        <div className="planner-layout">
+            {/*Left pannel — на мобильных уезжает под карту (см. index.css)*/}
+            <div className="planner-panel">
                 {/* Заголовок */}
                 <div style={{padding: '16px', borderBottom: '1px solid #e5e7eb'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
@@ -347,7 +339,7 @@ export default function TripPlanner() {
                 )}
                 </div>
                 {/* Карта все остальное место займет*/}
-                <div ref={mapContainer} style={{flex: 1}} />
+                <div ref={mapContainer} className="planner-map" />
                 </div>
             
     )

@@ -113,3 +113,34 @@ code {
 html, body, #root {
   height: 100;
 }
+/* --- Sprint 7: мобильная адаптация --- */
+.planner-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* мобильные браузеры: без прыжков от адресной строки */
+}
+.planner-panel {
+  width: 320px;
+  flex-shrink: 0;
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.planner-map {
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 768px) {
+  /* карта сверху, панель маршрута снизу */
+  .planner-layout { flex-direction: column-reverse; }
+  .planner-panel {
+    width: 100%;
+    height: 52dvh;
+    border-right: none;
+    border-top: 1px solid #e5e7eb;
+  }
+  .discover-page { padding: 16px !important; }
+}
