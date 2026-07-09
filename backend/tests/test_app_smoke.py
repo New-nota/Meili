@@ -28,6 +28,9 @@ EXPECTED_ROUTES = [
     ("POST", "/auth/login"),
     ("GET", "/auth/google/login"),
     ("GET", "/auth/google/callback"),
+    # S8 WP-1 — refresh-токены
+    ("POST", "/auth/refresh"),
+    ("POST", "/auth/logout"),
     ("GET", "/trips/"),
     ("POST", "/trips/"),
     ("GET", "/trips/{trip_id}"),

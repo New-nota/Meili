@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { RecommendedTrips } from "../components/RecommendedTrips"
-import { apiFetch } from "../api/client"
+import { apiFetch, logout } from "../api/client"
 
 interface Trip {
     id: string
@@ -55,10 +55,17 @@ export default function Discover() {
     return (<div className="discover-page" style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
             <h2 style={{margin: 0}}>Мои поездки</h2>
-            <button onClick={() => setIsCreating(true)} style={{padding: '8px 16px', background: '#3b82f6',
-            color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
-                Запланировать поездку
-            </button>
+            <div style={{display: 'flex', gap: 8}}>
+                <button onClick={() => setIsCreating(true)} style={{padding: '8px 16px', background: '#3b82f6',
+                color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
+                    Запланировать поездку
+                </button>
+                <button onClick={async () => { await logout(); navigate('/auth') }}
+                style={{padding: '8px 16px', background: 'none', color: '#6b7280',
+                border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
+                    Выйти
+                </button>
+            </div>
         </div>
         {error && <p style={{color: 'red', fontSize: 13, marginBottom: 12}}>{error}</p>}
         {isCreating && (

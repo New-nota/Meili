@@ -38,9 +38,28 @@ def test_access_token_roundtrip():
 
 
 def test_refresh_token_has_correct_type():
-    payload = decode_token(create_refresh_token("user-42"))
+    token, jti = create_refresh_token("user-42")
+    payload = decode_token(token)
     assert payload["sub"] == "user-42"
     assert payload["type"] == "refresh"
+    assert payload["jti"] == jti  # jti возвращается и лежит в payload
+
+
+def test_decode_refresh_rejects_access_token():
+    from pytest import raises
+
+    from app.core.security import RefreshTokenError, decode_refresh_token
+
+    with raises(RefreshTokenError):
+        decode_refresh_token(create_access_token("user-1"))
+
+
+def test_decode_refresh_accepts_valid_refresh():
+    from app.core.security import decode_refresh_token
+
+    token, jti = create_refresh_token("user-9")
+    payload = decode_refresh_token(token)
+    assert payload["jti"] == jti
 
 
 def test_decode_garbage_returns_none():

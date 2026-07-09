@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None  # включить на деплое
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    # cookie refresh-токена (S8 WP-1); на деплое COOKIE_SECURE=true
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"
 
     # Email (S7): без SMTP_HOST письма пишутся в лог (dev-режим)
     SMTP_HOST: str | None = None

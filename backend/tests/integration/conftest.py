@@ -78,6 +78,11 @@ async def client(_test_database):
             tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
             await conn.execute(text(f"TRUNCATE {tables} CASCADE"))
         await engine.dispose()
+        # у каждого теста свой event loop, а redis_client глобальный:
+        # рвём соединения пула, иначе следующий тест получит соединение,
+        # привязанное к уже закрытому loop'у ("Event loop is closed")
+        from app.core.redis import redis_client
+        await redis_client.connection_pool.disconnect()
 
 
 @pytest_asyncio.fixture

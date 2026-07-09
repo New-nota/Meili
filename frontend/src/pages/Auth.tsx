@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { apiFetch, API_URL } from "../api/client"
+import { apiFetch, API_URL, setAccessToken } from "../api/client"
 
 export default function Auth() {
     const [email, setEmail] = useState('')
@@ -12,7 +12,7 @@ export default function Auth() {
     useEffect(() => {
         const match = window.location.hash.match(/token=([^&]+)/)
         if (match) {
-            localStorage.setItem('access_token', match[1])
+            setAccessToken(match[1])
             window.history.replaceState(null, '', window.location.pathname)
             navigate('/discover')
         }
@@ -26,7 +26,7 @@ export default function Auth() {
             body: JSON.stringify({email, password})
         })
 
-        localStorage.setItem('access_token', data.access_token)
+        setAccessToken(data.access_token)
         navigate('/discover')
     } catch {
         setError('Неверный email или пароль')

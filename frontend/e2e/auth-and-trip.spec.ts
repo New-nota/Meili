@@ -62,3 +62,31 @@ test('кнопка Google присутствует на странице лог�
   await page.goto('/auth')
   await expect(page.getByRole('button', { name: /Войти через Google/ })).toBeVisible()
 })
+
+test('сессия переживает перезагрузку страницы (S8 WP-1)', async ({ page }) => {
+  await page.goto('/auth')
+  await page.getByPlaceholder('Email').fill(EMAIL)
+  await page.getByPlaceholder('Пароль').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Войти', exact: true }).click()
+  await expect(page).toHaveURL(/\/discover/)
+
+  // перезагрузка: bootstrap-refresh по httpOnly cookie восстанавливает сессию
+  await page.reload()
+  await expect(page).toHaveURL(/\/discover/)
+  await expect(page.getByRole('heading', { name: 'Мои поездки' })).toBeVisible()
+})
+
+test('выход инвалидирует сессию (S8 WP-1)', async ({ page }) => {
+  await page.goto('/auth')
+  await page.getByPlaceholder('Email').fill(EMAIL)
+  await page.getByPlaceholder('Пароль').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Войти', exact: true }).click()
+  await expect(page).toHaveURL(/\/discover/)
+
+  await page.getByRole('button', { name: 'Выйти' }).click()
+  await expect(page).toHaveURL(/\/auth/)
+
+  // после logout refresh-cookie отозвана: перезагрузка не возвращает сессию
+  await page.goto('/discover')
+  await expect(page).toHaveURL(/\/auth/)
+})
