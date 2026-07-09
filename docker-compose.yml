@@ -3,7 +3,8 @@ services:
     build: ./backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://wanderown:Frenchfries0728@postgres:5432/wanderown_db
+      # креды берутся из .env в корне проекта (см. .env.example)
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VALHALLA_URL=http://valhalla:8002
     ports:
@@ -25,9 +26,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=wanderown
-      - POSTGRES_PASSWORD=Frenchfries0728
-      - POSTGRES_DB=wanderown_db
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -46,8 +47,8 @@ services:
     restart: unless-stopped
     profiles: ["tools"]
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@admin.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
     ports:
       - "5050:80"
     volumes:

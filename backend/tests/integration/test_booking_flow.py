@@ -136,3 +136,6 @@ async def test_update_stop_transport_and_visit_date(client, auth_headers):
     assert updated["visit_date"] == "2026-08-02"
     # частичное обновление не затёрло остальное
     assert updated["place_name"] == "Рыбная деревня"
+    # регресс stop_to_dict: trip_id подменялся на place_id
+    assert updated["trip_id"] == trip_id
+    assert updated["trip_id"] != updated["place_id"]

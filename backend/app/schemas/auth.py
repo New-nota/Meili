@@ -19,4 +19,4 @@ class UserResponse(BaseModel):
     name: str | None
 
     class Config:
-        from_attribures = True
+        from_attributes = True

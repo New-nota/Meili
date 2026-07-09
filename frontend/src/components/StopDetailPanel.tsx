@@ -25,6 +25,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
     const [visitDate, setVisitDate] = useState<string | null>(stop.visit_date)
     const [refInput, setRefInput] = useState('')
     const [amountInput, setAmountInput] = useState('')
+    const [currency, setCurrency] = useState('EUR')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
@@ -69,7 +70,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
             const b = await confirmBooking(booking.id, {
                 external_id: refInput || undefined,
                 amount: amountInput || undefined,
-                currency: amountInput ? 'EUR' : undefined,
+                currency: amountInput ? currency : undefined,
             })
             setBooking(b)
             onChanged()
@@ -168,12 +169,21 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                             width: '100%', padding: 6, marginBottom: 6, boxSizing: 'border-box',
                             border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13,
                         }} />
-                    <input placeholder="Сумма (опц.)" value={amountInput} inputMode="decimal"
-                        onChange={e => setAmountInput(e.target.value)}
-                        style={{
-                            width: '100%', padding: 6, marginBottom: 8, boxSizing: 'border-box',
-                            border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13,
-                        }} />
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                        <input placeholder="Сумма (опц.)" value={amountInput} inputMode="decimal"
+                            onChange={e => setAmountInput(e.target.value)}
+                            style={{
+                                flex: 1, padding: 6, boxSizing: 'border-box',
+                                border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13,
+                            }} />
+                        <select value={currency} onChange={e => setCurrency(e.target.value)}
+                            style={{
+                                padding: 6, border: '1px solid #e5e7eb',
+                                borderRadius: 6, fontSize: 13, background: 'white',
+                            }}>
+                            {['EUR', 'USD', 'RUB'].map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={handleConfirm} disabled={busy} style={{
                             padding: '6px 12px', background: '#10b981', color: 'white',

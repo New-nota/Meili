@@ -4,8 +4,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str
     VALHALLA_URL: str
-    SECRET_KEY: str = "no."
+    # без дефолта: подписывать JWT предсказуемым ключом нельзя,
+    # отсутствие SECRET_KEY в .env — ошибка запуска, и это правильно
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    DB_ECHO: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 

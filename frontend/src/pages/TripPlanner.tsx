@@ -18,6 +18,10 @@ const TRANSPORT_OPTIONS = [
     {value: 'bicycle', label: '🚲'},
     {value: 'auto', label:'🚗'},
 ]
+// стартовый вид карты до загрузки остановок (MVP-регион — Калининград);
+// после загрузки камера подстраивается через fitBounds
+const DEFAULT_MAP_CENTER: [number, number] = [20.5114, 54.7104]
+const DEFAULT_MAP_ZOOM = 13
 interface SortableStopProps {
     stop: Stop
     index: number
@@ -86,15 +90,16 @@ export default function TripPlanner() {
             if (res) setTrip(res)
         }
     load()
-    }, [] )
+    // tripId в deps: при переходе между поездками роутер переиспользует компонент
+    }, [tripId] )
 
     useEffect(()=> {
         if(!mapContainer.current) return
         const map = new maplibregl.Map({
             container: mapContainer.current,
             style: 'https://tiles.openfreemap.org/styles/liberty',
-            center: [20.5114, 54.7104],
-            zoom: 13
+            center: DEFAULT_MAP_CENTER,
+            zoom: DEFAULT_MAP_ZOOM
         })
         map.addControl( new maplibregl.NavigationControl())
         mapRef.current = map
@@ -109,7 +114,7 @@ export default function TripPlanner() {
             new maplibregl.Popup().setLngLat([lng, lat]).setHTML(
                 `<div style="padding: 8px; min-width: 200px">
                 <strong style="font-size: 14px"> ${data.name || data.display_name.split(',')[0]}</strong>
-                <p style="font-size: 12px; color: #6b7280; matgin: 4px 0 8px">${data.display_name.split(',').slice(0,3).join(',')}</p>
+                <p style="font-size: 12px; color: #6b7280; margin: 4px 0 8px">${data.display_name.split(',').slice(0,3).join(',')}</p>
                 <button id="add-place-btn" data-name="${(data.name || data.display_name.split(',')[0]).replace(/"/g, '')}"
                 data-lat="${lat}"
                 data-lon="${lng}"
@@ -163,7 +168,7 @@ export default function TripPlanner() {
             }
         }
         load()
-    }, [])
+    }, [tripId])
 
     useEffect(() => {
     const map = mapRef.current

@@ -126,7 +126,8 @@ export default function Discover() {
                            
                         )}
                     </div>
-                    <RecommendedTrips city="Калининград"/> {/* */}
+                    {/* без city: бэкенд отдаёт рекомендации по всем городам */}
+                    <RecommendedTrips />
                 </div>
                 
         )

@@ -85,6 +85,33 @@ def test_parse_time_windows_default_when_no_hours():
     assert windows == [(0, 12 * 3600)]  # дефолт: 0..12ч
 
 
+def test_parse_time_windows_survives_malformed_opening_hours():
+    # opening_hours из OSM бывает строкой/огрызком — не должны падать
+    trip = _fake_trip(start_time=time(9, 0))
+    stops = [
+        _fake_stop("s1", 20.5, 54.7, opening_hours="Mo-Fr 09:00-18:00"),  # строка
+        _fake_stop("s2", 20.5, 54.7, opening_hours={"open": "10:00"}),     # нет close
+        _fake_stop("s3", 20.5, 54.7, opening_hours={"open": "??", "close": "18:00"}),
+    ]
+    windows = parse_time_windows(stops, trip, has_depot=False)
+    assert windows == [(0, 12 * 3600)] * 3  # все получили дефолтное окно
+
+
+def test_parse_time_windows_clamped_to_horizon():
+    # окно позже 12ч от старта не должно ронять solver (SetMin > максимума)
+    trip = _fake_trip(start_time=time(6, 0))
+    stops = [_fake_stop("s1", 20.5, 54.7,
+                        opening_hours={"open": "21:00", "close": "23:00"})]
+    windows = parse_time_windows(stops, trip, has_depot=False)
+    (open_sec, close_sec) = windows[0]
+    assert open_sec <= 12 * 3600
+    assert close_sec <= 12 * 3600
+    # и solver с таким окном не падает
+    matrix = [[0, 60], [60, 0]]
+    order = solve_tsp(matrix, [(0, 12 * 3600), windows[0]])
+    assert sorted(order) == [0, 1]
+
+
 def test_parse_time_windows_prepends_depot():
     trip = _fake_trip(start_time=time(8, 0))
     stops = [_fake_stop("s1", 20.5, 54.7, opening_hours=None)]

@@ -16,7 +16,7 @@ router = APIRouter(prefix="/trips", tags=["stops"])
 def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
     result = {
         "id": stop.id,
-        "trip_id": stop.place_id,
+        "trip_id": stop.trip_id,
         "place_id": stop.place_id,
         "position": stop.position,
         "visit_date": stop.visit_date,
@@ -75,7 +75,7 @@ async def add_stop(
     place_result = await db.execute(select(Place).where(Place.id == data.place_id))
     place = place_result.scalar_one_or_none()
     if not place:
-        HTTPException(status_code=404, detail="Place not found")
+        raise HTTPException(status_code=404, detail="Place not found")
     max_result = await db.execute(
         select(func.max(TripStop.position)).where(TripStop.trip_id == trip_id)
     )
@@ -167,4 +167,4 @@ async def reorder_stops(
         if stop:
             stop.position = new_pos
     await db.commit()
-    return {"ok": True}
+    # status_code=204: ответ без тела

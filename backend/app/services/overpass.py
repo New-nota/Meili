@@ -3,16 +3,17 @@ import json
 from app.core.redis import redis_client
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+CACHE_TTL_SECONDS = 24 * 3600  # сутки: POI меняются редко, Overpass просит щадить
 # маппинг наших категорий в OSM теги тк он(OSM) использует свои теги
 CATEGORY_TO_OSM = {
-    "museum": ("tourism","museum"),
-    "restaurant": ("amenty"," restaurant"),
-    "cafe": ("amenty","cafe"),
-    "park": ("leisure","park"),
-    "landmark": ("tourism","attraction"),
-    "hotel": ("tourism","hotel"),
-    "church": ("amenity","place_of_worship"),
-    "shop": ("shop","mall"),
+    "museum": ("tourism", "museum"),
+    "restaurant": ("amenity", "restaurant"),
+    "cafe": ("amenity", "cafe"),
+    "park": ("leisure", "park"),
+    "landmark": ("tourism", "attraction"),
+    "hotel": ("tourism", "hotel"),
+    "church": ("amenity", "place_of_worship"),
+    "shop": ("shop", "mall"),
 }
 
 def build_overpass_query(lat: float, lon: float, radius: int, category: str) -> str:
@@ -54,8 +55,9 @@ def parse_overpass_response(data:dict) -> list[dict]:
             "opening_hours": tags.get("opening_hours"),
             "website": tags.get("website"),
         })
-        return places
-    
+    return places
+
+
 async def search_places_overpass(
         lat: float,
         lon: float,
@@ -78,7 +80,7 @@ async def search_places_overpass(
         response.raise_for_status()
         data = response.json()
     places = parse_overpass_response(data)
-    # сохраняем кэш на 24 часа
-    await redis_client.setex(cache_key, 86400, json.dumps(places))
+    # сохраняем кэш
+    await redis_client.setex(cache_key, CACHE_TTL_SECONDS, json.dumps(places))
 
     return places

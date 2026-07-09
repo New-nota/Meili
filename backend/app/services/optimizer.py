@@ -2,15 +2,26 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import httpx
 from typing import List, Dict
-import os
 from shapely import wkb
-VALHALLA_URL = os.getenv("VALHALLA_URL", "http://valhalla:8002")
-    
+
+from app.core.config import settings
+
 COSTING_MAP = {
         "walking" : "pedestrian",
         "auto": "auto",
         "bicycle": "bicycle",
     }
+
+# буфер на пробки: Valhalla считает по статическим скоростям (см. PROGRESS, С3)
+AUTO_TRAFFIC_FACTOR = 1.4
+# «бесконечность» для недостижимых пар точек
+UNREACHABLE_TIME = 9999
+# горизонт планирования измерения Time: дольше 12ч маршрут одного дня не бывает
+TIME_HORIZON_SECONDS = 12 * 3600
+# штраф за приход после закрытия (мягкое окно, не жёсткий отказ)
+LATE_ARRIVAL_PENALTY = 1000
+# максимум ожидания в одной точке (например, до открытия)
+MAX_SLACK_SECONDS = 1 * 3600
 
 async def get_time_matrix(
         locations: List[Dict[str, float]],
@@ -23,7 +34,7 @@ async def get_time_matrix(
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
-            f"{VALHALLA_URL}/sources_to_targets",
+            f"{settings.VALHALLA_URL}/sources_to_targets",
             json=body
         )
         response.raise_for_status()
@@ -33,10 +44,12 @@ async def get_time_matrix(
 
     for i, row in enumerate(data["sources_to_targets"]):
         for j, cell in enumerate(row):
-            if body["costing"] == "auto":
-                matrix[i][j] = int(cell["time"]* 1.4)   if cell["time"] is not None else 9999
+            if cell["time"] is None:
+                matrix[i][j] = UNREACHABLE_TIME
+            elif body["costing"] == "auto":
+                matrix[i][j] = int(cell["time"] * AUTO_TRAFFIC_FACTOR)
             else:
-                matrix[i][j] = int(cell["time"])  if cell["time"] is not None else 9999
+                matrix[i][j] = int(cell["time"])
 
     return matrix
 def parse_time_windows(stops: list, trip, has_depot: bool) -> List[tuple]:
@@ -46,18 +59,28 @@ def parse_time_windows(stops: list, trip, has_depot: bool) -> List[tuple]:
 
     if has_depot:
         windows.append((0,0))
+    default_window = (0, TIME_HORIZON_SECONDS)
     for stop in stops:
         op_hor = stop.place.opening_hours
-        if op_hor is None:
-            windows.append((0,12*3600))
-        else:
+        # opening_hours приходит из OSM/пользователя — формат не гарантирован,
+        # поэтому любой кривой вариант превращаем в «открыто весь день»
+        if not isinstance(op_hor, dict) or "open" not in op_hor or "close" not in op_hor:
+            windows.append(default_window)
+            continue
+        try:
             open_parts = op_hor["open"].split(":")
             close_parts = op_hor["close"].split(":")
             open_secs = int(open_parts[0]) * 3600 + int(open_parts[1]) * 60
             close_secs = int(close_parts[0]) * 3600 + int(close_parts[1]) * 60
-            windows.append((
-                max(0, open_secs - start_secs),max(0, close_secs - start_secs)
-            ))
+        except (ValueError, IndexError, AttributeError):
+            windows.append(default_window)
+            continue
+        windows.append((
+            # окна не должны выходить за горизонт измерения Time, иначе
+            # solver падает (SetMin > максимума CumulVar)
+            min(max(0, open_secs - start_secs), TIME_HORIZON_SECONDS),
+            min(max(0, close_secs - start_secs), TIME_HORIZON_SECONDS),
+        ))
     return windows
 
 
@@ -77,13 +100,13 @@ def solve_tsp(matrix: List[List[int]], time_windows: List[tuple] = None) -> List
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
     if time_windows:
         routing.AddDimension(
-            transit_callback_index, 1 * 3600, 12 * 3600, False, "Time"
+            transit_callback_index, MAX_SLACK_SECONDS, TIME_HORIZON_SECONDS, False, "Time"
         )
         time_dimension = routing.GetDimensionOrDie("Time")
         for i, (open_sec, close_sec) in enumerate(time_windows):
             index = manager.NodeToIndex(i)
             time_dimension.CumulVar(index).SetMin(open_sec)
-            time_dimension.SetCumulVarSoftUpperBound(index, close_sec, 1000)
+            time_dimension.SetCumulVarSoftUpperBound(index, close_sec, LATE_ARRIVAL_PENALTY)
     search_params = pywrapcp.DefaultRoutingSearchParameters()
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -121,7 +144,7 @@ async def optimize_trip_stops(stops: list, trip) -> List[str]:
     matrix = await get_time_matrix(locations, costing=costing)
     if has_depot:
         depot_distances = [matrix[0][j] for j in range (1, len(matrix))]
-        if all(d >= 9999 for d in depot_distances):
+        if all(d >= UNREACHABLE_TIME for d in depot_distances):
             has_depot = False
             locations = locations[1:]
             matrix = [row[1:] for row in matrix[1:]]

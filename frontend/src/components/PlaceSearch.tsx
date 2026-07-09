@@ -51,7 +51,7 @@ export default function PlaceSearch({tripId, onPlaceAdded}: Props) {
                     })
                 })
                 
-            await apiFetch(`trips/${tripId}/stops`, {
+            await apiFetch(`/trips/${tripId}/stops`, {
                     method: 'POST',
                     body: JSON.stringify({place_id: place.id})
                 })
