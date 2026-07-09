@@ -10,6 +10,7 @@ from app.models.trip import Trip, TripStop
 from app.models.user import User
 from app.schemas.trips import TripCreate, TripUpdate, TripResponse
 from app.models.social import TripLike
+from app.services.trips import DayError, sync_trip_days
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -31,6 +32,13 @@ async def create_trip(
 ):
     trip = Trip(user_id=current_user.id, **data.model_dump())
     db.add(trip)
+    await db.flush()
+    # диапазон дат задан -> генерируем trip_days (S8 WP-3)
+    try:
+        await sync_trip_days(db, trip)
+    except DayError as e:
+        await db.rollback()
+        raise HTTPException(status_code=e.status_code, detail=str(e))
     await db.commit()
     await db.refresh(trip)
     return trip
@@ -63,9 +71,18 @@ async def update_trip(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(trip, field, value)
-    
+
+    # изменение диапазона дат -> пересинхронизация дней (S8 WP-3)
+    if "start_date" in updates or "end_date" in updates:
+        try:
+            await sync_trip_days(db, trip)
+        except DayError as e:
+            await db.rollback()
+            raise HTTPException(status_code=e.status_code, detail=str(e))
+
     await db.commit()
     await db.refresh(trip)
     return trip

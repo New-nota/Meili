@@ -2,6 +2,7 @@ export interface Stop {
     id: string
     trip_id: string
     place_id: string
+    day_id: string | null
     position: number
     place_name: string | null
     place_lat: number | null
@@ -24,6 +25,8 @@ export interface Trip {
     children_ages: number[] | null
     is_public: boolean
     transport_default: string
+    start_date: string | null
+    end_date: string | null
 }
 
 export interface Place {

@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Stop } from '../types/index'
-import { getStops, getValhallaRoute, optimizeTrip, reorderStops, updateStopTransport, getTrip } from '../api/trips'
+import { getStops, getValhallaRouteForPoints, reorderStops, updateStopTransport, getTrip } from '../api/trips'
+import { getDays, getLocations, type TripDay, type TripLocation } from '../api/days'
+import DayCard from '../components/DayCard'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -78,11 +80,27 @@ export default function TripPlanner() {
     const markersRef = useRef<maplibregl.Marker[]>([])
     const [stops, setStops] = useState<Stop[]>([])
     const [error, setError] = useState<string | null>(null)
-    const [isOptimizing, setIsOptimizing] = useState(false)
     const sensors = useSensors(useSensor(PointerSensor))
     const [trip, setTrip] = useState<{start_lat?: number, start_lon?: number, start_address?: string, start_time?: string, adults_count?: number, children_count?: number} | null>(null)
     const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
+    // S8 WP-3: мульти-день
+    const [days, setDays] = useState<TripDay[]>([])
+    const [locations, setLocations] = useState<TripLocation[]>([])
+    const [expandedDayId, setExpandedDayId] = useState<string | null>(null)
     const navigate = useNavigate()
+
+    const reloadDays = async () => {
+        const [d, l] = await Promise.all([getDays(tripId!), getLocations(tripId!)])
+        setDays(d)
+        setLocations(l)
+        // по умолчанию раскрыт первый день
+        setExpandedDayId(prev => prev ?? (d[0]?.id ?? null))
+        return d
+    }
+
+    useEffect(() => {
+        reloadDays().catch(() => {})
+    }, [tripId])
 
     useEffect(()=> {
         const load = async () => {
@@ -119,6 +137,7 @@ export default function TripPlanner() {
                 data-lat="${lat}"
                 data-lon="${lng}"
                 data-address="${data.display_name.replace(/"/g, '')}"
+                data-osmid="${data.osm_type && data.osm_id ? `${data.osm_type}/${data.osm_id}` : ''}"
                 style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px">
                 + Добавить в маршрут
                 </button>
@@ -132,9 +151,10 @@ export default function TripPlanner() {
                     const lat = parseFloat(btn.dataset.lat!)
                     const lon = parseFloat(btn.dataset.lon!)
                     const address = btn.dataset.address!
+                    const osmId = btn.dataset.osmid || null
                     try { const place = await apiFetch<Place>('/places', {
                         method: 'POST',
-                        body: JSON.stringify({name, lat, lon, address})
+                        body: JSON.stringify({name, lat, lon, address, osm_id: osmId})
                     })
                         await apiFetch(`/trips/${tripId}/stops`, {
                         method: 'POST',
@@ -170,12 +190,26 @@ export default function TripPlanner() {
         load()
     }, [tripId])
 
+    // S8 WP-3: активный день — его стопы и депо; без дней — все стопы поездки
+    const activeDay = days.find(d => d.id === expandedDayId) ?? null
+    const routeStops = activeDay ? activeDay.stops : stops
+
     useEffect(() => {
     const map = mapRef.current
-    if (!map || stops.length === 0) return
+    if (!map || (routeStops.length === 0 && !activeDay)) return
     const drawRoute = async () => {
-        // получаем координаты из valhalla
-        const coordinates = await getValhallaRoute(stops)
+        // точки маршрута: [старт дня] + стопы + [финиш дня]
+        const stopPoints = routeStops
+            .filter(s => s.place_lat && s.place_lon)
+            .map(s => ({lat: s.place_lat!, lon: s.place_lon!}))
+        const routePoints = activeDay
+            ? [
+                ...(activeDay.start_location ? [{lat: activeDay.start_location.lat, lon: activeDay.start_location.lon}] : []),
+                ...stopPoints,
+                ...(activeDay.end_location ? [{lat: activeDay.end_location.lat, lon: activeDay.end_location.lon}] : []),
+              ]
+            : stopPoints
+        const coordinates = await getValhallaRouteForPoints(routePoints)
         // ждем карту
         const updateMap = () => {
             markersRef.current.forEach(m => m.remove())
@@ -192,7 +226,7 @@ export default function TripPlanner() {
                 properties: {}
             })
             // добавляем маркер на каждую остановку
-            stops.forEach((stop, index) => {
+            routeStops.forEach((stop, index) => {
                 if(!stop.place_lat || !stop.place_lon) return
                 const el = document.createElement('div')
                 el.style.cssText = `
@@ -223,7 +257,23 @@ export default function TripPlanner() {
                 const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map) 
                 markersRef.current.push(marker)
             })
-            if (trip?.start_lat && trip?.start_lon) {
+            // депо активного дня: 🏁 старт и финиш (S8 WP-3)
+            const depotMarker = (loc: {lat: number, lon: number, name?: string | null}, label: string) => {
+                const el = document.createElement('div')
+                el.style.cssText = `
+                    width: 32px; height: 32px; background: #10b981; border: 2px solid white;
+                    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                    font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                `
+                el.textContent = '🏁'
+                const popup = new maplibregl.Popup({offset: 20}).setHTML(
+                    `<div style="padding: 8px"><strong>${label}</strong><p style="font-size: 12px; color: #6b7280">${loc.name || ''}</p></div>`)
+                const m = new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map)
+                markersRef.current.push(m)
+            }
+            if (activeDay?.start_location) depotMarker(activeDay.start_location, 'Старт дня')
+            if (activeDay?.end_location) depotMarker(activeDay.end_location, 'Финиш дня')
+            if (!activeDay && trip?.start_lat && trip?.start_lon) {
                 const el = document.createElement('div')
                 el.style.cssText = `
                     width: 32px; height: 32px; background: #10b981; border: 2px solid white;
@@ -234,9 +284,11 @@ export default function TripPlanner() {
                 const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>Дом</strong><p style="font-size: 12px; color: #6b7280">${trip.start_address || ''}</p></div>`)
                 new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map)
             }
-            // выравниваем чтобы пользователь видел все точки
-                const lons = stops.filter(s => s.place_lon).map(s => s.place_lon!)
-                const lats = stops.filter(s => s.place_lat).map( s => s.place_lat!)
+            // выравниваем по узлам дня (депо + стопы), чтобы всё было видно
+                const lons = routeStops.filter(s => s.place_lon).map(s => s.place_lon!)
+                const lats = routeStops.filter(s => s.place_lat).map( s => s.place_lat!)
+                if (activeDay?.start_location) { lons.push(activeDay.start_location.lon); lats.push(activeDay.start_location.lat) }
+                if (activeDay?.end_location) { lons.push(activeDay.end_location.lon); lats.push(activeDay.end_location.lat) }
                 
                 if (lons.length > 1) {
                     
@@ -257,7 +309,7 @@ export default function TripPlanner() {
         }
         drawRoute()
 
-    }, [stops, trip])
+    }, [stops, trip, days, expandedDayId])
     
     const handleDragEnd = async (event: DragEndEvent) => {
         const {active, over} = event
@@ -267,17 +319,6 @@ export default function TripPlanner() {
         const newStops = arrayMove (stops, oldIndex, newIndex)
         setStops(newStops)
         await reorderStops(tripId!, newStops.map(s => s.id))
-    }
-    const handleOptimize = async () => {
-        setIsOptimizing(true)
-        try {
-            await optimizeTrip(tripId!)
-            setStops( await getStops(tripId!))
-        } catch {
-            setError('Ошибка оптимизации')
-        } finally {
-            setIsOptimizing(false)
-        }
     }
     const handleTransportChange = async (stopId: string, transport: string) => {
         setStops(prev => prev.map(s => s.id === stopId ? {...s, transport_to_next: transport}: s))
@@ -289,6 +330,8 @@ export default function TripPlanner() {
         setStops(fresh)
         // выбранная остановка могла измениться (например, is_booked)
         setSelectedStop(prev => prev ? fresh.find(s => s.id === prev.id) ?? null : null)
+        // стопы дней тоже могли измениться (S8 WP-3)
+        await reloadDays().catch(() => {})
     }
     const handleDelete = async (stopId: string) => {
         await apiFetch(`/trips/${tripId!}/stops/${stopId}`, {
@@ -307,12 +350,8 @@ export default function TripPlanner() {
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
                     <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 20, color:'#6b7280'}}>&#9881;</button>
                 <h3 style={{margin: '0',fontSize: 16}}>Маршрут </h3>
-                <button onClick={handleOptimize} disabled={isOptimizing} style={{
-                    padding: '6px 12px', background: isOptimizing ? '#9ca3af':'#3b82f6',
-                    color: 'white', border: 'none', borderRadius: 6, cursor: isOptimizing ? 'not-allowed': 'pointer', fontSize: 13
-                }}>
-                    {isOptimizing ? '⏳...' : '✨ Оптимизировать'}
-                </button> 
+                {/* оптимизация теперь по-дневная — кнопка в карточке дня (S8 WP-3) */}
+                <span />
                 </div>
                 </div>
                 {selectedStop ? (
@@ -327,18 +366,51 @@ export default function TripPlanner() {
                     </div>
                 ) : (
                 <>
-                <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>
-                <PlaceSearch tripId={tripId} onPlaceAdded={reloadStops}/>
+                {days.length === 0 && <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>}
+                <PlaceSearch tripId={tripId} dayId={expandedDayId} onPlaceAdded={reloadStops}/>
                 {/*Сприсок остановок скролится  */}
                 <div style={{flex: 1, overflowY: 'auto', padding: 16}}>
                 {error && <p style={{color: 'red', fontSize:13}}>{error}</p>}
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                    <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                        {stops.map((stop, i)=>(
-                            <SortableStop key={stop.id} stop={stop} index={i} isLast={i === stops.length - 1} onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
-                            ))}
-                    </SortableContext>
-                </DndContext>
+                {days.length > 0 ? (
+                    /* S8 WP-3: по-дневная панель — аккордеон дней */
+                    <>
+                        {days.map(day => (
+                            <DayCard
+                                key={day.id}
+                                tripId={tripId}
+                                day={day}
+                                allDays={days}
+                                locations={locations}
+                                expanded={expandedDayId === day.id}
+                                onToggle={() => setExpandedDayId(prev => prev === day.id ? null : day.id)}
+                                onChanged={reloadStops}
+                                onSelectStop={setSelectedStop}
+                            />
+                        ))}
+                        {/* стопы без дня (созданы до мульти-дня) */}
+                        {stops.filter(s => !s.day_id).length > 0 && (
+                            <div style={{marginTop: 8}}>
+                                <div style={{fontSize: 12, color: '#9ca3af', marginBottom: 4}}>Без дня:</div>
+                                {stops.filter(s => !s.day_id).map((stop, i) => (
+                                    <SortableStop key={stop.id} stop={stop} index={i} isLast onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                    <p style={{fontSize: 12, color: '#9ca3af'}}>
+                        Задай даты поездки в настройках ⚙ — появятся дни с оптимизацией по каждому дню
+                    </p>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                        <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                            {stops.map((stop, i)=>(
+                                <SortableStop key={stop.id} stop={stop} index={i} isLast={i === stops.length - 1} onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
+                                ))}
+                        </SortableContext>
+                    </DndContext>
+                    </>
+                )}
                 </div>
                 </>
                 )}

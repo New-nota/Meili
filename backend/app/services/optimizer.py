@@ -86,27 +86,48 @@ def parse_time_windows(stops: list, trip, has_depot: bool) -> List[tuple]:
 
 
 
-def solve_tsp(matrix: List[List[int]], time_windows: List[tuple] = None) -> List[int]:
-    n = len(matrix)
-    manager = pywrapcp.RoutingIndexManager(n, 1, 0)
-    routing = pywrapcp.RoutingModel(manager)
+class OutOfCoverageError(Exception):
+    """Точки дня вне зоны покрытия тайлов Valhalla (S8 WP-3)."""
 
-    def distance_callback(from_index, to_index):
+
+def solve_tsp_path(
+    matrix: List[List[int]],
+    time_windows: List[tuple] | None = None,
+    service_times: List[int] | None = None,
+) -> List[int] | None:
+    """Путь с двумя разными депо: узел 0 — старт, узел n-1 — финиш (S8 WP-3).
+
+    Возвращает порядок ВСЕХ узлов (включая крайние) или None, если решения нет.
+    service_times[i] — время пребывания в узле i (сек), учитывается в
+    временном измерении при выходе из узла.
+    """
+    n = len(matrix)
+    manager = pywrapcp.RoutingIndexManager(n, 1, [0], [n - 1])
+    routing = pywrapcp.RoutingModel(manager)
+    service = service_times or [0] * n
+
+    def transit_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
-        return matrix[from_node][to_node]
+        return matrix[from_node][to_node] + service[from_node]
 
-    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+    transit_callback_index = routing.RegisterTransitCallback(transit_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
     if time_windows:
         routing.AddDimension(
             transit_callback_index, MAX_SLACK_SECONDS, TIME_HORIZON_SECONDS, False, "Time"
         )
         time_dimension = routing.GetDimensionOrDie("Time")
+        # старт дня фиксирован: время 0 = day.start_time
+        time_dimension.CumulVar(routing.Start(0)).SetRange(0, 0)
         for i, (open_sec, close_sec) in enumerate(time_windows):
+            if i == 0 or i == n - 1:
+                continue  # депо-узлы: старт зафиксирован выше, финиш — горизонтом
             index = manager.NodeToIndex(i)
             time_dimension.CumulVar(index).SetMin(open_sec)
             time_dimension.SetCumulVarSoftUpperBound(index, close_sec, LATE_ARRIVAL_PENALTY)
+
     search_params = pywrapcp.DefaultRoutingSearchParameters()
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -114,44 +135,55 @@ def solve_tsp(matrix: List[List[int]], time_windows: List[tuple] = None) -> List
 
     solution = routing.SolveWithParameters(search_params)
     if solution is None:
-        return list(range(n))
-    
+        return None
+
     order = []
     index = routing.Start(0)
     while not routing.IsEnd(index):
         order.append(manager.IndexToNode(index))
         index = solution.Value(routing.NextVar(index))
-    
+    order.append(manager.IndexToNode(index))  # финишное депо
     return order
 
-async def optimize_trip_stops(stops: list, trip) -> List[str]:
-    if len(stops) <= 2:
-        return [str(stop.id) for stop in stops]
-    has_depot = trip.start_lat is not None and trip.start_lon is not None
-    locations = []
-    if has_depot:
-        locations.append({"lat": trip.start_lat, "lon": trip.start_lon})
-    for stop in stops:
-        if stop.place.location is None:
-            raise ValueError(f"Place {stop.place.id} has no coordinates")
-        point = wkb.loads(bytes(stop.place.location.data))
-        locations.append({"lat": point.y, "lon": point.x})
-    time_windows = None
-    if trip.start_time is not None:
-        time_windows = parse_time_windows(stops, trip, has_depot)
 
-    costing = COSTING_MAP.get(trip.transport_default or "walking",  "pedestrian")
-    matrix = await get_time_matrix(locations, costing=costing)
-    if has_depot:
-        depot_distances = [matrix[0][j] for j in range (1, len(matrix))]
-        if all(d >= UNREACHABLE_TIME for d in depot_distances):
-            has_depot = False
-            locations = locations[1:]
-            matrix = [row[1:] for row in matrix[1:]]
-            time_windows = time_windows[1:] if time_windows else None
-            
-    optimal_order = solve_tsp(matrix, time_windows)
-    if has_depot:
-        return [str(stops[i-1].id) for i in optimal_order if i != 0]
-    else:
-        return [str(stops[i].id) for i in optimal_order ]
+def _stop_coords(stop) -> Dict[str, float]:
+    if stop.place.location is None:
+        raise ValueError(f"Place {stop.place.id} has no coordinates")
+    point = wkb.loads(bytes(stop.place.location.data))
+    return {"lat": point.y, "lon": point.x}
+
+
+async def optimize_day_stops(day, stops: list, transport: str | None) -> List[str]:
+    """Оптимальный порядок стопов дня: старт дня → ... → финиш дня (S8 WP-3).
+
+    day.start_location / day.end_location должны быть заданы (проверяет API).
+    Возвращает id стопов в оптимальном порядке.
+    """
+    locations = [{"lat": day.start_location.lat, "lon": day.start_location.lon}]
+    locations += [_stop_coords(s) for s in stops]
+    locations.append({"lat": day.end_location.lat, "lon": day.end_location.lon})
+
+    costing = COSTING_MAP.get(transport or "walking", "pedestrian")
+    try:
+        matrix = await get_time_matrix(locations, costing=costing)
+    except httpx.HTTPStatusError as e:
+        # Valhalla отвечает 4xx, когда точки вне зоны тайлов
+        raise OutOfCoverageError(str(e))
+
+    n = len(matrix)
+    # старт не достигает ни одного узла — день вне покрытия
+    if all(matrix[0][j] >= UNREACHABLE_TIME for j in range(1, n)):
+        raise OutOfCoverageError("start location cannot reach any node")
+
+    # окна: [старт] + окна стопов (от start_time дня) + [финиш]
+    stop_windows = parse_time_windows(stops, day, has_depot=False)
+    time_windows = [(0, 0)] + stop_windows + [(0, TIME_HORIZON_SECONDS)]
+    service_times = [0] + [(s.duration_minutes or 0) * 60 for s in stops] + [0]
+
+    order = solve_tsp_path(matrix, time_windows, service_times)
+    if order is None:
+        # при мягких окнах решение есть почти всегда; фолбэк — исходный порядок
+        return [str(s.id) for s in stops]
+
+    inner = [i for i in order if 0 < i < n - 1]
+    return [str(stops[i - 1].id) for i in inner]

@@ -52,10 +52,20 @@ test('создание поездки открывает планировщик'
   await page.getByPlaceholder('Город (Опционально)').fill('Калининград')
   await page.getByRole('button', { name: 'Создать' }).click()
 
-  // планировщик открылся: заголовок панели и кнопка оптимизации на месте
+  // планировщик открылся; без дат — плоский режим с подсказкой (S8 WP-3)
   await expect(page).toHaveURL(/\/trips\/[0-9a-f-]+/)
   await expect(page.getByRole('heading', { name: 'Маршрут' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Оптимизировать/ })).toBeVisible()
+  await expect(page.getByText('Задай даты поездки')).toBeVisible()
+
+  // задаём даты в настройках -> появляются дни с per-day оптимизацией
+  const tripUrl = page.url()
+  await page.goto(tripUrl + '/settings')
+  await page.locator('input[type="date"]').first().fill('2026-08-01')
+  await page.locator('input[type="date"]').nth(1).fill('2026-08-02')
+  await page.getByRole('button', { name: /Сохранить/ }).click()
+  await expect(page).toHaveURL(/\/trips\/[0-9a-f-]+$/)
+  await expect(page.getByText(/День 1/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Оптимизировать день/ })).toBeVisible()
 })
 
 test('кнопка Google присутствует на странице логина', async ({ page }) => {

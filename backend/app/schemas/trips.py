@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, time
+from datetime import datetime, date, time
 
 class TripCreate(BaseModel):
     title: str
@@ -15,7 +15,10 @@ class TripCreate(BaseModel):
     start_address: Optional[str] = None
     start_lat: Optional[float] = None
     start_lon: Optional[float] = None
-    start_time: Optional[time] = None 
+    start_time: Optional[time] = None
+    # S8 WP-3: диапазон дат -> автогенерация trip_days
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 class TripUpdate(BaseModel):
     title: Optional[str] = None
@@ -29,7 +32,9 @@ class TripUpdate(BaseModel):
     start_address: Optional[str] = None
     start_lat: Optional[float] = None
     start_lon: Optional[float] = None
-    start_time: Optional[time] = None 
+    start_time: Optional[time] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 class TripResponse(BaseModel):
     id: UUID
@@ -46,7 +51,9 @@ class TripResponse(BaseModel):
     start_address: Optional[str] = None
     start_lat: Optional[float] = None
     start_lon: Optional[float] = None
-    start_time: Optional[time] = None 
+    start_time: Optional[time] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
     class Config:
         from_attributes = True

@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.trip import Trip, TripStop
+from app.models.trip import Trip, TripStop, TripDay
 from app.models.place import Place
 from app.models.user import User
 from app.schemas.stops import StopCreate, StopResponse, StopReorder, StopUpdate
@@ -18,6 +18,7 @@ def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
         "id": stop.id,
         "trip_id": stop.trip_id,
         "place_id": stop.place_id,
+        "day_id": stop.day_id,
         "position": stop.position,
         "visit_date": stop.visit_date,
         "visit_time": stop.visit_time,
@@ -76,16 +77,35 @@ async def add_stop(
     place = place_result.scalar_one_or_none()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
+
+    # S8 WP-3: привязка к дню — visit_date зеркалит дату дня,
+    # позиция считается в хвост этого дня
+    visit_date = data.visit_date
+    if data.day_id is not None:
+        day_result = await db.execute(
+            select(TripDay).where(TripDay.id == data.day_id, TripDay.trip_id == trip_id)
+        )
+        day = day_result.scalar_one_or_none()
+        if day is None:
+            raise HTTPException(status_code=404, detail="Day not found")
+        visit_date = day.date
+
+    position_scope = (
+        TripStop.day_id == data.day_id
+        if data.day_id is not None
+        else TripStop.trip_id == trip_id
+    )
     max_result = await db.execute(
-        select(func.max(TripStop.position)).where(TripStop.trip_id == trip_id)
+        select(func.max(TripStop.position)).where(position_scope)
     )
     max_position = max_result.scalar() or 0 # в случае если в поездку еще ничего не добавили
     next_position = max_position + 1
     stop = TripStop(
         trip_id=trip_id,
         place_id=data.place_id,
+        day_id=data.day_id,
         position=next_position,
-        visit_date=data.visit_date,
+        visit_date=visit_date,
         visit_time=data.visit_time,
         duration_minutes=data.duration_minutes,
         transport_to_next=data.transport_to_next,
@@ -97,6 +117,7 @@ async def add_stop(
     return stop_to_dict(stop, place)
 
 @router.put("/{trip_id}/stops/{stop_id}", response_model=StopResponse)
+@router.patch("/{trip_id}/stops/{stop_id}", response_model=StopResponse)
 async def update_stop(
     trip_id: UUID,
     stop_id: UUID,
@@ -104,7 +125,8 @@ async def update_stop(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # частичное обновление: дата/время визита, транспорт, заметки
+    # частичное обновление: дата/время визита, транспорт, заметки,
+    # перенос между днями (S8 WP-3)
     await get_trip_or_404(trip_id, current_user.id, db)
     result = await db.execute(
         select(TripStop).where(TripStop.id == stop_id, TripStop.trip_id == trip_id)
@@ -112,7 +134,38 @@ async def update_stop(
     stop = result.scalar_one_or_none()
     if not stop:
         raise HTTPException(status_code=404, detail="Stop not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
+
+    updates = data.model_dump(exclude_unset=True)
+
+    # перенос стопа в другой день: позиция в хвост целевого дня,
+    # исходный день смыкается, visit_date = дата нового дня
+    new_day_id = updates.pop("day_id", None)
+    if new_day_id is not None and new_day_id != stop.day_id:
+        day_result = await db.execute(
+            select(TripDay).where(TripDay.id == new_day_id, TripDay.trip_id == trip_id)
+        )
+        day = day_result.scalar_one_or_none()
+        if day is None:
+            raise HTTPException(status_code=404, detail="Day not found")
+
+        old_day_id, old_position = stop.day_id, stop.position
+        max_result = await db.execute(
+            select(func.max(TripStop.position)).where(TripStop.day_id == new_day_id)
+        )
+        stop.day_id = new_day_id
+        stop.position = (max_result.scalar() or 0) + 1
+        stop.visit_date = day.date
+
+        if old_day_id is not None:
+            remaining = await db.execute(
+                select(TripStop).where(
+                    TripStop.day_id == old_day_id, TripStop.position > old_position
+                )
+            )
+            for s in remaining.scalars().all():
+                s.position -= 1
+
+    for field, value in updates.items():
         setattr(stop, field, value)
     await db.commit()
     await db.refresh(stop)

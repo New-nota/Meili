@@ -15,6 +15,10 @@ export default function TripSettings() {
     const [childrenCount, setChildrenCount] = useState(0)
     const [childrenAges, setChildrenAges] = useState<number[]>([])
     const [isPublic, setIsPublic] = useState(false)
+    // S8 WP-3: диапазон дат -> дни поездки
+    const [startDate, setStartDate] = useState('')
+    const [endDate, setEndDate] = useState('')
+    const [datesError, setDatesError] = useState<string | null>(null)
     const [isSaving, setIsSaving] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -29,6 +33,8 @@ export default function TripSettings() {
             setChildrenCount(trip.children_count || 0)
             setChildrenAges(trip.children_ages || [])
             setIsPublic(trip.is_public || false)
+            setStartDate(trip.start_date || '')
+            setEndDate(trip.end_date || '')
             setIsLoading(false)
         }
         load()
@@ -45,9 +51,20 @@ export default function TripSettings() {
     const save = async () => {
         if(!tripId) return
         setIsSaving(true)
+        setDatesError(null)
         try {
-            await updateTrip(tripId, {title, city, country, adults_count: adultsCount, children_count: childrenCount, children_ages: childrenAges, is_public: isPublic})
+            await updateTrip(tripId, {
+                title, city, country, adults_count: adultsCount,
+                children_count: childrenCount, children_ages: childrenAges,
+                is_public: isPublic,
+                start_date: startDate || null,
+                end_date: endDate || null,
+            })
             navigate(`/trips/${tripId}`)
+        } catch (e: unknown) {
+            // 409: в удаляемом дне остались стопы
+            const detail = (e as {body?: {detail?: string}})?.body?.detail
+            setDatesError(detail ?? 'Не удалось сохранить')
         } finally {
             setIsSaving(false)
         }
@@ -88,6 +105,20 @@ export default function TripSettings() {
                         style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
                 </div>
+                {/* Даты поездки (S8 WP-3): диапазон генерирует дни */}
+                <div style={{display: 'flex', gap:12}}>
+                    <div style={{flex: 1}}>
+                        <label style={{fontSize: 13, color: '#6b7280'}}>Начало поездки</label>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                    </div>
+                    <div style={{flex: 1}}>
+                        <label style={{fontSize: 13, color: '#6b7280'}}>Конец поездки</label>
+                        <input type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)}
+                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                    </div>
+                </div>
+                {datesError && <p style={{color: 'red', fontSize: 13, margin: 0}}>{datesError}</p>}
                 {/*Группа */}
                 <div style={{padding: 16, border: '1px solid #e5e7eb', borderRadius: 8}}>
                     <div style={{fontSize: 14, fontWeight: 500, marginBottom: 12}}>&#128101; Группа 

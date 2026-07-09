@@ -11,10 +11,11 @@ export const getStops = async (tripId: string): Promise<Stop[]> =>
 
 type ValhallaRouteResponse = {trip: {legs: { shape: string}[]}}
 
-export const getValhallaRoute = async (stops: Stop[], costing: string = 'pedestrian'): Promise<number[][]> => {
-    const locations = stops
-        .filter(s => s.place_lat && s.place_lon)
-        .map(s => ({lat: s.place_lat!, lon: s.place_lon!}))
+// маршрут по произвольным точкам (S8 WP-3: старт дня + стопы + финиш дня)
+export const getValhallaRouteForPoints = async (
+    locations: {lat: number, lon: number}[],
+    costing: string = 'pedestrian',
+): Promise<number[][]> => {
     if (locations.length < 2) return []
     let data: ValhallaRouteResponse
     try {
@@ -31,6 +32,13 @@ export const getValhallaRoute = async (stops: Stop[], costing: string = 'pedestr
     }
     return allCoords
 }
+
+export const getValhallaRoute = (stops: Stop[], costing: string = 'pedestrian') =>
+    getValhallaRouteForPoints(
+        stops.filter(s => s.place_lat && s.place_lon)
+            .map(s => ({lat: s.place_lat!, lon: s.place_lon!})),
+        costing,
+    )
 
 function decodePolyline(encoded: string, precision = 6): number[][] {
     const factor = Math.pow(10, precision)
@@ -59,12 +67,6 @@ function decodePolyline(encoded: string, precision = 6): number[][] {
         coords.push([lng / factor, lat / factor])
     }
     return coords
-}
-
-export async function optimizeTrip(tripId: string): Promise<string[]> {
-    const data = await apiFetch<{optimized_order: string[]}>(`/trips/${tripId}/optimize`, {
-        method: 'POST',})
-        return data.optimized_order
 }
 
 export async function reorderStops(tripId: string, stopIds: string[]): Promise<void> {
