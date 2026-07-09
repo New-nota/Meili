@@ -7,6 +7,14 @@ from app.models.place import Place
 from app.schemas.places import PlaceCreate
 
 async def create_place(data: PlaceCreate, db: AsyncSession, user_id=None) -> dict:
+    """Get-or-create (S8 WP-2): если osm_id задан и место уже есть —
+    возвращаем существующее, дубль не создаётся."""
+    if data.osm_id:
+        result = await db.execute(select(Place).where(Place.osm_id == data.osm_id))
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            return place_to_dict(existing)
+
     place_data = data.model_dump(exclude={"lat","lon"})
     if data.lat is not None and data.lon is not None:
         place_data["location"] = ST_SetSRID(ST_MakePoint(data.lon, data.lat), 4326)

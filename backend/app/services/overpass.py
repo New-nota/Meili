@@ -47,7 +47,8 @@ def parse_overpass_response(data:dict) -> list[dict]:
         if not name or not lat or not lon:
             continue
         places.append({
-            "osm_id": str(element["id"]),
+            # формат type/id ("node/123"): id уникален только внутри типа OSM
+            "osm_id": f"{element['type']}/{element['id']}",
             "name": name,
             "lat": lat,
             "lon": lon,
@@ -56,6 +57,34 @@ def parse_overpass_response(data:dict) -> list[dict]:
             "website": tags.get("website"),
         })
     return places
+
+
+def build_bbox_query(key: str, value: str | None, bbox: tuple[float, float, float, float]) -> str:
+    """Запрос по прямоугольнику (для сида, S8 WP-2). value=None -> любой тег key."""
+    south, west, north, east = bbox
+    selector = f'["{key}"="{value}"]' if value else f'["{key}"]'
+    return f"""
+    [out:json][timeout:60];
+    (
+    node{selector}({south},{west},{north},{east});
+    way{selector}({south},{west},{north},{east});
+    );
+    out center tags;
+"""
+
+
+async def fetch_places_bbox(
+    key: str, value: str | None, bbox: tuple[float, float, float, float]
+) -> list[dict]:
+    """POI по bbox без кэша — используется сид-скриптом (S8 WP-2)."""
+    query = build_bbox_query(key, value, bbox)
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        response = await client.get(
+            OVERPASS_URL, params={"data": query},
+            headers={"Accept": "*/*", "User-Agent": "WanderOwn/1.0"})
+        response.raise_for_status()
+        data = response.json()
+    return parse_overpass_response(data)
 
 
 async def search_places_overpass(

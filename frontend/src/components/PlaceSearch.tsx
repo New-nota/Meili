@@ -7,14 +7,17 @@ interface NominatimResult {
     display_name: string
     lat: string
     lon: string
+    osm_type?: string
+    osm_id?: number
 }
 
 interface Props {
     tripId: string
+    dayId?: string | null   // S8 WP-3: новый стоп попадает в этот день
     onPlaceAdded: () => void
 }
 
-export default function PlaceSearch({tripId, onPlaceAdded}: Props) {
+export default function PlaceSearch({tripId, dayId, onPlaceAdded}: Props) {
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<NominatimResult[]>([])
     const [isSearching, setIsSearching] = useState(false)
@@ -47,13 +50,16 @@ export default function PlaceSearch({tripId, onPlaceAdded}: Props) {
                         name: result.display_name.split(',')[0],
                         lat: parseFloat(result.lat),
                         lon: parseFloat(result.lon),
-                        address: result.display_name
+                        address: result.display_name,
+                        // osm_id -> get-or-create на бэке, дублей не будет (S8 WP-2)
+                        osm_id: result.osm_type && result.osm_id
+                            ? `${result.osm_type}/${result.osm_id}` : null,
                     })
                 })
                 
             await apiFetch(`/trips/${tripId}/stops`, {
                     method: 'POST',
-                    body: JSON.stringify({place_id: place.id})
+                    body: JSON.stringify({place_id: place.id, day_id: dayId ?? null})
                 })
                 
                 setQuery('')
