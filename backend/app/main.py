@@ -1,8 +1,24 @@
-from fastapi import FastAPI
+import time
+from uuid import uuid4
+
+import structlog
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import JSONResponse
 from app.core.config import settings
+from app.core.logging import configure_logging, get_logger
+
+# логи настраиваются до создания приложения (WP-0)
+configure_logging()
+logger = get_logger("wanderown.api")
+
+# --- Sentry: включить на деплое (WP-0) ---
+# if settings.SENTRY_DSN:
+#     import sentry_sdk
+#     sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.1)
+
 from app.api.auth import router as auth_router
 from app.api.trips import router as trip_router
 from app.api.places import router as places_router
@@ -16,6 +32,46 @@ app = FastAPI(
     title="WanderOwn API",
     version="0.1.0"
 )
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """Сквозной request-id + одна структурная строка лога на запрос."""
+    request_id = uuid4().hex
+    # дубль в request.state: обработчик исключений живёт снаружи этого
+    # middleware и срабатывает уже после clear_contextvars()
+    request.state.request_id = request_id
+    structlog.contextvars.bind_contextvars(
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+    )
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start) * 1000, 1)
+        logger.info("request", status=response.status_code, duration_ms=duration_ms)
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        structlog.contextvars.clear_contextvars()
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Необработанное исключение: лог с traceback, клиенту — 500 c request_id."""
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.exception(
+        "unhandled",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "internal error", "request_id": request_id},
+        headers={"X-Request-ID": request_id},
+    )
 
 # сессии нужны authlib для хранения OAuth state (CSRF-защита флоу)
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)

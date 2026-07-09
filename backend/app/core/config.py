@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     DB_ECHO: bool = False
+
+    # Наблюдаемость (S8 WP-0)
+    LOG_LEVEL: str = "INFO"
+    SENTRY_DSN: str | None = None  # включить на деплое
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
