@@ -229,9 +229,10 @@ async def test_day_optimize_returns_all_stop_ids(monkeypatch):
         _fake_stop("b", 20.55, 54.72),
         _fake_stop("c", 20.60, 54.74),
     ]
-    result = await optimize_day_stops(_fake_day(), stops, "walking")
+    ordered, dropped = await optimize_day_stops(_fake_day(), stops, "walking")
     # депо (старт/финиш дня) в результат не входят, все стопы — да
-    assert sorted(result) == ["a", "b", "c"]
+    assert sorted(ordered) == ["a", "b", "c"]
+    assert dropped == []  # full-режим никого не выбрасывает
 
 
 async def test_day_optimize_single_stop(monkeypatch):
@@ -240,8 +241,11 @@ async def test_day_optimize_single_stop(monkeypatch):
         return [[0 if i == j else 10 for j in range(n)] for i in range(n)]
 
     monkeypatch.setattr(optimizer, "get_time_matrix", fake_matrix)
-    result = await optimize_day_stops(_fake_day(), [_fake_stop("a", 20.5, 54.7)], None)
-    assert result == ["a"]
+    ordered, dropped = await optimize_day_stops(
+        _fake_day(), [_fake_stop("a", 20.5, 54.7)], None
+    )
+    assert ordered == ["a"]
+    assert dropped == []
 
 
 async def test_day_optimize_out_of_coverage(monkeypatch):
@@ -266,6 +270,80 @@ async def test_day_optimize_raises_on_place_without_coords(monkeypatch):
     bad.place.location = None
     with pytest.raises(ValueError):
         await optimize_day_stops(_fake_day(), [bad], None)
+
+
+# ---------- solve_selective_path (S8 WP-4) ------------------------------------
+def test_selective_drops_stops_over_budget():
+    from app.services.optimizer import solve_selective_path
+
+    # старт(0) -> 3 стопа по 1800с сервиса -> финиш(4); дорога 600с между всеми;
+    # бюджет 3600с вмещает только один стоп (600+1800+600=3000, два — уже 5400)
+    n = 5
+    matrix = [[0 if i == j else 600 for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 43200)] * 3 + [(0, 43200)]
+    service = [0, 1800, 1800, 1800, 0]
+    order, dropped = solve_selective_path(matrix, windows, service, [0] * n, 3600)
+    assert order[0] == 0 and order[-1] == 4
+    kept = [i for i in order if 0 < i < n - 1]
+    assert len(kept) == 1          # влез ровно один стоп
+    assert len(dropped) == 2       # два помечены «не влезло»
+    assert set(kept) | set(dropped) == {1, 2, 3}
+
+
+def test_selective_keeps_all_when_budget_fits():
+    from app.services.optimizer import solve_selective_path
+
+    n = 4
+    matrix = [[0 if i == j else 60 for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 43200)] * 2 + [(0, 43200)]
+    order, dropped = solve_selective_path(matrix, windows, [0] * n, [0] * n, 43200)
+    assert dropped == []
+    assert sorted(order) == [0, 1, 2, 3]
+
+
+def test_selective_must_visit_always_included():
+    from app.services.optimizer import solve_selective_path
+
+    # бюджет вмещает один стоп; must-visit (priority=2) — узел 2
+    n = 5
+    matrix = [[0 if i == j else 600 for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 43200)] * 3 + [(0, 43200)]
+    service = [0, 1800, 1800, 1800, 0]
+    priorities = [0, 0, 2, 0, 0]
+    order, dropped = solve_selective_path(matrix, windows, service, priorities, 3600)
+    assert 2 in order              # обязательный в маршруте
+    assert 2 not in dropped
+
+
+def test_selective_must_visit_over_budget_raises():
+    from app.services.optimizer import (
+        MustVisitOverBudgetError,
+        solve_selective_path,
+    )
+
+    # два обязательных стопа по 1800с не влезают в бюджет 3600с (дорога 600с)
+    n = 4
+    matrix = [[0 if i == j else 600 for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 43200)] * 2 + [(0, 43200)]
+    service = [0, 1800, 1800, 0]
+    with pytest.raises(MustVisitOverBudgetError):
+        solve_selective_path(matrix, windows, service, [0, 2, 2, 0], 3600)
+
+
+def test_selective_priority_orders_which_dropped():
+    from app.services.optimizer import solve_selective_path
+
+    # влезает один; узел 2 с priority=1 (штраф 3P) должен остаться,
+    # обычные — вылететь
+    n = 5
+    matrix = [[0 if i == j else 600 for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 43200)] * 3 + [(0, 43200)]
+    service = [0, 1800, 1800, 1800, 0]
+    order, dropped = solve_selective_path(
+        matrix, windows, service, [0, 0, 1, 0, 0], 3600
+    )
+    assert 2 in order
+    assert sorted(dropped) == [1, 3]
 
 
 # ---------- COSTING_MAP ------------------------------------------------------

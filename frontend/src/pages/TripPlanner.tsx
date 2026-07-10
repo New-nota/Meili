@@ -198,8 +198,10 @@ export default function TripPlanner() {
     const map = mapRef.current
     if (!map || (routeStops.length === 0 && !activeDay)) return
     const drawRoute = async () => {
-        // точки маршрута: [старт дня] + стопы + [финиш дня]
-        const stopPoints = routeStops
+        // точки маршрута: [старт дня] + стопы + [финиш дня];
+        // исключённые селективным прогоном (S8 WP-4) в линию не входят
+        const includedStops = routeStops.filter(s => s.included_in_route !== false)
+        const stopPoints = includedStops
             .filter(s => s.place_lat && s.place_lon)
             .map(s => ({lat: s.place_lat!, lon: s.place_lon!}))
         const routePoints = activeDay
@@ -225,8 +227,10 @@ export default function TripPlanner() {
                 },
                 properties: {}
             })
-            // добавляем маркер на каждую остановку
-            routeStops.forEach((stop, index) => {
+            // маркеры: включённые — синие с номером; «не влезло» (S8 WP-4) —
+            // приглушённые серые, вне линии маршрута
+            const droppedStops = routeStops.filter(s => s.included_in_route === false)
+            includedStops.forEach((stop, index) => {
                 if(!stop.place_lat || !stop.place_lon) return
                 const el = document.createElement('div')
                 el.style.cssText = `
@@ -254,7 +258,27 @@ export default function TripPlanner() {
                     </div>
                     `)
                 
-                const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map) 
+                const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
+                markersRef.current.push(marker)
+            })
+            // приглушённые маркеры исключённых стопов (S8 WP-4)
+            droppedStops.forEach(stop => {
+                if(!stop.place_lat || !stop.place_lon) return
+                const el = document.createElement('div')
+                el.style.cssText = `
+                    width: 26px; height: 26px; background: #d1d5db;
+                    border: 2px solid white; border-radius: 50%;
+                    display: flex; align-items: center; justify-content: center;
+                    color: #6b7280; font-size: 12px; cursor: pointer;
+                    opacity: 0.65; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                `
+                el.textContent = '✕'
+                const popup = new maplibregl.Popup({offset: 20}).setHTML(`
+                    <div style="padding: 8px">
+                    <strong>${stop.place_name || 'Без названия'}</strong>
+                    <p style="margin: 4px 0 0; font-size: 12px; color: #6b7280">Не влезло в день</p>
+                    </div>`)
+                const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(marker)
             })
             // депо активного дня: 🏁 старт и финиш (S8 WP-3)

@@ -90,6 +90,10 @@ class OutOfCoverageError(Exception):
     """Точки дня вне зоны покрытия тайлов Valhalla (S8 WP-3)."""
 
 
+class MustVisitOverBudgetError(Exception):
+    """Обязательные стопы не помещаются в бюджет дня (S8 WP-4)."""
+
+
 def solve_tsp_path(
     matrix: List[List[int]],
     time_windows: List[tuple] | None = None,
@@ -146,6 +150,82 @@ def solve_tsp_path(
     return order
 
 
+def solve_selective_path(
+    matrix: List[List[int]],
+    time_windows: List[tuple],
+    service_times: List[int],
+    priorities: List[int],
+    budget_seconds: int,
+) -> tuple[List[int], List[int]]:
+    """Prize-collecting путь (S8 WP-4): максимум мест в бюджет времени дня.
+
+    Промежуточные узлы опциональны (AddDisjunction со штрафом по приоритету),
+    priority=2 (must-visit) — обязательны. Возвращает (порядок узлов маршрута,
+    выброшенные узлы). Если must-visit не влезают — MustVisitOverBudgetError.
+    """
+    n = len(matrix)
+    manager = pywrapcp.RoutingIndexManager(n, 1, [0], [n - 1])
+    routing = pywrapcp.RoutingModel(manager)
+    service = service_times or [0] * n
+
+    def transit_callback(from_index, to_index):
+        from_node = manager.IndexToNode(from_index)
+        to_node = manager.IndexToNode(to_index)
+        return matrix[from_node][to_node] + service[from_node]
+
+    transit_callback_index = routing.RegisterTransitCallback(transit_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+    horizon = max(TIME_HORIZON_SECONDS, budget_seconds)
+    routing.AddDimension(
+        transit_callback_index, MAX_SLACK_SECONDS, horizon, False, "Time"
+    )
+    time_dimension = routing.GetDimensionOrDie("Time")
+    time_dimension.CumulVar(routing.Start(0)).SetRange(0, 0)
+    for i, (open_sec, close_sec) in enumerate(time_windows):
+        if i == 0 or i == n - 1:
+            continue
+        index = manager.NodeToIndex(i)
+        time_dimension.CumulVar(index).SetMin(min(open_sec, horizon))
+        time_dimension.SetCumulVarSoftUpperBound(index, min(close_sec, horizon), LATE_ARRIVAL_PENALTY)
+    # верхняя граница бюджета: маршрут должен закончиться вовремя
+    time_dimension.CumulVar(routing.End(0)).SetMax(budget_seconds)
+
+    # P заведомо больше любой возможной экономии: сумма всей матрицы +
+    # сервис-таймы + все возможные штрафы за опоздания
+    base_penalty = (
+        sum(sum(row) for row in matrix)
+        + sum(service)
+        + n * LATE_ARRIVAL_PENALTY
+        + 1
+    )
+    for i in range(1, n - 1):
+        if priorities[i] == 2:
+            continue  # must-visit: дизъюнкцию не добавляем — узел обязателен
+        penalty = base_penalty if priorities[i] == 0 else 3 * base_penalty
+        routing.AddDisjunction([manager.NodeToIndex(i)], penalty)
+
+    search_params = pywrapcp.DefaultRoutingSearchParameters()
+    search_params.first_solution_strategy = (
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    )
+
+    solution = routing.SolveWithParameters(search_params)
+    if solution is None:
+        raise MustVisitOverBudgetError()
+
+    order = []
+    index = routing.Start(0)
+    while not routing.IsEnd(index):
+        order.append(manager.IndexToNode(index))
+        index = solution.Value(routing.NextVar(index))
+    order.append(manager.IndexToNode(index))
+
+    visited = set(order)
+    dropped = [i for i in range(1, n - 1) if i not in visited]
+    return order, dropped
+
+
 def _stop_coords(stop) -> Dict[str, float]:
     if stop.place.location is None:
         raise ValueError(f"Place {stop.place.id} has no coordinates")
@@ -153,11 +233,18 @@ def _stop_coords(stop) -> Dict[str, float]:
     return {"lat": point.y, "lon": point.x}
 
 
-async def optimize_day_stops(day, stops: list, transport: str | None) -> List[str]:
-    """Оптимальный порядок стопов дня: старт дня → ... → финиш дня (S8 WP-3).
+async def optimize_day_stops(
+    day,
+    stops: list,
+    transport: str | None,
+    mode: str = "full",
+    time_budget_minutes: int | None = None,
+) -> tuple[List[str], List[str]]:
+    """Порядок стопов дня: старт дня → ... → финиш дня (S8 WP-3/WP-4).
 
-    day.start_location / day.end_location должны быть заданы (проверяет API).
-    Возвращает id стопов в оптимальном порядке.
+    mode="full" — посетить все стопы; mode="selective" — максимум стопов
+    в бюджет времени (не влезшие возвращаются во втором списке).
+    Возвращает (ordered_stop_ids, dropped_stop_ids).
     """
     locations = [{"lat": day.start_location.lat, "lon": day.start_location.lon}]
     locations += [_stop_coords(s) for s in stops]
@@ -180,10 +267,28 @@ async def optimize_day_stops(day, stops: list, transport: str | None) -> List[st
     time_windows = [(0, 0)] + stop_windows + [(0, TIME_HORIZON_SECONDS)]
     service_times = [0] + [(s.duration_minutes or 0) * 60 for s in stops] + [0]
 
+    if mode == "selective":
+        # бюджет: из запроса или вся длина дня (end_time - start_time)
+        if time_budget_minutes is not None:
+            budget_seconds = time_budget_minutes * 60
+        else:
+            day_len = (
+                day.end_time.hour * 3600 + day.end_time.minute * 60
+                - day.start_time.hour * 3600 - day.start_time.minute * 60
+            )
+            budget_seconds = max(day_len, 0)
+        priorities = [0] + [getattr(s, "priority", 0) for s in stops] + [0]
+        order, dropped = solve_selective_path(
+            matrix, time_windows, service_times, priorities, budget_seconds
+        )
+        ordered_ids = [str(stops[i - 1].id) for i in order if 0 < i < n - 1]
+        dropped_ids = [str(stops[i - 1].id) for i in dropped]
+        return ordered_ids, dropped_ids
+
     order = solve_tsp_path(matrix, time_windows, service_times)
     if order is None:
         # при мягких окнах решение есть почти всегда; фолбэк — исходный порядок
-        return [str(s.id) for s in stops]
+        return [str(s.id) for s in stops], []
 
     inner = [i for i in order if 0 < i < n - 1]
-    return [str(stops[i - 1].id) for i in inner]
+    return [str(stops[i - 1].id) for i in inner], []

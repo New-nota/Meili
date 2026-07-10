@@ -83,6 +83,10 @@ class TripStop(Base):
     booking_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     # S8 WP-3: принадлежность дню — источник истины (visit_date — зеркало)
     day_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trip_days.id", ondelete="CASCADE"), nullable=True)
+    # S8 WP-4: selective TSP — 0 обычный, 1 высокий, 2 обязательный (must-visit)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # false = стоп исключён селективным прогоном («не влезло в день»)
+    included_in_route: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     trip: Mapped["Trip"] = relationship("Trip", back_populates="stops")
     place: Mapped["Place"] = relationship("Place")

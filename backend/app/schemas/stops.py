@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import UUID
 from datetime import date, time
@@ -24,6 +24,8 @@ class StopResponse(BaseModel):
     transport_to_next: Optional[str]
     notes: Optional[str]
     is_booked: bool = False
+    priority: int = 0                 # S8 WP-4
+    included_in_route: bool = True    # S8 WP-4: false = «не влезло в день»
     place_name: Optional[str] = None
     place_lat: Optional[float] = None
     place_lon: Optional[float] = None
@@ -41,3 +43,4 @@ class StopUpdate(BaseModel):
     duration_minutes: Optional[int] = None
     transport_to_next: Optional[str] = None
     notes: Optional[str] = None
+    priority: Optional[int] = Field(None, ge=0, le=2)  # S8 WP-4
