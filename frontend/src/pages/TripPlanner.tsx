@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Stop } from '../types/index'
-import { getStops, getValhallaRouteForPoints, reorderStops, updateStopTransport, getTrip } from '../api/trips'
+import { getStops, getValhallaRouteForPoints, reorderStops, updateStopTransport, getTrip, downloadExport } from '../api/trips'
 import { getDays, getLocations, type TripDay, type TripLocation } from '../api/days'
 import DayCard from '../components/DayCard'
 import BudgetPanel from '../components/BudgetPanel'
@@ -394,7 +394,17 @@ export default function TripPlanner() {
                         </button>
                     ))}
                 </div>
-                <span />
+                <span style={{display: 'flex', gap: 4}}>
+                    {/* экспорт (S9 WP-B) */}
+                    <button title={t('export.pdf')} onClick={() => downloadExport(tripId, 'pdf').catch(() => setError(t('export.error')))}
+                        style={{border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
+                        ⬇ PDF
+                    </button>
+                    <button title={t('export.ics')} onClick={() => downloadExport(tripId, 'ics').catch(() => setError(t('export.error')))}
+                        style={{border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
+                        📅
+                    </button>
+                </span>
                 </div>
                 </div>
                 {panelTab === 'budget' ? (

@@ -1,5 +1,5 @@
 import type { Stop, Trip } from '../types/index'
-import { apiFetch } from "./client"
+import { apiFetch, API_URL, getAccessToken } from "./client"
 
 
 
@@ -103,4 +103,24 @@ export async function updateTrip(tripId: string, data: Record<string, unknown>):
 export async function cloneTrip(tripId:string): Promise<Trip> {
     return apiFetch<Trip>(`/trips/${tripId}/clone`, {
         method: 'POST'})
+}
+// S9 WP-B: скачать экспорт (PDF/ICS) как файл
+export async function downloadExport(tripId: string, kind: 'pdf' | 'ics'): Promise<void> {
+    const headers: Record<string, string> = {}
+    const token = getAccessToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${API_URL}/trips/${tripId}/export/${kind}`, {
+        headers, credentials: 'include',
+    })
+    if (!res.ok) throw new Error('export_failed')
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename\*=UTF-8''([^;]+)/)
+    const filename = match ? decodeURIComponent(match[1]) : `trip.${kind}`
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
 }

@@ -30,6 +30,7 @@ from app.api.bookings import router as bookings_router
 from app.api.days import router as days_router
 from app.api.users import router as users_router
 from app.api.budget import router as budget_router
+from app.api.export import router as export_router
 
 app = FastAPI(
     title="WanderOwn API",
@@ -96,6 +97,7 @@ app.include_router(bookings_router)
 app.include_router(days_router)
 app.include_router(users_router)
 app.include_router(budget_router)
+app.include_router(export_router)
 @app.get("/health")
 async def health():
     return {"status":"ok"}

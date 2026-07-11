@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    body { font-family: "DejaVu Sans", sans-serif; font-size: 11pt; color: #1f2937; }
+    h1 { font-size: 20pt; margin-bottom: 2pt; }
+    .dates { color: #6b7280; margin-bottom: 16pt; }
+    .day { margin-bottom: 14pt; page-break-inside: avoid; }
+    .day h2 { font-size: 13pt; border-bottom: 1pt solid #e5e7eb; padding-bottom: 2pt; }
+    .depot { color: #047857; font-size: 10pt; margin: 2pt 0; }
+    .stop { margin: 4pt 0 4pt 12pt; }
+    .stop .name { font-weight: bold; }
+    .meta { color: #6b7280; font-size: 9pt; }
+    .budget { margin-top: 18pt; border-top: 1.5pt solid #1f2937; padding-top: 8pt; }
+    .budget h2 { font-size: 13pt; }
+    table { border-collapse: collapse; font-size: 10pt; }
+    td { padding: 2pt 12pt 2pt 0; }
+    .total { font-weight: bold; }
+    .over { color: #dc2626; font-weight: bold; }
+</style>
+</head>
+<body>
+    <h1>{{ trip.title }}</h1>
+    <div class="dates">
+        {% if trip.city %}{{ trip.city }} · {% endif %}
+        {% if trip.start_date %}{{ trip.start_date }} — {{ trip.end_date }}{% endif %}
+    </div>
+
+    {% for day in days %}
+    <div class="day">
+        <h2>День {{ day.day.day_index + 1 }} · {{ day.day.date }}</h2>
+        {% if day.start_location %}
+        <div class="depot">🏁 Старт: {{ day.start_location.name or day.start_location.address }} в {{ day.day.start_time.strftime('%H:%M') }}</div>
+        {% endif %}
+        {% for item in day.stops %}
+        <div class="stop">
+            <span class="name">{{ loop.index }}. {{ item.place.name }}</span>
+            <div class="meta">
+                {% if item.stop.visit_time %}{{ item.stop.visit_time.strftime('%H:%M') }} · {% endif %}
+                {% if item.stop.duration_minutes %}{{ item.stop.duration_minutes }} мин · {% endif %}
+                {% if item.place.address %}{{ item.place.address }}{% endif %}
+                {% if item.stop.estimated_cost %} · ~{{ item.stop.estimated_cost }} {{ trip.currency }}{% endif %}
+                {% if item.opening %} · часы: {{ item.opening }}{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% if day.end_location %}
+        <div class="depot">🏁 Финиш: {{ day.end_location.name or day.end_location.address }}</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="budget">
+        <h2>Бюджет</h2>
+        <table>
+            <tr><td>Запланировано</td><td>{{ budget.planned_total }} {{ budget.currency }}</td></tr>
+            <tr><td>Забронировано</td><td>{{ budget.booked_total }} {{ budget.currency }}</td></tr>
+            {% if budget.budget_total is not none %}
+            <tr class="total"><td>Лимит</td><td>{{ budget.budget_total }} {{ budget.currency }}</td></tr>
+            <tr class="{% if budget.over_budget %}over{% endif %}">
+                <td>Остаток</td><td>{{ budget.remaining }} {{ budget.currency }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+</body>
+</html>

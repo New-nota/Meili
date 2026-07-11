@@ -25,3 +25,7 @@ authlib==1.3.1
 itsdangerous==2.2.0
 structlog==24.1.0
 boto3==1.34.100
+weasyprint==62.3
+pydyf==0.10.0  # weasyprint 62 несовместим с pydyf>=0.11 ('super' has no 'transform')
+ics==0.7.2
+jinja2==3.1.4
