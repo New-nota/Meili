@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import UUID
@@ -25,6 +26,7 @@ class StopResponse(BaseModel):
     notes: Optional[str]
     is_booked: bool = False
     priority: int = 0                 # S8 WP-4
+    estimated_cost: Optional[Decimal] = None  # S9 WP-A
     included_in_route: bool = True    # S8 WP-4: false = «не влезло в день»
     place_name: Optional[str] = None
     place_lat: Optional[float] = None
@@ -44,3 +46,4 @@ class StopUpdate(BaseModel):
     transport_to_next: Optional[str] = None
     notes: Optional[str] = None
     priority: Optional[int] = Field(None, ge=0, le=2)  # S8 WP-4
+    estimated_cost: Optional[Decimal] = None  # S9 WP-A

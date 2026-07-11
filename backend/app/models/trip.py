@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, date, time
-from sqlalchemy import String, Integer, Boolean, ARRAY, TIMESTAMP, DATE, TIME, TEXT, ForeignKey, UniqueConstraint
+from decimal import Decimal
+from sqlalchemy import String, Integer, Boolean, ARRAY, TIMESTAMP, DATE, TIME, TEXT, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.place import Place
@@ -27,6 +28,9 @@ class Trip(Base):
     # одиночные start_* выше остаются для обратной совместимости
     start_date: Mapped[date | None] = mapped_column(DATE, nullable=True)
     end_date: Mapped[date | None] = mapped_column(DATE, nullable=True)
+    # S9 WP-A: бюджет — одна валюта на поездку, деньги только Numeric
+    budget_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR", server_default="EUR")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
 
@@ -44,6 +48,24 @@ class TripLocation(Base):
     lat: Mapped[float] = mapped_column(nullable=False)
     lon: Mapped[float] = mapped_column(nullable=False)
     kind: Mapped[str] = mapped_column(String, nullable=False, default="lodging", server_default="lodging")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
+
+
+class TripExpense(Base):
+    """Нефиксированные траты поездки, кроме активностей (S9 WP-A).
+
+    Активности НЕ хранятся здесь (категория 'activity' запрещена) —
+    они считаются из стопов: bookings.amount / trip_stops.estimated_cost.
+    """
+    __tablename__ = "trip_expenses"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
+    day_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trip_days.id", ondelete="SET NULL"), nullable=True)
+    category: Mapped[str] = mapped_column(String, nullable=False)  # lodging|transport|food|other
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)  # = trips.currency
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
 
 
@@ -83,6 +105,8 @@ class TripStop(Base):
     booking_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     # S8 WP-3: принадлежность дню — источник истины (visit_date — зеркало)
     day_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trip_days.id", ondelete="CASCADE"), nullable=True)
+    # S9 WP-A: оценка стоимости активности (на группу целиком)
+    estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     # S8 WP-4: selective TSP — 0 обычный, 1 высокий, 2 обязательный (must-visit)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # false = стоп исключён селективным прогоном («не влезло в день»)

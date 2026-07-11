@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
@@ -38,6 +39,9 @@ class TripUpdate(BaseModel):
     # S9: поле существовало в UI с С4, но отсутствовало в схеме — публикация
     # молча отбрасывалась Pydantic'ом
     is_public: Optional[bool] = None
+    # S9 WP-A: бюджет
+    budget_total: Optional[Decimal] = None
+    currency: Optional[str] = None
 
 class TripResponse(BaseModel):
     id: UUID
@@ -57,6 +61,8 @@ class TripResponse(BaseModel):
     start_time: Optional[time] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    budget_total: Optional[Decimal] = None
+    currency: str = "EUR"
 
     class Config:
         from_attributes = True

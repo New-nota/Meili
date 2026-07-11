@@ -7,6 +7,7 @@ import type { Stop } from '../types/index'
 import { getStops, getValhallaRouteForPoints, reorderStops, updateStopTransport, getTrip } from '../api/trips'
 import { getDays, getLocations, type TripDay, type TripLocation } from '../api/days'
 import DayCard from '../components/DayCard'
+import BudgetPanel from '../components/BudgetPanel'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -14,6 +15,7 @@ import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
 import StopDetailPanel from '../components/StopDetailPanel'
 import { apiFetch } from '../api/client'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Place } from '../types/index'
 
 const TRANSPORT_OPTIONS = [
@@ -90,7 +92,9 @@ export default function TripPlanner() {
     const [days, setDays] = useState<TripDay[]>([])
     const [locations, setLocations] = useState<TripLocation[]>([])
     const [expandedDayId, setExpandedDayId] = useState<string | null>(null)
+    const [panelTab, setPanelTab] = useState<'route' | 'budget'>('route')
     const navigate = useNavigate()
+    const queryClient = useQueryClient()
 
     const reloadDays = async () => {
         const [d, l] = await Promise.all([getDays(tripId!), getLocations(tripId!)])
@@ -359,6 +363,8 @@ export default function TripPlanner() {
         setSelectedStop(prev => prev ? fresh.find(s => s.id === prev.id) ?? null : null)
         // стопы дней тоже могли измениться (S8 WP-3)
         await reloadDays().catch(() => {})
+        // сводка бюджета пересчитывается вживую (S9 WP-A)
+        queryClient.invalidateQueries({ queryKey: ['budget', tripId] })
     }
     const handleDelete = async (stopId: string) => {
         await apiFetch(`/trips/${tripId!}/stops/${stopId}`, {
@@ -376,12 +382,26 @@ export default function TripPlanner() {
                 <div style={{padding: '16px', borderBottom: '1px solid #e5e7eb'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
                     <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 20, color:'#6b7280'}}>&#9881;</button>
-                <h3 style={{margin: '0',fontSize: 16}}>{t('trip.route')}</h3>
-                {/* оптимизация теперь по-дневная — кнопка в карточке дня (S8 WP-3) */}
+                <div style={{display: 'flex', gap: 4}}>
+                    {(['route', 'budget'] as const).map(tab => (
+                        <button key={tab} onClick={() => setPanelTab(tab)} style={{
+                            padding: '4px 10px', fontSize: 13, cursor: 'pointer',
+                            border: 'none', borderRadius: 6,
+                            background: panelTab === tab ? '#3b82f6' : 'transparent',
+                            color: panelTab === tab ? 'white' : '#374151',
+                        }}>
+                            {tab === 'route' ? t('trip.route') : t('budget.title')}
+                        </button>
+                    ))}
+                </div>
                 <span />
                 </div>
                 </div>
-                {selectedStop ? (
+                {panelTab === 'budget' ? (
+                    <div style={{flex: 1, overflowY: 'auto'}}>
+                        <BudgetPanel tripId={tripId} days={days} />
+                    </div>
+                ) : selectedStop ? (
                     /* Детали остановки + бронирование (Sprint 6) */
                     <div style={{flex: 1, overflowY: 'auto'}}>
                         <StopDetailPanel

@@ -58,6 +58,7 @@ async def get_trip(
     return trip
 
 @router.put("/{trip_id}", response_model=TripResponse)
+@router.patch("/{trip_id}", response_model=TripResponse)
 async def update_trip(
     trip_id: UUID,
     data: TripUpdate,

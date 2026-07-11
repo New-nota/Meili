@@ -54,7 +54,9 @@ test('создание поездки открывает планировщик'
 
   // планировщик открылся; без дат — плоский режим с подсказкой (S8 WP-3)
   await expect(page).toHaveURL(/\/trips\/[0-9a-f-]+/)
-  await expect(page.getByRole('heading', { name: 'Маршрут' })).toBeVisible()
+  // «Маршрут» и «Бюджет» — вкладки панели (S9 WP-A)
+  await expect(page.getByRole('button', { name: 'Маршрут' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Бюджет' })).toBeVisible()
   await expect(page.getByText('Задай даты поездки')).toBeVisible()
 
   // задаём даты в настройках -> появляются дни с per-day оптимизацией

@@ -15,6 +15,7 @@ export interface Stop {
     is_booked: boolean
     priority: number              // S8 WP-4: 0 обычный, 1 важный, 2 обязательный
     included_in_route: boolean    // false = «не влезло в день» (selective)
+    estimated_cost: string | null // S9 WP-A: оценка стоимости активности
 }
 
 export interface Trip {

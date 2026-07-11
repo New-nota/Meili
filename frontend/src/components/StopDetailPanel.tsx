@@ -43,6 +43,14 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
             .catch(() => {})
     }, [stop.id])
 
+    const [costInput, setCostInput] = useState(stop.estimated_cost ?? '')
+
+    const saveCost = async () => {
+        // S9 WP-A: оценка стоимости активности -> живой пересчёт бюджета
+        await updateStop(stop.trip_id, stop.id, { estimated_cost: costInput || null })
+        onChanged()
+    }
+
     const handleDateChange = async (date: string) => {
         setVisitDate(date)
         try {
@@ -119,6 +127,12 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                 children={trip?.children_count ?? 0}
             />
             <AvailabilityCalendar value={visitDate} onChange={handleDateChange} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '4px 0' }}>
+                <span>💶</span>
+                <input placeholder={t('budget.estimatedCost')} value={costInput} inputMode="decimal"
+                    onChange={e => setCostInput(e.target.value)} onBlur={saveCost}
+                    style={{ width: 120, padding: 4, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }} />
+            </label>
 
             {error && <p style={{ color: 'red', fontSize: 13 }}>{error}</p>}
 

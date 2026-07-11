@@ -27,6 +27,7 @@ def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
         "notes": stop.notes,
         "is_booked": stop.is_booked,
         "priority": stop.priority,
+        "estimated_cost": stop.estimated_cost,
         "included_in_route": stop.included_in_route,
         "place_name": None,
         "place_lat": None,
