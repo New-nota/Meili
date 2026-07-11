@@ -31,6 +31,13 @@ EXPECTED_ROUTES = [
     # S8 WP-1 — refresh-токены
     ("POST", "/auth/refresh"),
     ("POST", "/auth/logout"),
+    # S9 WP-D — профиль
+    ("GET", "/users/me"),
+    ("PATCH", "/users/me"),
+    ("POST", "/users/me/avatar"),
+    ("POST", "/users/me/password"),
+    ("GET", "/users/me/trips"),
+    ("GET", "/users/me/liked-trips"),
     ("GET", "/trips/"),
     ("POST", "/trips/"),
     ("GET", "/trips/{trip_id}"),

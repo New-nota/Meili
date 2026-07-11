@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     # Наблюдаемость (S8 WP-0)
     LOG_LEVEL: str = "INFO"
     SENTRY_DSN: str | None = None  # включить на деплое
+
+    # Cloudflare R2 — файловое хранилище (S9 WP-D); без ключей — 501
+    R2_ENDPOINT: str | None = None
+    R2_BUCKET: str | None = None
+    R2_ACCESS_KEY: str | None = None
+    R2_SECRET_KEY: str | None = None
+    R2_PUBLIC_BASE_URL: str | None = None
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     # cookie refresh-токена (S8 WP-1); на деплое COOKIE_SECURE=true

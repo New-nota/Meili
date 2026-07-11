@@ -35,6 +35,9 @@ class TripUpdate(BaseModel):
     start_time: Optional[time] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    # S9: поле существовало в UI с С4, но отсутствовало в схеме — публикация
+    # молча отбрасывалась Pydantic'ом
+    is_public: Optional[bool] = None
 
 class TripResponse(BaseModel):
     id: UUID

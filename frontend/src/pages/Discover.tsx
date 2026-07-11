@@ -60,6 +60,11 @@ export default function Discover() {
             <h2 style={{margin: 0}}>{t('nav.myTrips')}</h2>
             <div style={{display: 'flex', gap: 8}}>
                 <LanguageSwitcher />
+                <button onClick={() => navigate('/profile')}
+                style={{padding: '8px 16px', background: 'none', color: '#374151',
+                border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
+                    {t('nav.profile')}
+                </button>
                 <button onClick={() => setIsCreating(true)} style={{padding: '8px 16px', background: '#3b82f6',
                 color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
                     {t('nav.planTrip')}
