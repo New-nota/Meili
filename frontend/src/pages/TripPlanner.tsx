@@ -5,9 +5,10 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Stop } from '../types/index'
 import { getStops, getValhallaRouteForPoints, reorderStops, updateStopTransport, getTrip, downloadExport } from '../api/trips'
-import { getDays, getLocations, type TripDay, type TripLocation } from '../api/days'
+import { addLocation, getDays, getLocations, updateDay, type TripDay, type TripLocation } from '../api/days'
 import DayCard from '../components/DayCard'
 import BudgetPanel from '../components/BudgetPanel'
+import { formatPlaceLabel, type ClickedPoint, type NominatimReverseResult } from '../utils/mapPoint'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -93,6 +94,13 @@ export default function TripPlanner() {
     const [locations, setLocations] = useState<TripLocation[]>([])
     const [expandedDayId, setExpandedDayId] = useState<string | null>(null)
     const [panelTab, setPanelTab] = useState<'route' | 'budget'>('route')
+    // S9 WP-E: карточка точки на карте (toggle, Esc, «сделать точкой старта»)
+    const [clickedPoint, setClickedPoint] = useState<ClickedPoint | null>(null)
+    const clickedPointRef = useRef<ClickedPoint | null>(null)
+    clickedPointRef.current = clickedPoint
+    const i18nRef = useRef(i18n)
+    i18nRef.current = i18n
+    const pinRef = useRef<maplibregl.Marker | null>(null)
     const navigate = useNavigate()
     const queryClient = useQueryClient()
 
@@ -131,51 +139,25 @@ export default function TripPlanner() {
         map.on('load',() => {map.addSource('route', {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates: []}, properties: {}}
         })
         map.on('click', async (e) => {
+            // S9 WP-E Fix 1: toggle как в Google Maps — при открытой карточке
+            // клик по пустой карте закрывает её, новый пин не ставится
+            if (clickedPointRef.current !== null) {
+                setClickedPoint(null)
+                return
+            }
             const {lng, lat} = e.lngLat
-            const res = await fetch (`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-                {headers: {'Accept-Language': i18n.language}}
+            // Fix 3: addressdetails+namedetails для формата «улица дом» / POI
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&namedetails=1`,
+                {headers: {'Accept-Language': i18nRef.current.language}}
             )
-            const data = await res.json()
-            new maplibregl.Popup().setLngLat([lng, lat]).setHTML(
-                `<div style="padding: 8px; min-width: 200px">
-                <strong style="font-size: 14px"> ${data.name || data.display_name.split(',')[0]}</strong>
-                <p style="font-size: 12px; color: #6b7280; margin: 4px 0 8px">${data.display_name.split(',').slice(0,3).join(',')}</p>
-                <button id="add-place-btn" data-name="${(data.name || data.display_name.split(',')[0]).replace(/"/g, '')}"
-                data-lat="${lat}"
-                data-lon="${lng}"
-                data-address="${data.display_name.replace(/"/g, '')}"
-                data-osmid="${data.osm_type && data.osm_id ? `${data.osm_type}/${data.osm_id}` : ''}"
-                style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px">
-                ${t('place.addToRoute')}
-                </button>
-                </div>`
-            ).addTo(map)
-
-            setTimeout(()=> {
-                document.getElementById('add-place-btn')?.addEventListener('click', async (ev) => {
-                    const btn = ev.target as HTMLButtonElement
-                    const name = btn.dataset.name! 
-                    const lat = parseFloat(btn.dataset.lat!)
-                    const lon = parseFloat(btn.dataset.lon!)
-                    const address = btn.dataset.address!
-                    const osmId = btn.dataset.osmid || null
-                    try { const place = await apiFetch<Place>('/places', {
-                        method: 'POST',
-                        body: JSON.stringify({name, lat, lon, address, osm_id: osmId})
-                    })
-                        await apiFetch(`/trips/${tripId}/stops`, {
-                        method: 'POST',
-                        body: JSON.stringify({place_id: place.id})
-                    })
-                    reloadStops()
-                } catch {
-                        setError(t('trip.addPlaceError'))
-                    }
-                
-                    
-                    
-                })
-            }, 50)
+            const data: NominatimReverseResult = await res.json()
+            const label = formatPlaceLabel(data, lat, lng)
+            setClickedPoint({
+                lat, lng, label,
+                address: data.display_name ?? null,
+                osmId: data.osm_type && data.osm_id ? `${data.osm_type}/${data.osm_id}` : null,
+            })
         })
         map.addLayer({
             id: 'route-line', type: 'line', source: 'route', 
@@ -185,6 +167,27 @@ export default function TripPlanner() {
         })
         return () => map.remove()
     }, [])
+
+    // Esc закрывает карточку точки (S9 WP-E)
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setClickedPoint(null)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [])
+
+    // пин на месте клика
+    useEffect(() => {
+        pinRef.current?.remove()
+        pinRef.current = null
+        const map = mapRef.current
+        if (map && clickedPoint) {
+            pinRef.current = new maplibregl.Marker({ color: '#f59e0b' })
+                .setLngLat([clickedPoint.lng, clickedPoint.lat])
+                .addTo(map)
+        }
+    }, [clickedPoint])
 
     useEffect(() => {
         const load = async () => {
@@ -373,6 +376,46 @@ export default function TripPlanner() {
         await reloadStops()
     }
 
+    // S9 WP-E: действия карточки точки
+    const addClickedToRoute = async () => {
+        if (!clickedPoint) return
+        try {
+            const place = await apiFetch<Place>('/places', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: clickedPoint.label,
+                    lat: clickedPoint.lat,
+                    lon: clickedPoint.lng,
+                    address: clickedPoint.address,
+                    osm_id: clickedPoint.osmId,
+                }),
+            })
+            await apiFetch(`/trips/${tripId}/stops`, {
+                method: 'POST',
+                body: JSON.stringify({ place_id: place.id, day_id: expandedDayId }),
+            })
+            setClickedPoint(null)
+            reloadStops()
+        } catch {
+            setError(t('trip.addPlaceError'))
+        }
+    }
+
+    const makeClickedStart = async () => {
+        // Fix 2: создать локацию из точки и сделать её стартом активного дня
+        if (!clickedPoint || !activeDay) return
+        const loc = await addLocation(tripId!, {
+            name: clickedPoint.label,
+            address: clickedPoint.address ?? undefined,
+            lat: clickedPoint.lat,
+            lon: clickedPoint.lng,
+            kind: 'custom',
+        })
+        await updateDay(tripId!, activeDay.id, { start_location_id: loc.id })
+        setClickedPoint(null)
+        await reloadDays()
+    }
+
     if (!tripId) return <div>{t('trip.notFound')}</div>
     return (
         <div className="planner-layout">
@@ -473,7 +516,48 @@ export default function TripPlanner() {
                 )}
                 </div>
                 {/* Карта все остальное место займет*/}
-                <div ref={mapContainer} className="planner-map" />
+                <div style={{position: 'relative', flex: 1, minHeight: 0, display: 'flex'}}>
+                    <div ref={mapContainer} className="planner-map" style={{flex: 1}} />
+                    {/* карточка точки (S9 WP-E) */}
+                    {clickedPoint && (
+                        <div style={{
+                            position: 'absolute', left: 12, bottom: 20, zIndex: 5,
+                            background: 'white', borderRadius: 10, padding: 12,
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 220, maxWidth: 300,
+                        }}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', gap: 8}}>
+                                <strong style={{fontSize: 14}}>{clickedPoint.label}</strong>
+                                <button onClick={() => setClickedPoint(null)} style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: '#9ca3af', fontSize: 16, lineHeight: 1, padding: 0}}>✕</button>
+                            </div>
+                            {clickedPoint.address && (
+                                <p style={{fontSize: 12, color: '#6b7280', margin: '4px 0 8px'}}>
+                                    {clickedPoint.address.split(',').slice(0, 3).join(',')}
+                                </p>
+                            )}
+                            <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
+                                <button onClick={addClickedToRoute} style={{
+                                    padding: '6px 12px', background: '#10b981', color: 'white',
+                                    border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13}}>
+                                    {t('place.addToRoute')}
+                                </button>
+                                <button onClick={makeClickedStart} disabled={!activeDay}
+                                    title={!activeDay ? t('map.start_needs_day') : undefined}
+                                    style={{
+                                        padding: '6px 12px', background: activeDay ? 'white' : '#f3f4f6',
+                                        color: activeDay ? '#374151' : '#9ca3af',
+                                        border: '1px solid #e5e7eb', borderRadius: 6,
+                                        cursor: activeDay ? 'pointer' : 'not-allowed', fontSize: 13}}>
+                                    🏁 {t('map.makeStart')}
+                                </button>
+                                {!activeDay && (
+                                    <span style={{fontSize: 11, color: '#9ca3af'}}>{t('map.start_needs_day')}</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
                 </div>
             
     )
