@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Stop } from '../types'
 import {
     optimizeDay, updateDay, type TripDay, type TripLocation,
@@ -31,6 +32,7 @@ const PRIORITY_LABELS = ['○', '★', '‼'] // обычный / важный /
 export default function DayCard({
     tripId, day, allDays, locations, expanded, onToggle, onChanged, onSelectStop,
 }: Props) {
+    const { t, i18n } = useTranslation()
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
     // S8 WP-4: режим оптимизации и бюджет времени
@@ -48,13 +50,13 @@ export default function DayCard({
             onChanged()
         } catch (e) {
             if (e instanceof ApiError && e.status === 422) {
-                setError('Этот день выходит за зону покрытия карт: раздели его на два дня или оставь переезд между городами без промежуточных остановок')
+                setError(t('day.outOfCoverage'))
             } else if (e instanceof ApiError && e.status === 409) {
-                setError('Обязательные места не помещаются в бюджет дня — увеличь время или сними отметку «обязательно»')
+                setError(t('day.mustVisitOverBudget'))
             } else if (e instanceof ApiError && e.status === 400) {
-                setError((e.body as { detail?: string })?.detail ?? 'Не удалось оптимизировать')
+                setError(t(`errors.${(e.body as { detail?: string })?.detail}`, t('day.optimizeError')))
             } else {
-                setError('Ошибка оптимизации')
+                setError(t('day.optimizeError'))
             }
         } finally {
             setBusy(false)
@@ -82,9 +84,9 @@ export default function DayCard({
         onChanged()
     }
 
-    const dateLabel = new Date(day.date + 'T00:00:00').toLocaleDateString('ru', {
+    const dateLabel = new Intl.DateTimeFormat(i18n.language, {
         weekday: 'short', day: 'numeric', month: 'short',
-    })
+    }).format(new Date(day.date + 'T00:00:00'))
 
     return (
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 8 }}>
@@ -95,23 +97,23 @@ export default function DayCard({
                 background: expanded ? '#eff6ff' : 'white', borderRadius: 8,
             }}>
                 <strong style={{ fontSize: 13 }}>
-                    День {day.day_index + 1} · {dateLabel}
+                    {t('day.title', { num: day.day_index + 1 })} · {dateLabel}
                 </strong>
                 <span style={{ fontSize: 12, color: '#6b7280' }}>
-                    {day.stops.length} ост. {expanded ? '▲' : '▼'}
+                    {t('day.stopsCount', { count: day.stops.length })} {expanded ? '▲' : '▼'}
                 </span>
             </div>
 
             {expanded && (
                 <div style={{ padding: '8px 12px' }}>
                     <LocationPicker
-                        tripId={tripId} label="🏁 Старт" value={day.start_location}
+                        tripId={tripId} label={t('day.start')} value={day.start_location}
                         locations={locations}
                         onSelect={id => setLocation('start_location_id', id)}
                         onLocationAdded={onChanged}
                     />
                     <div style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 6px 4px' }}>
-                        в {day.start_time.slice(0, 5)}
+                        {t('day.at', { time: day.start_time.slice(0, 5) })}
                     </div>
 
                     {/* стопы дня (в маршруте) */}
@@ -127,12 +129,12 @@ export default function DayCard({
                             <span onClick={() => onSelectStop(stop)}
                                 style={{ fontSize: 13, cursor: 'pointer', flex: 1,
                                     fontWeight: stop.priority === 2 ? 'bold' : 'normal' }}>
-                                {stop.place_name || 'Без названия'}
-                                {stop.is_booked && <span title="Забронировано"> 🎟</span>}
+                                {stop.place_name || t('common.untitled')}
+                                {stop.is_booked && <span title="🎟"> 🎟</span>}
                             </span>
                             {/* приоритет: обычный → важный → обязательно (S8 WP-4) */}
                             <button onClick={() => cyclePriority(stop)}
-                                title="Приоритет: обычный / важный / обязательно"
+                                title={t('day.priorityHint')}
                                 style={{
                                     border: 'none', background: 'none', cursor: 'pointer',
                                     fontSize: 13, padding: '0 2px',
@@ -141,18 +143,18 @@ export default function DayCard({
                                 {PRIORITY_LABELS[stop.priority ?? 0]}
                             </button>
                             {/* перенос в другой день */}
-                            <select value={day.id} title="Перенести в день"
+                            <select value={day.id} title={t('day.moveToDay')}
                                 onChange={e => moveStopToDay(stop.id, e.target.value)}
                                 style={{ fontSize: 11, border: '1px solid #e5e7eb', borderRadius: 4, background: 'white' }}>
                                 {allDays.map(d => (
-                                    <option key={d.id} value={d.id}>Д{d.day_index + 1}</option>
+                                    <option key={d.id} value={d.id}>{t('day.dayShort', { num: d.day_index + 1 })}</option>
                                 ))}
                             </select>
                         </div>
                     ))}
                     {day.stops.length === 0 && (
                         <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0' }}>
-                            Нет остановок — добавь через поиск, выбрав этот день
+                            {t('day.empty')}
                         </p>
                     )}
 
@@ -163,7 +165,7 @@ export default function DayCard({
                             borderRadius: 6, padding: 8, margin: '6px 0',
                         }}>
                             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                                Не влезло в день:
+                                {t('day.notFit')}
                             </div>
                             {droppedStops.map(stop => (
                                 <div key={stop.id} style={{
@@ -171,15 +173,15 @@ export default function DayCard({
                                     fontSize: 12, color: '#9ca3af', marginBottom: 2,
                                 }}>
                                     <span style={{ flex: 1, textDecoration: 'line-through' }}>
-                                        {stop.place_name || 'Без названия'}
+                                        {stop.place_name || t('common.untitled')}
                                     </span>
                                     <button onClick={() => returnStop(stop)}
-                                        title="Пометить обязательным и вернуть при следующей оптимизации"
+                                        title={t('day.returnHint')}
                                         style={{
                                             border: '1px solid #e5e7eb', background: 'white',
                                             borderRadius: 4, cursor: 'pointer', fontSize: 11, padding: '1px 6px',
                                         }}>
-                                        вернуть
+                                        {t('common.return')}
                                     </button>
                                 </div>
                             ))}
@@ -187,7 +189,7 @@ export default function DayCard({
                     )}
 
                     <LocationPicker
-                        tripId={tripId} label="🏁 Финиш" value={day.end_location}
+                        tripId={tripId} label={t('day.finish')} value={day.end_location}
                         locations={locations}
                         onSelect={id => setLocation('end_location_id', id)}
                         onLocationAdded={onChanged}
@@ -198,7 +200,7 @@ export default function DayCard({
                         {(['full', 'selective'] as const).map(m => (
                             <label key={m} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
                                 <input type="radio" checked={mode === m} onChange={() => setMode(m)} />
-                                {m === 'full' ? 'Все места' : 'Максимум за время'}
+                                {m === 'full' ? t('day.modeFull') : t('day.modeSelective')}
                             </label>
                         ))}
                         {mode === 'selective' && (
@@ -206,7 +208,7 @@ export default function DayCard({
                                 <input type="number" min={30} step={30} value={budget}
                                     onChange={e => setBudget(parseInt(e.target.value) || dayLengthMinutes(day))}
                                     style={{ width: 60, padding: 2, border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12 }} />
-                                мин
+                                {t('common.min')}
                             </label>
                         )}
                     </div>
@@ -220,7 +222,7 @@ export default function DayCard({
                             border: 'none', borderRadius: 6,
                             cursor: busy ? 'not-allowed' : 'pointer', fontSize: 13,
                         }}>
-                        {busy ? '⏳...' : '✨ Оптимизировать день'}
+                        {busy ? t('day.optimizing') : t('day.optimize')}
                     </button>
                 </div>
             )}

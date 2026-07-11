@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Stop } from '../types/index'
 import {
     PROVIDERS, createBooking, confirmBooking, cancelBooking, listBookings,
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Props) {
+    const { t } = useTranslation()
     const [booking, setBooking] = useState<Booking | null>(null)
     const [visitDate, setVisitDate] = useState<string | null>(stop.visit_date)
     const [refInput, setRefInput] = useState('')
@@ -56,7 +58,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
             setBooking(b)
             if (b.deep_link) window.open(b.deep_link, '_blank', 'noopener')
         } catch {
-            setError('Не удалось создать бронь')
+            setError(t('booking.createError'))
         } finally {
             setBusy(false)
         }
@@ -75,7 +77,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
             setBooking(b)
             onChanged()
         } catch {
-            setError('Не удалось подтвердить бронь')
+            setError(t('booking.confirmError'))
         } finally {
             setBusy(false)
         }
@@ -100,11 +102,11 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: '#3b82f6', fontSize: 13, padding: 0, marginBottom: 12,
             }}>
-                ← Назад к маршруту
+                {t('booking.backToRoute')}
             </button>
 
             <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>
-                {stop.place_name || 'Без названия'}
+                {stop.place_name || t('common.untitled')}
             </h3>
             {stop.place_address && (
                 <p style={{ margin: '0 0 8px', fontSize: 12, color: '#6b7280' }}>
@@ -125,7 +127,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                 <div style={{ marginTop: 8 }}>
                     <PriceSummary amount={null} currency={null} />
                     <div style={{ fontSize: 13, fontWeight: 'bold', margin: '8px 0 6px' }}>
-                        Забронировать через:
+                        {t('booking.bookVia')}
                     </div>
                     {PROVIDERS.map(p => (
                         <button key={p.value} disabled={busy} onClick={() => handleBook(p.value)}
@@ -136,7 +138,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                                 borderRadius: 8, cursor: busy ? 'wait' : 'pointer', fontSize: 13,
                             }}>
                             <strong>{p.label}</strong>
-                            <span style={{ color: '#9ca3af' }}> — {p.hint}</span>
+                            <span style={{ color: '#9ca3af' }}> — {t(`booking.hint${p.label === 'Viator' ? 'Viator' : p.label === 'OpenTable' ? 'Opentable' : 'Thefork'}`)}</span>
                         </button>
                     ))}
                 </div>
@@ -149,28 +151,28 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                     borderRadius: 8, padding: 12, marginTop: 8,
                 }}>
                     <div style={{ fontSize: 13, marginBottom: 8 }}>
-                        Бронь через <strong>{booking.provider}</strong> создана.
+                        {t('booking.created', { provider: booking.provider })}
                         {booking.deep_link && (
                             <>
                                 {' '}
                                 <a href={booking.deep_link} target="_blank" rel="noopener noreferrer"
                                     style={{ color: '#3b82f6' }}>
-                                    Открыть сайт партнёра ↗
+                                    {t('booking.openPartner')}
                                 </a>
                             </>
                         )}
                     </div>
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
-                        Забронировали? Введите номер подтверждения:
+                        {t('booking.confirmHint')}
                     </div>
-                    <input placeholder="Номер брони (опц.)" value={refInput}
+                    <input placeholder={t('booking.refPlaceholder')} value={refInput}
                         onChange={e => setRefInput(e.target.value)}
                         style={{
                             width: '100%', padding: 6, marginBottom: 6, boxSizing: 'border-box',
                             border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13,
                         }} />
                     <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                        <input placeholder="Сумма (опц.)" value={amountInput} inputMode="decimal"
+                        <input placeholder={t('booking.amountPlaceholder')} value={amountInput} inputMode="decimal"
                             onChange={e => setAmountInput(e.target.value)}
                             style={{
                                 flex: 1, padding: 6, boxSizing: 'border-box',
@@ -189,13 +191,13 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                             padding: '6px 12px', background: '#10b981', color: 'white',
                             border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13,
                         }}>
-                            ✓ Подтвердить
+                            {t('booking.confirm')}
                         </button>
                         <button onClick={handleCancel} disabled={busy} style={{
                             padding: '6px 12px', background: 'none', color: '#6b7280',
                             border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 13,
                         }}>
-                            Отменить
+                            {t('booking.cancel')}
                         </button>
                     </div>
                 </div>

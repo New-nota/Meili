@@ -38,7 +38,7 @@ async def optimize_day(
 
     if day.start_location is None or day.end_location is None:
         raise HTTPException(
-            status_code=400, detail="у дня не заданы точки старта/финиша"
+            status_code=400, detail="day_locations_missing"
         )
 
     result = await db.execute(
@@ -49,7 +49,7 @@ async def optimize_day(
     )
     stops = list(result.scalars().all())
     if not stops:
-        raise HTTPException(status_code=400, detail="в дне нет остановок")
+        raise HTTPException(status_code=400, detail="day_no_stops")
 
     try:
         ordered_ids, dropped_ids = await optimize_day_stops(

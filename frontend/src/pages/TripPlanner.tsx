@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -34,6 +35,7 @@ interface SortableStopProps {
 }
 
 function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelect }: SortableStopProps){
+    const { t } = useTranslation()
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: stop.id})
     return (
@@ -52,8 +54,8 @@ function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelec
                     { index + 1}
                 </div>
                 <span onClick={() => onSelect(stop)} style={{fontSize: 14, cursor: 'pointer', flex: 1}}>
-                    {stop.place_name || 'Без названия'}
-                    {stop.is_booked && <span title="Забронировано"> 🎟</span>}
+                    {stop.place_name || t('common.untitled')}
+                    {stop.is_booked && <span title="🎟"> 🎟</span>}
                 </span>
                 <button onClick={() => onDelete(stop.id)} style={{background: 'none', border: 'none', cursor: 'pointer',
                     color: '#9ca3af', fontSize: 16, padding: '0 4px', lineHeight: 1
@@ -74,6 +76,7 @@ function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelec
 }
 
 export default function TripPlanner() {
+    const { t, i18n } = useTranslation()
     const {tripId} = useParams<{tripId: string}>()
     const mapContainer = useRef<HTMLDivElement>(null)
     const mapRef = useRef<maplibregl.Map | null>(null)
@@ -126,7 +129,7 @@ export default function TripPlanner() {
         map.on('click', async (e) => {
             const {lng, lat} = e.lngLat
             const res = await fetch (`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-                {headers: {'Accept-Language': 'ru'}}
+                {headers: {'Accept-Language': i18n.language}}
             )
             const data = await res.json()
             new maplibregl.Popup().setLngLat([lng, lat]).setHTML(
@@ -139,7 +142,7 @@ export default function TripPlanner() {
                 data-address="${data.display_name.replace(/"/g, '')}"
                 data-osmid="${data.osm_type && data.osm_id ? `${data.osm_type}/${data.osm_id}` : ''}"
                 style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px">
-                + Добавить в маршрут
+                ${t('place.addToRoute')}
                 </button>
                 </div>`
             ).addTo(map)
@@ -162,7 +165,7 @@ export default function TripPlanner() {
                     })
                     reloadStops()
                 } catch {
-                        setError('Не удалось добавить место')
+                        setError(t('trip.addPlaceError'))
                     }
                 
                     
@@ -184,7 +187,7 @@ export default function TripPlanner() {
             try {
                 setStops(await getStops(tripId!))
             } catch {
-                setError('Не удалось загрузить остановки :(')
+                setError(t('trip.stopsLoadError'))
             }
         }
         load()
@@ -253,8 +256,8 @@ export default function TripPlanner() {
                 // появится при клике на маркер
                 const popup = new maplibregl.Popup({offset: 20}).setHTML(`
                     <div style="padding: 8px">
-                    <strong>${stop.place_name || 'Без названия'}</strong>
-                    ${stop.duration_minutes ? `<p style="margin: 4px 0 0">⏱ ${stop.duration_minutes} мин</p>`: ''}
+                    <strong>${stop.place_name || t('common.untitled')}</strong>
+                    ${stop.duration_minutes ? `<p style="margin: 4px 0 0">${t('place.durationMin', {count: stop.duration_minutes})}</p>`: ''}
                     </div>
                     `)
                 
@@ -275,8 +278,8 @@ export default function TripPlanner() {
                 el.textContent = '✕'
                 const popup = new maplibregl.Popup({offset: 20}).setHTML(`
                     <div style="padding: 8px">
-                    <strong>${stop.place_name || 'Без названия'}</strong>
-                    <p style="margin: 4px 0 0; font-size: 12px; color: #6b7280">Не влезло в день</p>
+                    <strong>${stop.place_name || t('common.untitled')}</strong>
+                    <p style="margin: 4px 0 0; font-size: 12px; color: #6b7280">${t('place.notFitLabel')}</p>
                     </div>`)
                 const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(marker)
@@ -295,8 +298,8 @@ export default function TripPlanner() {
                 const m = new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(m)
             }
-            if (activeDay?.start_location) depotMarker(activeDay.start_location, 'Старт дня')
-            if (activeDay?.end_location) depotMarker(activeDay.end_location, 'Финиш дня')
+            if (activeDay?.start_location) depotMarker(activeDay.start_location, t('day.startOfDay'))
+            if (activeDay?.end_location) depotMarker(activeDay.end_location, t('day.endOfDay'))
             if (!activeDay && trip?.start_lat && trip?.start_lon) {
                 const el = document.createElement('div')
                 el.style.cssText = `
@@ -305,7 +308,7 @@ export default function TripPlanner() {
                     font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                 `
                 el.textContent = '🏠'
-                const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>Дом</strong><p style="font-size: 12px; color: #6b7280">${trip.start_address || ''}</p></div>`)
+                const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>${t('place.home')}</strong><p style="font-size: 12px; color: #6b7280">${trip.start_address || ''}</p></div>`)
                 new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map)
             }
             // выравниваем по узлам дня (депо + стопы), чтобы всё было видно
@@ -364,7 +367,7 @@ export default function TripPlanner() {
         await reloadStops()
     }
 
-    if (!tripId) return <div>Поездка не найдена</div>
+    if (!tripId) return <div>{t('trip.notFound')}</div>
     return (
         <div className="planner-layout">
             {/*Left pannel — на мобильных уезжает под карту (см. index.css)*/}
@@ -373,7 +376,7 @@ export default function TripPlanner() {
                 <div style={{padding: '16px', borderBottom: '1px solid #e5e7eb'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
                     <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 20, color:'#6b7280'}}>&#9881;</button>
-                <h3 style={{margin: '0',fontSize: 16}}>Маршрут </h3>
+                <h3 style={{margin: '0',fontSize: 16}}>{t('trip.route')}</h3>
                 {/* оптимизация теперь по-дневная — кнопка в карточке дня (S8 WP-3) */}
                 <span />
                 </div>
@@ -414,7 +417,7 @@ export default function TripPlanner() {
                         {/* стопы без дня (созданы до мульти-дня) */}
                         {stops.filter(s => !s.day_id).length > 0 && (
                             <div style={{marginTop: 8}}>
-                                <div style={{fontSize: 12, color: '#9ca3af', marginBottom: 4}}>Без дня:</div>
+                                <div style={{fontSize: 12, color: '#9ca3af', marginBottom: 4}}>{t('trip.noDayGroup')}</div>
                                 {stops.filter(s => !s.day_id).map((stop, i) => (
                                     <SortableStop key={stop.id} stop={stop} index={i} isLast onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
                                 ))}
@@ -424,7 +427,7 @@ export default function TripPlanner() {
                 ) : (
                     <>
                     <p style={{fontSize: 12, color: '#9ca3af'}}>
-                        Задай даты поездки в настройках ⚙ — появятся дни с оптимизацией по каждому дню
+                        {t('trip.setDatesHint')}
                     </p>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                         <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>

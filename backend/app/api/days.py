@@ -96,7 +96,7 @@ async def delete_location(
     )
     if used.scalar_one_or_none() is not None:
         raise HTTPException(
-            status_code=409, detail="Локация используется днём поездки"
+            status_code=409, detail="location_in_use"
         )
     await db.delete(location)
     await db.commit()

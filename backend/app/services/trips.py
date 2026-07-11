@@ -26,7 +26,7 @@ async def sync_trip_days(db: AsyncSession, trip: Trip) -> None:
     if trip.start_date is None or trip.end_date is None:
         return
     if trip.end_date < trip.start_date:
-        raise DayError("end_date раньше start_date")
+        raise DayError("invalid_date_range")
 
     n_days = (trip.end_date - trip.start_date).days + 1
     wanted = [trip.start_date + timedelta(days=i) for i in range(n_days)]
@@ -43,10 +43,8 @@ async def sync_trip_days(db: AsyncSession, trip: Trip) -> None:
                 select(TripStop.id).where(TripStop.day_id == day.id).limit(1)
             )
             if stops.scalar_one_or_none() is not None:
-                raise DayError(
-                    f"сначала перенеси стопы из дня {day.day_index + 1} ({day.date})",
-                    status_code=409,
-                )
+                # машинный код: текст локализует фронт (S9 WP-C)
+                raise DayError("day_has_stops", status_code=409)
             await db.delete(day)
             del existing[d_date]
 

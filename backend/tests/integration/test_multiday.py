@@ -93,7 +93,7 @@ async def test_shrink_range_with_stops_blocked_409(client, auth_headers):
         f"/trips/{trip['id']}", json={"end_date": "2026-08-01"}, headers=auth_headers
     )
     assert r.status_code == 409
-    assert "перенеси стопы" in r.json()["detail"]
+    assert r.json()["detail"] == "day_has_stops"
 
 
 async def test_move_stop_between_days_updates_visit_date(client, auth_headers):
@@ -172,7 +172,7 @@ async def test_day_optimize_without_locations_400(client, auth_headers):
         headers=auth_headers,
     )
     assert r.status_code == 400
-    assert "старта/финиша" in r.json()["detail"]
+    assert r.json()["detail"] == "day_locations_missing"
 
 
 async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):

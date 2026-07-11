@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function StartPoint({ tripId, initialAddress, initialTime }: Props) {
+    const { t, i18n } = useTranslation()
     const [address, setAddress] = useState(initialAddress || '')
     const [time, setTime] = useState(initialTime?.slice(0, 5) || '09:00')
     const[isSaving, setIsSaving] = useState(false)
@@ -23,7 +25,7 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
         const timer = setTimeout(async () => {
             const res = await fetch (
                 `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=3`,
-                {headers: {'Accept-Language':'ru'}}
+                {headers: {'Accept-Language': i18n.language}}
             )
             setSuggestions(await res.json())
         }, 300)
@@ -51,10 +53,10 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
     return (
         <div style={{padding: '12px 16px', borderBottom: '1px solid #e5e7ed'}}>
             <div style={{fontSize: 12, color: '#6b7280', marginBottom: 6}}>
-                📍 Точка старта
+                {t('place.startPoint')}
             </div>
             <div style={{display: 'flex', gap: 8}}>
-                <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Откуда выходите?"
+                <input value={address} onChange={e => setAddress(e.target.value)} placeholder={t('place.startPlaceholder')}
                 style={{flex: 1, padding: '6px 8px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 13}}/>
             </div>
             {suggestions.length > 0 && (
@@ -69,7 +71,7 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
                     ))}
                     </div>
             )}
-            {isSaving && <div style={{fontSize: 11, color: '#9ca3af', marginTop: 4}}>Сохранение...</div>}
+            {isSaving && <div style={{fontSize: 11, color: '#9ca3af', marginTop: 4}}>{t('common.saving')}</div>}
         </div>
     )
 }

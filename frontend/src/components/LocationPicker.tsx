@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { addLocation, type TripLocation } from '../api/days'
 
 // Выбор локации дня (S8 WP-3): существующие локации поездки + добавление
@@ -22,6 +23,7 @@ interface NominatimHit {
 export default function LocationPicker({
     tripId, label, value, locations, onSelect, onLocationAdded,
 }: Props) {
+    const { t, i18n } = useTranslation()
     const [adding, setAdding] = useState(false)
     const [query, setQuery] = useState('')
     const [hits, setHits] = useState<NominatimHit[]>([])
@@ -31,12 +33,12 @@ export default function LocationPicker({
         const timer = setTimeout(async () => {
             const res = await fetch(
                 `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=3`,
-                { headers: { 'Accept-Language': 'ru' } },
+                { headers: { 'Accept-Language': i18n.language } },
             )
             setHits(await res.json())
         }, 300)
         return () => clearTimeout(timer)
-    }, [query])
+    }, [query, i18n.language])
 
     const pickHit = async (hit: NominatimHit) => {
         const loc = await addLocation(tripId, {
@@ -60,21 +62,21 @@ export default function LocationPicker({
                 onChange={e => e.target.value && onSelect(e.target.value)}
                 style={{ flex: 1, minWidth: 120, padding: 4, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, background: 'white' }}
             >
-                <option value="">— не задано —</option>
+                <option value="">{t('common.notSet')}</option>
                 {locations.map(l => (
                     <option key={l.id} value={l.id}>
                         {l.name || l.address || `${l.lat.toFixed(3)}, ${l.lon.toFixed(3)}`}
                     </option>
                 ))}
             </select>
-            <button onClick={() => setAdding(!adding)} title="Добавить локацию"
+            <button onClick={() => setAdding(!adding)} title={t('place.addLocation')}
                 style={{ border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '2px 8px' }}>
                 +
             </button>
             {adding && (
                 <div style={{ width: '100%' }}>
                     <input value={query} onChange={e => setQuery(e.target.value)}
-                        placeholder="Адрес отеля, вокзала..."
+                        placeholder={t('place.locationPlaceholder')}
                         style={{ width: '100%', padding: 6, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
                     {hits.map(h => (
                         <div key={h.place_id} onClick={() => pickHit(h)}

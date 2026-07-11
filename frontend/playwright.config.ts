@@ -9,6 +9,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     screenshot: 'only-on-failure',
+    // e2e-спеки написаны по русским строкам: языковой детектор i18n
+    // (S9 WP-C) должен выбрать ru из navigator.language
+    locale: 'ru-RU',
   },
   webServer: {
     command: 'npm run dev',

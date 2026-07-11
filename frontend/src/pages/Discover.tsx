@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { RecommendedTrips } from "../components/RecommendedTrips"
 import { apiFetch, logout } from "../api/client"
+import LanguageSwitcher from "../components/LanguageSwitcher"
 
 interface Trip {
     id: string
@@ -13,6 +15,7 @@ interface Trip {
 }
 
 export default function Discover() {
+    const { t } = useTranslation()
     const [trips, setTrips] = useState<Trip[]>([])
     const [isCreating, setIsCreating] =  useState(false)
     const [newTitle, setNewTitle] = useState('')
@@ -27,7 +30,7 @@ export default function Discover() {
                 const data = await apiFetch<Trip[]>('/trips/') 
                 setTrips(data)
         } catch {
-            setError('Не смогли загрузить данные')
+            setError(t('trip.loadError'))
         }}
     load()
     }, [])
@@ -39,13 +42,13 @@ export default function Discover() {
         
         navigate(`/trips/${trip.id}`)
         } catch {
-            setError('Не удалось создать поездку')
+            setError(t('trip.saveError'))
         }
         
     }
     const deleteTrip = async (id: string) => {
         try { await apiFetch(`/trips/${id}`, {method: 'DELETE' })
-        setTrips(prev => prev.filter(t => t.id !== id)) }catch {setError('Не удалость удалить поездку')
+        setTrips(prev => prev.filter(tr => tr.id !== id)) }catch {setError(t('common.error'))
 
         } finally {
             setDeletingId(null)
@@ -54,16 +57,17 @@ export default function Discover() {
     }
     return (<div className="discover-page" style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
-            <h2 style={{margin: 0}}>Мои поездки</h2>
+            <h2 style={{margin: 0}}>{t('nav.myTrips')}</h2>
             <div style={{display: 'flex', gap: 8}}>
+                <LanguageSwitcher />
                 <button onClick={() => setIsCreating(true)} style={{padding: '8px 16px', background: '#3b82f6',
                 color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
-                    Запланировать поездку
+                    {t('nav.planTrip')}
                 </button>
                 <button onClick={async () => { await logout(); navigate('/auth') }}
                 style={{padding: '8px 16px', background: 'none', color: '#6b7280',
                 border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
-                    Выйти
+                    {t('nav.logout')}
                 </button>
             </div>
         </div>
@@ -72,16 +76,16 @@ export default function Discover() {
             <div style={{padding: 16, border: '1px solid #e5e7ed', borderRadius: 8, marginBottom: 24,
                 display: 'flex', flexDirection: 'column', gap: 8
             }}>
-                <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Название поездки"
+                <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder={t('trip.titlePlaceholder')}
                 style={{padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14}} />
-                <input value={newCity} onChange={e => setNewCity(e.target.value)} placeholder="Город (Опционально)"
+                <input value={newCity} onChange={e => setNewCity(e.target.value)} placeholder={t('trip.cityPlaceholder')}
                  style={{padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14}} />
                  <div style={{display: 'flex', gap:8}}>
                     <button onClick={createTrip} style={{padding: '8px 16px', background: '#10b981', color: 'white',
-                        border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>Создать</button>
+                        border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>{t('common.create')}</button>
                         <button onClick={() => setIsCreating(false)} style={{padding: '8px 16px', background: 'none', color: '#6b7280', border: '1px solid #e5e7ed',
                             borderRadius:6, cursor: 'pointer', fontSize: 14
-                        }}>Отмена</button>
+                        }}>{t('common.cancel')}</button>
                         </div>
                     </div>
                     )}
@@ -98,7 +102,7 @@ export default function Discover() {
                                         setDeletingId(trip.id)}} style={{background: 'none', border: 'none', cursor:'pointer', color: '#9ca3af', fontSize: 18}}>✕</button>
                                     
                                     <span style={{fontSize:13, color: '#6b7280'}}>
-                                        👥{trip.adults_count + trip.children_count} человек
+                                        👥{t('trip.peopleCount', {count: trip.adults_count + trip.children_count})}
                                     </span>
                                 </div>
                                 {trip.city && <div style={{fontSize: 13, color: '#6b7280', marginTop: 4}}>📍 {trip.city}</div> }
@@ -106,7 +110,7 @@ export default function Discover() {
                         ))}
                         {trips.length === 0 && (
                             <div style={{textAlign: 'center', color: '#9ca3af', padding: 48}}>
-                                Пока нет поездок. Спланируйте первую! 
+                                {t('trip.noTripsYet')}
                                 </div>
                         )}
                         {deletingId && (
@@ -115,17 +119,17 @@ export default function Discover() {
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
 
                             <div style={{background: 'white', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%'}}>
-                            <h3 style={{margin: '0 0 8px'}}>Удалить поездку?</h3>
-                            <p style={{color: '#6b7280', fontSize: 14, margin: '0 0 20px'}}>Это действие нельзя отменить</p>
+                            <h3 style={{margin: '0 0 8px'}}>{t('trip.deleteTitle')}</h3>
+                            <p style={{color: '#6b7280', fontSize: 14, margin: '0 0 20px'}}>{t('trip.deleteWarning')}</p>
                             <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
                                 <button onClick={()=> setDeletingId(null)} style={{
                                     padding: '8px 16px', background: 'white', color: '#374151',
                                     border: '1px solid #e5e7eb', borderRadius:6, cursor: 'pointer'
-                                }}>Отмена</button>
+                                }}>{t('common.cancel')}</button>
                                 <button onClick={()=> deleteTrip(deletingId)} style={{
                                     padding: '8px 16px', background: '#ef4444', color: 'white',
                                     border: 'none', borderRadius: 6, cursor: 'pointer'
-                                }}>Удалить</button>
+                                }}>{t('common.delete')}</button>
                             </div>
                         </div>
                     </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { apiFetch } from "../api/client"
 import type { Place } from "../types"
 
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export default function PlaceSearch({tripId, dayId, onPlaceAdded}: Props) {
+    const { t, i18n } = useTranslation()
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<NominatimResult[]>([])
     const [isSearching, setIsSearching] = useState(false)
@@ -32,14 +34,14 @@ export default function PlaceSearch({tripId, dayId, onPlaceAdded}: Props) {
             setIsSearching(true)
         try {
             const res = await fetch (
-                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`, {headers: {'Accept-Language': 'ru'}}
+                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`, {headers: {'Accept-Language': i18n.language}}
             )
             setResults(await res.json())
         } finally {
             setIsSearching(false)
         }
         }, 300)
-        return () => clearTimeout(timer)}, [query])
+        return () => clearTimeout(timer)}, [query, i18n.language])
         
     
     const addPlace = async(result: NominatimResult) => {
@@ -73,9 +75,9 @@ export default function PlaceSearch({tripId, dayId, onPlaceAdded}: Props) {
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7ed'}}>
                 
                 <input value={query} onChange={e => setQuery(e.target.value)}
-                    placeholder="Найти место..." style={{width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}}
+                    placeholder={t('place.searchPlaceholder')} style={{width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}}
                 />
-                    {isSearching && <div style={{fontSize: 12, color: '#9ca3af', marginTop:4}}>Поиск...</div>}
+                    {isSearching && <div style={{fontSize: 12, color: '#9ca3af', marginTop:4}}>{t('common.search')}</div>}
         
                 {results.length > 0 &&(
                     <div style={{marginTop: 8, border: '1px solid #e5e7ed', borderRadius: 6, overflow: 'hidden'}}>
@@ -90,7 +92,7 @@ export default function PlaceSearch({tripId, dayId, onPlaceAdded}: Props) {
                             padding: '4px 10px', background: '#10b981', color: 'white',
                             border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12, flexShrink: 0
                         }}>
-                            {isAdding === r.place_id ? '...' : '+ Добавить'}
+                            {isAdding === r.place_id ? '...' : t('place.addShort')}
                         </button>
                         </div>
                         ))}
