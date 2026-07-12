@@ -36,7 +36,7 @@ async def test_send_email_dev_mode_logs_and_succeeds(caplog):
     # SMTP_HOST не задан (dev) -> письмо в лог, результат True
     import logging
 
-    with caplog.at_level(logging.INFO, logger="wanderown.email"):
+    with caplog.at_level(logging.INFO, logger="meili.email"):
         ok = await send_email("user@wanderown.dev", "Тест", "Привет")
     assert ok is True
     assert "user@wanderown.dev" in caplog.text

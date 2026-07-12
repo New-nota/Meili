@@ -60,11 +60,12 @@ export default function BudgetPanel({ tripId, days }: Props) {
         invalidate()
     }
 
-    // прогресс: зелёный -> жёлтый (>75%) -> красный (превышен)
+    // прогресс-бар в тёплой гамме (S10): сиена, при превышении — глубже.
+    // Никакого красно-зелёного светофора.
     const limit = budget.budget_total ? parseFloat(budget.budget_total) : null
     const planned = parseFloat(budget.planned_total)
     const ratio = limit ? Math.min(planned / limit, 1) : 0
-    const barColor = budget.over_budget ? '#ef4444' : ratio > 0.75 ? '#f59e0b' : '#10b981'
+    const barColor = budget.over_budget ? 'var(--accent-hover)' : 'var(--accent)'
 
     const dayLabel = (dayId: string) => {
         const d = days.find(x => x.id === dayId)
@@ -90,8 +91,8 @@ export default function BudgetPanel({ tripId, days }: Props) {
                         <input value={limitInput} inputMode="decimal" autoFocus
                             onChange={e => setLimitInput(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && saveLimit()}
-                            style={{ width: 90, padding: 2, border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 13 }} />
-                        <button onClick={saveLimit} style={{ border: 'none', background: '#3b82f6', color: 'white', borderRadius: 4, cursor: 'pointer', fontSize: 12, padding: '0 8px' }}>✓</button>
+                            style={{ width: 90, padding: 2, border: '1px solid var(--border)', borderRadius: 4, fontSize: 13 }} />
+                        <button onClick={saveLimit} style={{ border: 'none', background: 'var(--accent)', color: 'var(--surface)', borderRadius: 4, cursor: 'pointer', fontSize: 12, padding: '0 8px' }}>✓</button>
                     </span>
                 )}
             </div>
@@ -99,12 +100,12 @@ export default function BudgetPanel({ tripId, days }: Props) {
             <div style={row}><span>{t('budget.booked')}</span><span>{fmt(budget.booked_total)}</span></div>
             <div style={row}>
                 <span>{t('budget.remaining')}</span>
-                <strong style={{ color: budget.over_budget ? '#ef4444' : '#10b981' }}>
+                <strong style={{ color: budget.over_budget ? 'var(--accent-hover)' : 'var(--text-primary)' }}>
                     {fmt(budget.remaining)}
                 </strong>
             </div>
             {limit !== null && (
-                <div style={{ background: '#f3f4f6', borderRadius: 6, height: 8, margin: '6px 0' }}>
+                <div style={{ background: 'var(--surface)', borderRadius: 6, height: 8, margin: '6px 0' }}>
                     <div style={{
                         width: `${ratio * 100}%`, height: '100%',
                         background: barColor, borderRadius: 6, transition: 'width .3s',
@@ -112,7 +113,7 @@ export default function BudgetPanel({ tripId, days }: Props) {
                 </div>
             )}
             {budget.over_budget && (
-                <div style={{ color: '#ef4444', fontSize: 13, fontWeight: 'bold' }}>
+                <div style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 'bold' }}>
                     ⚠ {t('budget.overBudget')}
                 </div>
             )}
@@ -144,11 +145,11 @@ export default function BudgetPanel({ tripId, days }: Props) {
                 <div key={e.id} style={{ ...row, alignItems: 'center' }}>
                     <span style={{ flex: 1 }}>
                         {t(`budget.category_${e.category}`)} · {e.title}
-                        {e.day_id && <span style={{ color: '#9ca3af' }}> ({dayLabel(e.day_id)})</span>}
+                        {e.day_id && <span style={{ color: 'var(--text-muted)' }}> ({dayLabel(e.day_id)})</span>}
                     </span>
                     <span>{fmt(e.amount)}</span>
                     <button onClick={async () => { await deleteExpense(tripId, e.id); invalidate() }}
-                        style={{ border: 'none', background: 'none', color: '#9ca3af', cursor: 'pointer', marginLeft: 4 }}>✕</button>
+                        style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginLeft: 4 }}>✕</button>
                 </div>
             ))}
 
@@ -157,12 +158,12 @@ export default function BudgetPanel({ tripId, days }: Props) {
                 <div style={{ display: 'flex', gap: 6 }}>
                     <select value={form.category}
                         onChange={e => setForm({ ...form, category: e.target.value as Expense['category'] })}
-                        style={{ flex: 1, padding: 4, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, background: 'white' }}>
+                        style={{ flex: 1, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--surface-raised)' }}>
                         {CATEGORIES.map(c => <option key={c} value={c}>{t(`budget.category_${c}`)}</option>)}
                     </select>
                     <select value={form.day_id}
                         onChange={e => setForm({ ...form, day_id: e.target.value })}
-                        style={{ flex: 1, padding: 4, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, background: 'white' }}>
+                        style={{ flex: 1, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--surface-raised)' }}>
                         <option value="">{t('budget.wholeTrip')}</option>
                         {days.map(d => (
                             <option key={d.id} value={d.id}>{t('day.dayShort', { num: d.day_index + 1 })}</option>
@@ -172,12 +173,12 @@ export default function BudgetPanel({ tripId, days }: Props) {
                 <div style={{ display: 'flex', gap: 6 }}>
                     <input placeholder={t('budget.expenseTitle')} value={form.title}
                         onChange={e => setForm({ ...form, title: e.target.value })}
-                        style={{ flex: 2, padding: 6, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }} />
+                        style={{ flex: 2, padding: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
                     <input placeholder={t('budget.amount')} value={form.amount} inputMode="decimal"
                         onChange={e => setForm({ ...form, amount: e.target.value })}
-                        style={{ flex: 1, padding: 6, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, minWidth: 60 }} />
+                        style={{ flex: 1, padding: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minWidth: 60 }} />
                     <button onClick={submitExpense} style={{
-                        padding: '6px 12px', background: '#3b82f6', color: 'white',
+                        padding: '6px 12px', background: 'var(--accent)', color: 'var(--surface)',
                         border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
                         +
                     </button>

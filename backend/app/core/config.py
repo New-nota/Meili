@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
-    EMAIL_FROM: str = "noreply@wanderown.app"
+    EMAIL_FROM: str = "noreply@meili.app"
 
     # Google OAuth2 (S7): без ключей эндпоинты отвечают 501
     GOOGLE_CLIENT_ID: str | None = None

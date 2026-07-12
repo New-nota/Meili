@@ -9,6 +9,9 @@ import { addLocation, getDays, getLocations, updateDay, type TripDay, type TripL
 import DayCard from '../components/DayCard'
 import BudgetPanel from '../components/BudgetPanel'
 import { formatPlaceLabel, type ClickedPoint, type NominatimReverseResult } from '../utils/mapPoint'
+import { applyPaperStyle, DAY_HEX } from '../utils/mapStyle'
+import Logo from '../components/Logo'
+import DayPill from '../components/DayPill'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -46,12 +49,12 @@ function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelec
         {...attributes}>
             {/*строка с номером и названием*/}
             <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4}}>
-                <span {...listeners} style={{cursor: 'grab', color: '#9ca3af', fontSize: 18, userSelect: 'none'}}>
+                <span {...listeners} style={{cursor: 'grab', color: 'var(--text-muted)', fontSize: 18, userSelect: 'none'}}>
                      ⠿
                 </span>
                 <div style={{
-                    width: 24, height: 24, background: '#3b82f6', borderRadius: '50%',
-                    color: 'white', display: 'flex', alignItems: 'center',
+                    width: 24, height: 24, background: 'var(--accent)', borderRadius: '50%',
+                    color: 'var(--surface)', display: 'flex', alignItems: 'center',
                     justifyContent: 'center', fontSize: 12, fontWeight: 'bold', flexShrink: 0
                 }}>
                     { index + 1}
@@ -61,15 +64,15 @@ function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelec
                     {stop.is_booked && <span title="🎟"> 🎟</span>}
                 </span>
                 <button onClick={() => onDelete(stop.id)} style={{background: 'none', border: 'none', cursor: 'pointer',
-                    color: '#9ca3af', fontSize: 16, padding: '0 4px', lineHeight: 1
+                    color: 'var(--text-muted)', fontSize: 16, padding: '0 4px', lineHeight: 1
                 }}>✕</button>
             </div>
             {/* переключатель транспорта не показываем для последней точки*/}
             {!isLast && (
                 <div style={{display: 'flex', gap: 4, marginLeft: 44, marginBottom: 10}}>
                     {TRANSPORT_OPTIONS.map(opt => (<button key={opt.value} onClick={() => onTransportChange(stop.id, opt.value)}
-                    style={{padding: '2px 8px', border: `1px solid ${stop.transport_to_next === opt.value ? '#eff6ff' : '#e5e7eb'}`,
-                    borderRadius: 12, background: stop.transport_to_next == opt.value ? '#eff6ff' : 'white', cursor: 'pointer', fontSize: 14}}> 
+                    style={{padding: '2px 8px', border: `1px solid ${stop.transport_to_next === opt.value ? 'var(--surface)' : 'var(--border)'}`,
+                    borderRadius: 12, background: stop.transport_to_next == opt.value ? 'var(--surface)' : 'var(--surface-raised)', cursor: 'pointer', fontSize: 14}}> 
                     {opt.label} </button>
                     ))}
                     </div>
@@ -136,7 +139,19 @@ export default function TripPlanner() {
         })
         map.addControl( new maplibregl.NavigationControl())
         mapRef.current = map
-        map.on('load',() => {map.addSource('route', {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates: []}, properties: {}}
+        map.on('load',() => {
+        // S10: приглушённая «бумага» — насыщенным остаётся только маршрут
+        applyPaperStyle(map)
+        map.addSource('route', {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates: []}, properties: {}}
+        })
+        // слои режима «Все дни»: приглушённые тона палитры дней (S10)
+        DAY_HEX.forEach((hex, i) => {
+            map.addSource(`route-day-${i}`, {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates: []}, properties: {}}})
+            map.addLayer({
+                id: `route-day-line-${i}`, type: 'line', source: `route-day-${i}`,
+                layout: {'line-join': 'round', 'line-cap': 'round'},
+                paint: {'line-color': hex, 'line-width': 3, 'line-opacity': 0.75},
+            })
         })
         map.on('click', async (e) => {
             // S9 WP-E Fix 1: toggle как в Google Maps — при открытой карточке
@@ -162,7 +177,7 @@ export default function TripPlanner() {
         map.addLayer({
             id: 'route-line', type: 'line', source: 'route', 
             layout: {'line-join': 'round', 'line-cap': 'round'},
-            paint: {'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.8}
+            paint: {'line-color': '#B04A24', 'line-width': 4.5, 'line-opacity': 0.9}
         })
         })
         return () => map.remove()
@@ -183,7 +198,7 @@ export default function TripPlanner() {
         pinRef.current = null
         const map = mapRef.current
         if (map && clickedPoint) {
-            pinRef.current = new maplibregl.Marker({ color: '#f59e0b' })
+            pinRef.current = new maplibregl.Marker({ color: 'var(--accent)' })
                 .setLngLat([clickedPoint.lng, clickedPoint.lat])
                 .addTo(map)
         }
@@ -208,6 +223,53 @@ export default function TripPlanner() {
     const map = mapRef.current
     if (!map || (routeStops.length === 0 && !activeDay)) return
     const drawRoute = async () => {
+        const emptyLine = {type: 'Feature' as const, geometry: {type: 'LineString' as const, coordinates: [] as number[][]}, properties: {}}
+        const clearDayLayers = () => DAY_HEX.forEach((_, i) => {
+            (map.getSource(`route-day-${i}`) as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine)
+        })
+
+        // S10: режим «Все дни» — маршруты приглушёнными тонами --day-1…6
+        if (!activeDay && days.length > 0) {
+            const paintOverview = async () => {
+                markersRef.current.forEach(m => m.remove())
+                markersRef.current = []
+                ;(map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine)
+                const lons: number[] = [], lats: number[] = []
+                for (let i = 0; i < days.length; i++) {
+                    const day = days[i]
+                    const dayStops = day.stops.filter(st => st.included_in_route !== false && st.place_lat && st.place_lon)
+                    const pts = [
+                        ...(day.start_location ? [{lat: day.start_location.lat, lon: day.start_location.lon}] : []),
+                        ...dayStops.map(st => ({lat: st.place_lat!, lon: st.place_lon!})),
+                        ...(day.end_location ? [{lat: day.end_location.lat, lon: day.end_location.lon}] : []),
+                    ]
+                    const coords = await getValhallaRouteForPoints(pts)
+                    ;(map.getSource(`route-day-${i % DAY_HEX.length}`) as maplibregl.GeoJSONSource | undefined)
+                        ?.setData({type: 'Feature', geometry: {type: 'LineString', coordinates: coords}, properties: {}})
+                    // номерные бейджи цвета дня
+                    dayStops.forEach((st, idx) => {
+                        const el = document.createElement('div')
+                        el.style.cssText = `width:24px;height:24px;background:var(--day-${(i % 6) + 1});border:2px solid var(--surface-raised);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--surface-raised);font-weight:bold;font-size:11px;cursor:pointer;`
+                        el.textContent = String(idx + 1)
+                        markersRef.current.push(
+                            new maplibregl.Marker({element: el})
+                                .setLngLat([st.place_lon!, st.place_lat!]).addTo(map)
+                        )
+                        lons.push(st.place_lon!); lats.push(st.place_lat!)
+                    })
+                }
+                if (lons.length > 1) {
+                    map.fitBounds(
+                        [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+                        {padding: 80},
+                    )
+                }
+            }
+            if (map.isStyleLoaded()) paintOverview()
+            else map.once('load', paintOverview)
+            return
+        }
+
         // точки маршрута: [старт дня] + стопы + [финиш дня];
         // исключённые селективным прогоном (S8 WP-4) в линию не входят
         const includedStops = routeStops.filter(s => s.included_in_route !== false)
@@ -226,6 +288,7 @@ export default function TripPlanner() {
         const updateMap = () => {
             markersRef.current.forEach(m => m.remove())
             markersRef.current = []
+            clearDayLayers()
             const source = map.getSource('route') as maplibregl.GeoJSONSource
 
             // обновляем данные источника линии перестраиваются автоматически
@@ -246,17 +309,17 @@ export default function TripPlanner() {
                 el.style.cssText = `
                     width: 32px;
                     height: 32px;
-                    background: #3b82f6;
-                    border: 2px solid white;
+                    background: var(--accent);
+                    border: 2px solid var(--surface-raised);
                     border-radius: 50%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    color: white;
+                    color: var(--surface);
                     font-weight: bold;
                     font-size: 14px;
                     cursor: pointer;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                    box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
                 `
                 el.textContent = String(index + 1)
 
@@ -276,17 +339,17 @@ export default function TripPlanner() {
                 if(!stop.place_lat || !stop.place_lon) return
                 const el = document.createElement('div')
                 el.style.cssText = `
-                    width: 26px; height: 26px; background: #d1d5db;
-                    border: 2px solid white; border-radius: 50%;
+                    width: 26px; height: 26px; background: var(--border);
+                    border: 2px solid var(--surface-raised); border-radius: 50%;
                     display: flex; align-items: center; justify-content: center;
-                    color: #6b7280; font-size: 12px; cursor: pointer;
-                    opacity: 0.65; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                    color: var(--text-muted); font-size: 12px; cursor: pointer;
+                    opacity: 0.65; box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 20%, transparent);
                 `
                 el.textContent = '✕'
                 const popup = new maplibregl.Popup({offset: 20}).setHTML(`
                     <div style="padding: 8px">
                     <strong>${stop.place_name || t('common.untitled')}</strong>
-                    <p style="margin: 4px 0 0; font-size: 12px; color: #6b7280">${t('place.notFitLabel')}</p>
+                    <p style="margin: 4px 0 0; font-size: 12px; color: var(--text-muted)">${t('place.notFitLabel')}</p>
                     </div>`)
                 const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(marker)
@@ -295,13 +358,13 @@ export default function TripPlanner() {
             const depotMarker = (loc: {lat: number, lon: number, name?: string | null}, label: string) => {
                 const el = document.createElement('div')
                 el.style.cssText = `
-                    width: 32px; height: 32px; background: #10b981; border: 2px solid white;
+                    width: 32px; height: 32px; background: var(--accent); border: 2px solid var(--surface-raised);
                     border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                    font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                    font-size: 16px; box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
                 `
                 el.textContent = '🏁'
                 const popup = new maplibregl.Popup({offset: 20}).setHTML(
-                    `<div style="padding: 8px"><strong>${label}</strong><p style="font-size: 12px; color: #6b7280">${loc.name || ''}</p></div>`)
+                    `<div style="padding: 8px"><strong>${label}</strong><p style="font-size: 12px; color: var(--text-muted)">${loc.name || ''}</p></div>`)
                 const m = new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(m)
             }
@@ -310,12 +373,12 @@ export default function TripPlanner() {
             if (!activeDay && trip?.start_lat && trip?.start_lon) {
                 const el = document.createElement('div')
                 el.style.cssText = `
-                    width: 32px; height: 32px; background: #10b981; border: 2px solid white;
+                    width: 32px; height: 32px; background: var(--accent); border: 2px solid var(--surface-raised);
                     border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                    font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                    font-size: 16px; box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
                 `
                 el.textContent = '🏠'
-                const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>${t('place.home')}</strong><p style="font-size: 12px; color: #6b7280">${trip.start_address || ''}</p></div>`)
+                const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>${t('place.home')}</strong><p style="font-size: 12px; color: var(--text-muted)">${trip.start_address || ''}</p></div>`)
                 new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map)
             }
             // выравниваем по узлам дня (депо + стопы), чтобы всё было видно
@@ -422,16 +485,21 @@ export default function TripPlanner() {
             {/*Left pannel — на мобильных уезжает под карту (см. index.css)*/}
             <div className="planner-panel">
                 {/* Заголовок */}
-                <div style={{padding: '16px', borderBottom: '1px solid #e5e7eb'}}>
+                <div style={{padding: '16px', borderBottom: '1px solid var(--border)'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
-                    <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 20, color:'#6b7280'}}>&#9881;</button>
+                    <span style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                        <span onClick={() => navigate('/discover')} style={{cursor: 'pointer', display: 'flex'}}>
+                            <Logo size={26} withWordmark />
+                        </span>
+                        <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 18, color:'var(--text-muted)'}}>&#9881;</button>
+                    </span>
                 <div style={{display: 'flex', gap: 4}}>
                     {(['route', 'budget'] as const).map(tab => (
                         <button key={tab} onClick={() => setPanelTab(tab)} style={{
                             padding: '4px 10px', fontSize: 13, cursor: 'pointer',
                             border: 'none', borderRadius: 6,
-                            background: panelTab === tab ? '#3b82f6' : 'transparent',
-                            color: panelTab === tab ? 'white' : '#374151',
+                            background: panelTab === tab ? 'var(--accent)' : 'transparent',
+                            color: panelTab === tab ? 'var(--surface)' : 'var(--text-primary)',
                         }}>
                             {tab === 'route' ? t('trip.route') : t('budget.title')}
                         </button>
@@ -440,11 +508,11 @@ export default function TripPlanner() {
                 <span style={{display: 'flex', gap: 4}}>
                     {/* экспорт (S9 WP-B) */}
                     <button title={t('export.pdf')} onClick={() => downloadExport(tripId, 'pdf').catch(() => setError(t('export.error')))}
-                        style={{border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
+                        style={{border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
                         ⬇ PDF
                     </button>
                     <button title={t('export.ics')} onClick={() => downloadExport(tripId, 'ics').catch(() => setError(t('export.error')))}
-                        style={{border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
+                        style={{border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
                         📅
                     </button>
                 </span>
@@ -470,7 +538,7 @@ export default function TripPlanner() {
                 <PlaceSearch tripId={tripId} dayId={expandedDayId} onPlaceAdded={reloadStops}/>
                 {/*Сприсок остановок скролится  */}
                 <div style={{flex: 1, overflowY: 'auto', padding: 16}}>
-                {error && <p style={{color: 'red', fontSize:13}}>{error}</p>}
+                {error && <p style={{color: 'var(--accent)', fontSize:13}}>{error}</p>}
                 {days.length > 0 ? (
                     /* S8 WP-3: по-дневная панель — аккордеон дней */
                     <>
@@ -490,7 +558,7 @@ export default function TripPlanner() {
                         {/* стопы без дня (созданы до мульти-дня) */}
                         {stops.filter(s => !s.day_id).length > 0 && (
                             <div style={{marginTop: 8}}>
-                                <div style={{fontSize: 12, color: '#9ca3af', marginBottom: 4}}>{t('trip.noDayGroup')}</div>
+                                <div style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>{t('trip.noDayGroup')}</div>
                                 {stops.filter(s => !s.day_id).map((stop, i) => (
                                     <SortableStop key={stop.id} stop={stop} index={i} isLast onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
                                 ))}
@@ -499,7 +567,7 @@ export default function TripPlanner() {
                     </>
                 ) : (
                     <>
-                    <p style={{fontSize: 12, color: '#9ca3af'}}>
+                    <p style={{fontSize: 12, color: 'var(--text-muted)'}}>
                         {t('trip.setDatesHint')}
                     </p>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -518,41 +586,44 @@ export default function TripPlanner() {
                 {/* Карта все остальное место займет*/}
                 <div style={{position: 'relative', flex: 1, minHeight: 0, display: 'flex'}}>
                     <div ref={mapContainer} className="planner-map" style={{flex: 1}} />
+                    {/* мобильная пилюля дней (S10) — то же activeDayId, что и аккордеон */}
+                    <DayPill days={days} activeDayId={expandedDayId}
+                        onSelect={id => setExpandedDayId(id)} />
                     {/* карточка точки (S9 WP-E) */}
                     {clickedPoint && (
                         <div style={{
                             position: 'absolute', left: 12, bottom: 20, zIndex: 5,
-                            background: 'white', borderRadius: 10, padding: 12,
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.18)', minWidth: 220, maxWidth: 300,
+                            background: 'var(--surface-raised)', borderRadius: 10, padding: 12,
+                            boxShadow: '0 4px 16px color-mix(in srgb, var(--text-primary) 18%, transparent)', minWidth: 220, maxWidth: 300,
                         }}>
                             <div style={{display: 'flex', justifyContent: 'space-between', gap: 8}}>
                                 <strong style={{fontSize: 14}}>{clickedPoint.label}</strong>
                                 <button onClick={() => setClickedPoint(null)} style={{
                                     background: 'none', border: 'none', cursor: 'pointer',
-                                    color: '#9ca3af', fontSize: 16, lineHeight: 1, padding: 0}}>✕</button>
+                                    color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 0}}>✕</button>
                             </div>
                             {clickedPoint.address && (
-                                <p style={{fontSize: 12, color: '#6b7280', margin: '4px 0 8px'}}>
+                                <p style={{fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 8px'}}>
                                     {clickedPoint.address.split(',').slice(0, 3).join(',')}
                                 </p>
                             )}
                             <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
                                 <button onClick={addClickedToRoute} style={{
-                                    padding: '6px 12px', background: '#10b981', color: 'white',
+                                    padding: '6px 12px', background: 'var(--accent)', color: 'var(--surface)',
                                     border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13}}>
                                     {t('place.addToRoute')}
                                 </button>
                                 <button onClick={makeClickedStart} disabled={!activeDay}
                                     title={!activeDay ? t('map.start_needs_day') : undefined}
                                     style={{
-                                        padding: '6px 12px', background: activeDay ? 'white' : '#f3f4f6',
-                                        color: activeDay ? '#374151' : '#9ca3af',
-                                        border: '1px solid #e5e7eb', borderRadius: 6,
+                                        padding: '6px 12px', background: activeDay ? 'var(--surface-raised)' : 'var(--surface)',
+                                        color: activeDay ? 'var(--text-primary)' : 'var(--text-muted)',
+                                        border: '1px solid var(--border)', borderRadius: 6,
                                         cursor: activeDay ? 'pointer' : 'not-allowed', fontSize: 13}}>
                                     🏁 {t('map.makeStart')}
                                 </button>
                                 {!activeDay && (
-                                    <span style={{fontSize: 11, color: '#9ca3af'}}>{t('map.start_needs_day')}</span>
+                                    <span style={{fontSize: 11, color: 'var(--text-muted)'}}>{t('map.start_needs_day')}</span>
                                 )}
                             </div>
                         </div>

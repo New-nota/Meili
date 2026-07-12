@@ -83,7 +83,8 @@
     "endOfDay": "Day finish",
     "outOfCoverage": "This day goes beyond map coverage: split it into two days or keep the transfer without intermediate stops",
     "mustVisitOverBudget": "Must-visit places don't fit the day budget — increase time or remove the must-visit mark",
-    "optimizeError": "Optimization failed"
+    "optimizeError": "Optimization failed",
+    "allDays": "All days"
   },
   "place": {
     "searchPlaceholder": "Find a place...",

@@ -12,14 +12,15 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'WanderOwn',
-        short_name: 'WanderOwn',
+        name: 'Meili',
+        short_name: 'Meili',
         description: 'Планировщик маршрутов путешествий',
         lang: 'ru',
         start_url: '/',
         display: 'standalone',
-        theme_color: '#3b82f6',
-        background_color: '#ffffff',
+        // зеркала токенов --accent и --surface (манифест не читает CSS)
+        theme_color: '#B04A24',
+        background_color: '#F3EFE3',
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },

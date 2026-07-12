@@ -27,13 +27,13 @@ export function RecommendedTrips({ city }: {city?: string}) {
             <h2>{t('trip.recommendedTitle')}</h2>
             <div style={{display: "flex", gap: 12, flexWrap: "wrap"}}>
                 {trips.map((trip) => (
-                    <div key={trip.id} style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8}}>
+                    <div key={trip.id} style={{ border: "1px solid var(--border)", padding: 12, borderRadius: 8}}>
                         <h3>{trip.title}</h3>
                         <p>{trip.city}</p>
                         <button 
                         onClick={() => cloneMutation.mutate(trip.id)}
                         disabled={cloneMutation.isPending}
-                        style={{padding: "6px 12px", background: "#3b82f6", color: "white", border: "none", borderRadius:6, cursor: "pointer"}}>
+                        style={{padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius:6, cursor: "pointer"}}>
                             {cloneMutation.isPending ? t('trip.cloning') : t('trip.clone')}
                         </button>
                     </div>

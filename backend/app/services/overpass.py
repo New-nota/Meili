@@ -81,7 +81,7 @@ async def fetch_places_bbox(
     async with httpx.AsyncClient(timeout=90.0) as client:
         response = await client.get(
             OVERPASS_URL, params={"data": query},
-            headers={"Accept": "*/*", "User-Agent": "WanderOwn/1.0"})
+            headers={"Accept": "*/*", "User-Agent": "Meili/1.0"})
         response.raise_for_status()
         data = response.json()
     return parse_overpass_response(data)
@@ -105,7 +105,7 @@ async def search_places_overpass(
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
             OVERPASS_URL, params={"data":query}, 
-            headers={"Accept":"*/*", "User-Agent":"WanderOwn/1.0"})
+            headers={"Accept":"*/*", "User-Agent":"Meili/1.0"})
         response.raise_for_status()
         data = response.json()
     places = parse_overpass_response(data)

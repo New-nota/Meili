@@ -89,17 +89,17 @@ export default function DayCard({
     }).format(new Date(day.date + 'T00:00:00'))
 
     return (
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 8 }}>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8 }}>
             {/* заголовок-аккордеон */}
             <div onClick={onToggle} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 padding: '8px 12px', cursor: 'pointer',
-                background: expanded ? '#eff6ff' : 'white', borderRadius: 8,
+                background: expanded ? 'var(--surface)' : 'var(--surface-raised)', borderRadius: 8,
             }}>
                 <strong style={{ fontSize: 13 }}>
                     {t('day.title', { num: day.day_index + 1 })} · {dateLabel}
                 </strong>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                     {t('day.stopsCount', { count: day.stops.length })} {expanded ? '▲' : '▼'}
                 </span>
             </div>
@@ -112,7 +112,7 @@ export default function DayCard({
                         onSelect={id => setLocation('start_location_id', id)}
                         onLocationAdded={onChanged}
                     />
-                    <div style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 6px 4px' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '2px 0 6px 4px' }}>
                         {t('day.at', { time: day.start_time.slice(0, 5) })}
                     </div>
 
@@ -122,8 +122,8 @@ export default function DayCard({
                             display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4,
                         }}>
                             <div style={{
-                                width: 20, height: 20, background: '#3b82f6', borderRadius: '50%',
-                                color: 'white', display: 'flex', alignItems: 'center',
+                                width: 20, height: 20, background: 'var(--accent)', borderRadius: '50%',
+                                color: 'var(--surface)', display: 'flex', alignItems: 'center',
                                 justifyContent: 'center', fontSize: 11, fontWeight: 'bold', flexShrink: 0,
                             }}>{i + 1}</div>
                             <span onClick={() => onSelectStop(stop)}
@@ -138,14 +138,14 @@ export default function DayCard({
                                 style={{
                                     border: 'none', background: 'none', cursor: 'pointer',
                                     fontSize: 13, padding: '0 2px',
-                                    color: stop.priority === 2 ? '#ef4444' : stop.priority === 1 ? '#f59e0b' : '#9ca3af',
+                                    color: stop.priority === 2 ? 'var(--accent)' : stop.priority === 1 ? 'var(--accent)' : 'var(--text-muted)',
                                 }}>
                                 {PRIORITY_LABELS[stop.priority ?? 0]}
                             </button>
                             {/* перенос в другой день */}
                             <select value={day.id} title={t('day.moveToDay')}
                                 onChange={e => moveStopToDay(stop.id, e.target.value)}
-                                style={{ fontSize: 11, border: '1px solid #e5e7eb', borderRadius: 4, background: 'white' }}>
+                                style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--surface-raised)' }}>
                                 {allDays.map(d => (
                                     <option key={d.id} value={d.id}>{t('day.dayShort', { num: d.day_index + 1 })}</option>
                                 ))}
@@ -153,7 +153,7 @@ export default function DayCard({
                         </div>
                     ))}
                     {day.stops.length === 0 && (
-                        <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0' }}>
+                        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0' }}>
                             {t('day.empty')}
                         </p>
                     )}
@@ -161,16 +161,16 @@ export default function DayCard({
                     {/* «не влезло в день» (S8 WP-4) */}
                     {droppedStops.length > 0 && (
                         <div style={{
-                            background: '#f9fafb', border: '1px dashed #d1d5db',
+                            background: 'var(--surface)', border: '1px dashed var(--border)',
                             borderRadius: 6, padding: 8, margin: '6px 0',
                         }}>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
                                 {t('day.notFit')}
                             </div>
                             {droppedStops.map(stop => (
                                 <div key={stop.id} style={{
                                     display: 'flex', alignItems: 'center', gap: 6,
-                                    fontSize: 12, color: '#9ca3af', marginBottom: 2,
+                                    fontSize: 12, color: 'var(--text-muted)', marginBottom: 2,
                                 }}>
                                     <span style={{ flex: 1, textDecoration: 'line-through' }}>
                                         {stop.place_name || t('common.untitled')}
@@ -178,7 +178,7 @@ export default function DayCard({
                                     <button onClick={() => returnStop(stop)}
                                         title={t('day.returnHint')}
                                         style={{
-                                            border: '1px solid #e5e7eb', background: 'white',
+                                            border: '1px solid var(--border)', background: 'var(--surface-raised)',
                                             borderRadius: 4, cursor: 'pointer', fontSize: 11, padding: '1px 6px',
                                         }}>
                                         {t('common.return')}
@@ -207,18 +207,18 @@ export default function DayCard({
                             <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
                                 <input type="number" min={30} step={30} value={budget}
                                     onChange={e => setBudget(parseInt(e.target.value) || dayLengthMinutes(day))}
-                                    style={{ width: 60, padding: 2, border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12 }} />
+                                    style={{ width: 60, padding: 2, border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }} />
                                 {t('common.min')}
                             </label>
                         )}
                     </div>
 
-                    {error && <p style={{ color: 'red', fontSize: 12, marginTop: 6 }}>{error}</p>}
+                    {error && <p style={{ color: 'var(--accent)', fontSize: 12, marginTop: 6 }}>{error}</p>}
 
                     <button onClick={handleOptimize} disabled={busy || day.stops.length === 0}
                         style={{
                             marginTop: 8, padding: '6px 12px', width: '100%',
-                            background: busy ? '#9ca3af' : '#3b82f6', color: 'white',
+                            background: busy ? 'var(--text-muted)' : 'var(--accent)', color: 'var(--surface)',
                             border: 'none', borderRadius: 6,
                             cursor: busy ? 'not-allowed' : 'pointer', fontSize: 13,
                         }}>

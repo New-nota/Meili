@@ -10,7 +10,7 @@ export default function AvailabilityCalendar({ value, onChange }: Props) {
     const today = new Date().toISOString().slice(0, 10)
     return (
         <div style={{ padding: '6px 0' }}>
-            <label style={{ fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ fontSize: 13, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>📅</span>
                 <input
                     type="date"
@@ -18,7 +18,7 @@ export default function AvailabilityCalendar({ value, onChange }: Props) {
                     min={today}
                     onChange={e => onChange(e.target.value)}
                     style={{
-                        padding: '4px 8px', border: '1px solid #e5e7eb',
+                        padding: '4px 8px', border: '1px solid var(--border)',
                         borderRadius: 6, fontSize: 13,
                     }}
                 />

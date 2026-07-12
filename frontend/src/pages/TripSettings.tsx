@@ -84,77 +84,77 @@ export default function TripSettings() {
         <div style={{padding: 32, maxWidth: 600, margin: '0 auto'}}>
             <div style={{display: 'flex', alignItems: 'center', gap:12, marginBottom: 24}}>
                 <button onClick={() => navigate(`/trips/${tripId}`)} style={{
-                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#6b7280'}}>&#8592;</button>
+                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)'}}>&#8592;</button>
                     <h2 style={{margin: 0}}>{t('trip.settingsTitle')}</h2>
             </div>
 
             <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
                 {/*MAIN */}
                 <div>
-                    <label style={{fontSize: 13, color: '#6b7280'}}>{t('trip.titleLabel')}</label>
+                    <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.titleLabel')}</label>
                     <input value={title} onChange={e => setTitle(e.target.value)}
-                    style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                    style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                 </div>
                 <div style={{display: 'flex', gap:12}}>
                     <div style={{flex: 1}}>
                         <label style={{fontSize: 13, color: '6b7280'}}>{t('trip.city')}</label>
                         <input value={city} onChange={e => setCity(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
                     <div style={{flex: 1}}>
                         <label style={{fontSize: 13, color: '6b7280'}}>{t('trip.country')}</label>
                         <input value={country} onChange={e => setCountry(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
                 </div>
                 {/* Даты поездки (S8 WP-3): диапазон генерирует дни */}
                 <div style={{display: 'flex', gap:12}}>
                     <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: '#6b7280'}}>{t('trip.startDate')}</label>
+                        <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.startDate')}</label>
                         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
                     <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: '#6b7280'}}>{t('trip.endDate')}</label>
+                        <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.endDate')}</label>
                         <input type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
+                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
                 </div>
-                {datesError && <p style={{color: 'red', fontSize: 13, margin: 0}}>{datesError}</p>}
+                {datesError && <p style={{color: 'var(--accent)', fontSize: 13, margin: 0}}>{datesError}</p>}
                 {/*Группа */}
-                <div style={{padding: 16, border: '1px solid #e5e7eb', borderRadius: 8}}>
+                <div style={{padding: 16, border: '1px solid var(--border)', borderRadius: 8}}>
                     <div style={{fontSize: 14, fontWeight: 500, marginBottom: 12}}>👥 {t('trip.group')} 
 
                     </div>
                     <div style={{display: 'flex', alignItems: 'center', gap: 8, marginTop: 4}}>
                         <button onClick={() => setAdultsCount(Math.max(1, adultsCount - 1))}
-                        style={{width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 4, cursor: 'pointer'}}>-</button>
+                        style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>-</button>
                         <span style={{fontSize: 16, minWidth:20, textAlign: 'center'}}>{adultsCount}</span>
                         <button onClick={()=> setAdultsCount(adultsCount + 1)}
-                        style={{width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 4, cursor: 'pointer'}}>+</button>
+                        style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>+</button>
                     </div>
                 
                 <div>
-                    <label style={{ fontSize: 13, color: '#6b7280'}}>{t('trip.children')}</label>
+                    <label style={{ fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.children')}</label>
                     <div style={{display: 'flex', alignItems: 'center', gap: 8, marginTop: 4}}>
                         <button onClick={() => handleChildrenCount(Math.max(0, childrenCount - 1))}
-                        style={{width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 4, cursor: 'pointer'}}>-</button>
+                        style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>-</button>
                         <span style={{fontSize: 16, minWidth: 20, textAlign: 'center'}}>{childrenCount}</span>
                         <button onClick={() => handleChildrenCount(childrenCount + 1)}
-                            style={{width: 28, height: 28, border: '1px solid #0000', borderRadius: 4, cursor: 'pointer'}}>+</button>
+                            style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>+</button>
                     </div>
                 
             {/*Возраст детей */}
             {childrenCount > 0 && (
                 <div >
-                    <label style={{fontSize: 13, color: '#6b7280'}}>{t('trip.childrenAges')}</label>
+                    <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.childrenAges')}</label>
                     <div style={{display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap'}}>
                         {childrenAges.map((age, i) => (
                             <input key={i} type="number" min={0} max={17} value={age}
                             onChange={e => {const newAges = [...childrenAges]
                                  newAges[i]= parseInt(e.target.value) || 0
                                 setChildrenAges(newAges)}}
-                                style={{width: 56, padding: '6px, 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize:15, textAlign: 'center'}} />
+                                style={{width: 56, padding: '6px, 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize:15, textAlign: 'center'}} />
                         ))}
                     </div>
                 
@@ -164,41 +164,41 @@ export default function TripSettings() {
         </div>
         </div>
         {/*Публикация */}
-        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, border: '1px solid #e5e7eb', borderRadius: 8}}>
+        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, border: '1px solid var(--border)', borderRadius: 8}}>
             <div>
                 <div style={{fontSize: 14, fontWeight: 500}}>🌍 {t('trip.publicTitle')}</div>
-                <div style={{fontSize: 13, color: '#6b7280', marginTop: 2}}>{t('trip.publicHint')}</div>
+                <div style={{fontSize: 13, color: 'var(--text-muted)', marginTop: 2}}>{t('trip.publicHint')}</div>
             </div>
             <input type="checkbox" checked={isPublic} onChange={e=> setIsPublic(e.target.checked)}
             style={{width:18, height: 18, cursor: 'pointer'}} />
         </div>
         <button onClick={save} disabled={isSaving} style={{
-            padding: '10px 24px', background: isSaving ? '#9ca3af': '#3b82f6',
-            color: 'white', border: 'none', borderRadius: 6, cursor: isSaving ? 'not-allowed':'pointer', fontSize: 14}}>
+            padding: '10px 24px', background: isSaving ? 'var(--text-muted)': 'var(--accent)',
+            color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: isSaving ? 'not-allowed':'pointer', fontSize: 14}}>
         {isSaving ? t('common.saving') : t('common.save')}</button>
         {/*Удалить*/}
         <button onClick={() => setShowDeleteModal(true)} style={{
-            padding: '10px 24px', background: 'none', color: '#ef4444',
-            border: '1px solid #ef4444', borderRadius: 6, cursor: 'pointer', fontSize: 14
+            padding: '10px 24px', background: 'none', color: 'var(--accent)',
+            border: '1px solid var(--accent)', borderRadius: 6, cursor: 'pointer', fontSize: 14
         }}> {t('trip.deleteTrip')}</button>
         {/*Подтверждение */}
         {showDeleteModal && (
             <div style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                position: 'fixed', inset: 0, background: 'color-mix(in srgb, var(--text-primary) 50%, transparent)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
             }}>
-                <div style={{background: 'white', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%'}}>
+                <div style={{background: 'var(--surface-raised)', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%'}}>
                     <h3 style={{margin: '0 0 8px'}}>{t('trip.deleteTitle')}</h3>
-                    <p style={{color: '#6b7280', fontSize: 14, margin: ' 0 0 20px'}}>
+                    <p style={{color: 'var(--text-muted)', fontSize: 14, margin: ' 0 0 20px'}}>
                         {t('trip.deleteWarning')}
                     </p>
                 <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
                     <button onClick={() => setShowDeleteModal(false)} style={{
-                        padding: '8px 16px', background: 'none', color: '#374151', border: '1px solid #e5e7eb',
+                        padding: '8px 16px', background: 'none', color: 'var(--text-primary)', border: '1px solid var(--border)',
                         borderRadius: 6, cursor: 'pointer'
                     }}>{t('common.cancel')}</button>
                 <button onClick={deleteTrip} style={{
-                    padding: '8px 16px', background: '#ef4444', color: 'white',
+                    padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
                     border: 'none', borderRadius: 6, cursor: 'pointer'
                 }}>{t('common.delete')}</button>
                 </div>

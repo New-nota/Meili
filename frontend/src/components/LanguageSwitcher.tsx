@@ -12,8 +12,8 @@ export default function LanguageSwitcher() {
             onChange={e => i18n.changeLanguage(e.target.value)}
             title="Language"
             style={{
-                padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 6,
-                fontSize: 13, background: 'white', cursor: 'pointer',
+                padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6,
+                fontSize: 13, background: 'var(--surface-raised)', cursor: 'pointer',
             }}
         >
             {SUPPORTED_LANGUAGES.map(l => (

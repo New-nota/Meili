@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { apiFetch, API_URL, setAccessToken } from "../api/client"
 import LanguageSwitcher from "../components/LanguageSwitcher"
+import Logo from "../components/Logo"
 
 export default function Auth() {
     const { t } = useTranslation()
@@ -39,22 +40,23 @@ export default function Auth() {
             <div style={{position: 'absolute', top: 16, right: 16}}>
                 <LanguageSwitcher />
             </div>
+            <Logo size={64} withWordmark vertical />
             <h2>{t('auth.signIn')}</h2>
             <input placeholder={t('auth.email')} value={email} onChange={e => setEmail(e.target.value)}
-                style={{padding: 8, width: 280, maxWidth: '85vw', borderRadius: 6, border: '1px solid #e5e7eb' }}/>
+                style={{padding: 8, width: 280, maxWidth: '85vw', borderRadius: 6, border: '1px solid var(--border)' }}/>
             <input placeholder={t('auth.password')} type="password" value={password} onChange={e => setPassword(e.target.value)}
-                style={{padding:8, width: 280, maxWidth: '85vw', borderRadius: 6, border: '1px solid #e5e7eb'}} />
-            {error && <p style={{color: 'red', fontSize: 13}}>{error}</p>}
+                style={{padding:8, width: 280, maxWidth: '85vw', borderRadius: 6, border: '1px solid var(--border)'}} />
+            {error && <p style={{color: 'var(--accent)', fontSize: 13}}>{error}</p>}
             <button onClick={handleLogin}
-            style={{padding: '8px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer'}}>
+            style={{padding: '8px 24px', background: 'var(--accent)', color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: 'pointer'}}>
                 {t('auth.signIn')}
             </button>
             {/* Google OAuth (S7): бэкенд ответит 501, если ключи не настроены */}
             <button onClick={() => { window.location.href = `${API_URL}/auth/google/login` }}
-            style={{padding: '8px 24px', background: 'white', color: '#374151',
-                border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
+            style={{padding: '8px 24px', background: 'var(--surface-raised)', color: 'var(--text-primary)',
+                border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 8}}>
-                <span style={{fontWeight: 'bold', color: '#4285F4'}}>G</span>
+                <span style={{fontWeight: 'bold', color: 'var(--accent)'}}>G</span>
                 {t('auth.googleSignIn')}
             </button>
         </div>

@@ -56,11 +56,11 @@ export default function LocationPicker({
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
-            <span style={{ color: '#6b7280', flexShrink: 0 }}>{label}:</span>
+            <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}:</span>
             <select
                 value={value?.id ?? ''}
                 onChange={e => e.target.value && onSelect(e.target.value)}
-                style={{ flex: 1, minWidth: 120, padding: 4, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, background: 'white' }}
+                style={{ flex: 1, minWidth: 120, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--surface-raised)' }}
             >
                 <option value="">{t('common.notSet')}</option>
                 {locations.map(l => (
@@ -70,17 +70,17 @@ export default function LocationPicker({
                 ))}
             </select>
             <button onClick={() => setAdding(!adding)} title={t('place.addLocation')}
-                style={{ border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '2px 8px' }}>
+                style={{ border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '2px 8px' }}>
                 +
             </button>
             {adding && (
                 <div style={{ width: '100%' }}>
                     <input value={query} onChange={e => setQuery(e.target.value)}
                         placeholder={t('place.locationPlaceholder')}
-                        style={{ width: '100%', padding: 6, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+                        style={{ width: '100%', padding: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
                     {hits.map(h => (
                         <div key={h.place_id} onClick={() => pickHit(h)}
-                            style={{ padding: '6px 8px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
+                            style={{ padding: '6px 8px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid var(--surface)' }}>
                             {h.display_name.split(',').slice(0, 3).join(',')}
                         </div>
                     ))}

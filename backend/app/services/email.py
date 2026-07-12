@@ -14,7 +14,7 @@ from email.message import EmailMessage
 
 from app.core.config import settings
 
-logger = logging.getLogger("wanderown.email")
+logger = logging.getLogger("meili.email")
 
 
 def _send_sync(msg: EmailMessage) -> None:
@@ -55,7 +55,7 @@ def booking_confirmation_body(
     visit_date: str | None = None,
 ) -> tuple[str, str]:
     """(subject, body) письма о подтверждённой брони."""
-    subject = f"WanderOwn: бронь подтверждена — {place_name or 'место в маршруте'}"
+    subject = f"Meili: бронь подтверждена — {place_name or 'место в маршруте'}"
     lines = [
         "Ваша бронь подтверждена!",
         "",
@@ -65,7 +65,7 @@ def booking_confirmation_body(
     ]
     if visit_date:
         lines.append(f"Дата визита: {visit_date}")
-    lines += ["", "Хорошей поездки!", "— WanderOwn"]
+    lines += ["", "Хорошей поездки!", "— Meili"]
     return subject, "\n".join(lines)
 
 

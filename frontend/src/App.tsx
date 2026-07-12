@@ -21,7 +21,7 @@ function App() {
   if (!bootstrapped) {
     // без t(): i18n мог ещё не догрузиться, а строка чисто техническая
     return (
-      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#6b7280'}}>
+      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-muted)'}}>
         ...
       </div>
     )

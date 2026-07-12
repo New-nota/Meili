@@ -51,27 +51,27 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
         }
     }
     return (
-        <div style={{padding: '12px 16px', borderBottom: '1px solid #e5e7ed'}}>
-            <div style={{fontSize: 12, color: '#6b7280', marginBottom: 6}}>
+        <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border)'}}>
+            <div style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 6}}>
                 {t('place.startPoint')}
             </div>
             <div style={{display: 'flex', gap: 8}}>
                 <input value={address} onChange={e => setAddress(e.target.value)} placeholder={t('place.startPlaceholder')}
-                style={{flex: 1, padding: '6px 8px', border: '1px solid #e5e7ed', borderRadius: 6, fontSize: 13}}/>
+                style={{flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13}}/>
             </div>
             {suggestions.length > 0 && (
-                <div style={{marginTop: 4, border: '1px solid #e5e7ed', borderRadius:6, overflow: 'hidden'}}>
+                <div style={{marginTop: 4, border: '1px solid var(--border)', borderRadius:6, overflow: 'hidden'}}>
                     {suggestions.map((s: any) => (
                         <div key={s.place_id} 
                             onClick={()=> save(parseFloat(s.lat), parseFloat(s.lon), s.display_name.split(',').slice(0,2).join(','))}
-                            style={{padding: '6px 10px',fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f3f4f6', backgroundColor:'white'}}
-                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}>
+                            style={{padding: '6px 10px',fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--surface)', backgroundColor:'var(--surface-raised)'}}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--surface)')}
+                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--surface-raised)')}>
                                 {s.display_name.split(',').slice(0,2).join(',')} </div>
                     ))}
                     </div>
             )}
-            {isSaving && <div style={{fontSize: 11, color: '#9ca3af', marginTop: 4}}>{t('common.saving')}</div>}
+            {isSaving && <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 4}}>{t('common.saving')}</div>}
         </div>
     )
 }

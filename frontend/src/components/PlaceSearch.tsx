@@ -72,24 +72,24 @@ export default function PlaceSearch({tripId, dayId, onPlaceAdded}: Props) {
             }
         }
         return(
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7ed'}}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)'}}>
                 
                 <input value={query} onChange={e => setQuery(e.target.value)}
-                    placeholder={t('place.searchPlaceholder')} style={{width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}}
+                    placeholder={t('place.searchPlaceholder')} style={{width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}}
                 />
-                    {isSearching && <div style={{fontSize: 12, color: '#9ca3af', marginTop:4}}>{t('common.search')}</div>}
+                    {isSearching && <div style={{fontSize: 12, color: 'var(--text-muted)', marginTop:4}}>{t('common.search')}</div>}
         
                 {results.length > 0 &&(
-                    <div style={{marginTop: 8, border: '1px solid #e5e7ed', borderRadius: 6, overflow: 'hidden'}}>
+                    <div style={{marginTop: 8, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden'}}>
                         {results.map(r => (
                             <div key={r.place_id} style={{
-                            padding: '8px 10px', borderBottom: '1px solid #f3f4f6',
+                            padding: '8px 10px', borderBottom: '1px solid var(--surface)',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8}}>
-                        <span style={{fontSize: 13, color: '#374151', flex: 1}}>
+                        <span style={{fontSize: 13, color: 'var(--text-primary)', flex: 1}}>
                             {r.display_name.split(',').slice(0,2).join(',')}
                         </span>
                         <button onClick={() => addPlace(r)} disabled={isAdding === r.place_id} style={{
-                            padding: '4px 10px', background: '#10b981', color: 'white',
+                            padding: '4px 10px', background: 'var(--accent)', color: 'var(--surface)',
                             border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12, flexShrink: 0
                         }}>
                             {isAdding === r.place_id ? '...' : t('place.addShort')}

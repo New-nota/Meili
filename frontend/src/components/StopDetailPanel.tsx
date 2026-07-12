@@ -108,7 +108,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
         <div style={{ padding: 16 }}>
             <button onClick={onClose} style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: '#3b82f6', fontSize: 13, padding: 0, marginBottom: 12,
+                color: 'var(--accent)', fontSize: 13, padding: 0, marginBottom: 12,
             }}>
                 {t('booking.backToRoute')}
             </button>
@@ -117,7 +117,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                 {stop.place_name || t('common.untitled')}
             </h3>
             {stop.place_address && (
-                <p style={{ margin: '0 0 8px', fontSize: 12, color: '#6b7280' }}>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-muted)' }}>
                     {stop.place_address}
                 </p>
             )}
@@ -131,10 +131,10 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                 <span>💶</span>
                 <input placeholder={t('budget.estimatedCost')} value={costInput} inputMode="decimal"
                     onChange={e => setCostInput(e.target.value)} onBlur={saveCost}
-                    style={{ width: 120, padding: 4, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }} />
+                    style={{ width: 120, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
             </label>
 
-            {error && <p style={{ color: 'red', fontSize: 13 }}>{error}</p>}
+            {error && <p style={{ color: 'var(--accent)', fontSize: 13 }}>{error}</p>}
 
             {/* нет активной брони — выбор провайдера */}
             {!booking && (
@@ -148,11 +148,11 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                             style={{
                                 display: 'block', width: '100%', textAlign: 'left',
                                 padding: '8px 12px', marginBottom: 6,
-                                background: 'white', border: '1px solid #e5e7eb',
+                                background: 'var(--surface-raised)', border: '1px solid var(--border)',
                                 borderRadius: 8, cursor: busy ? 'wait' : 'pointer', fontSize: 13,
                             }}>
                             <strong>{p.label}</strong>
-                            <span style={{ color: '#9ca3af' }}> — {t(`booking.hint${p.label === 'Viator' ? 'Viator' : p.label === 'OpenTable' ? 'Opentable' : 'Thefork'}`)}</span>
+                            <span style={{ color: 'var(--text-muted)' }}> — {t(`booking.hint${p.label === 'Viator' ? 'Viator' : p.label === 'OpenTable' ? 'Opentable' : 'Thefork'}`)}</span>
                         </button>
                     ))}
                 </div>
@@ -161,7 +161,7 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
             {/* бронь создана — ждём подтверждения от пользователя */}
             {booking && booking.status === 'pending' && (
                 <div style={{
-                    background: '#fffbeb', border: '1px solid #f59e0b',
+                    background: 'var(--surface)', border: '1px solid var(--accent)',
                     borderRadius: 8, padding: 12, marginTop: 8,
                 }}>
                     <div style={{ fontSize: 13, marginBottom: 8 }}>
@@ -170,46 +170,46 @@ export default function StopDetailPanel({ stop, trip, onClose, onChanged }: Prop
                             <>
                                 {' '}
                                 <a href={booking.deep_link} target="_blank" rel="noopener noreferrer"
-                                    style={{ color: '#3b82f6' }}>
+                                    style={{ color: 'var(--accent)' }}>
                                     {t('booking.openPartner')}
                                 </a>
                             </>
                         )}
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
                         {t('booking.confirmHint')}
                     </div>
                     <input placeholder={t('booking.refPlaceholder')} value={refInput}
                         onChange={e => setRefInput(e.target.value)}
                         style={{
                             width: '100%', padding: 6, marginBottom: 6, boxSizing: 'border-box',
-                            border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13,
+                            border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
                         }} />
                     <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                         <input placeholder={t('booking.amountPlaceholder')} value={amountInput} inputMode="decimal"
                             onChange={e => setAmountInput(e.target.value)}
                             style={{
                                 flex: 1, padding: 6, boxSizing: 'border-box',
-                                border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13,
+                                border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
                             }} />
                         <select value={currency} onChange={e => setCurrency(e.target.value)}
                             style={{
-                                padding: 6, border: '1px solid #e5e7eb',
-                                borderRadius: 6, fontSize: 13, background: 'white',
+                                padding: 6, border: '1px solid var(--border)',
+                                borderRadius: 6, fontSize: 13, background: 'var(--surface-raised)',
                             }}>
                             {['EUR', 'USD', 'RUB'].map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={handleConfirm} disabled={busy} style={{
-                            padding: '6px 12px', background: '#10b981', color: 'white',
+                            padding: '6px 12px', background: 'var(--accent)', color: 'var(--surface)',
                             border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13,
                         }}>
                             {t('booking.confirm')}
                         </button>
                         <button onClick={handleCancel} disabled={busy} style={{
-                            padding: '6px 12px', background: 'none', color: '#6b7280',
-                            border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+                            padding: '6px 12px', background: 'none', color: 'var(--text-muted)',
+                            border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13,
                         }}>
                             {t('booking.cancel')}
                         </button>

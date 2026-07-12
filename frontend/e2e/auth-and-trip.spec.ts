@@ -66,7 +66,7 @@ test('создание поездки открывает планировщик'
   await page.locator('input[type="date"]').nth(1).fill('2026-08-02')
   await page.getByRole('button', { name: /Сохранить/ }).click()
   await expect(page).toHaveURL(/\/trips\/[0-9a-f-]+$/)
-  await expect(page.getByText(/День 1/)).toBeVisible()
+  await expect(page.getByText(/День 1/).first()).toBeVisible()
   await expect(page.getByRole('button', { name: /Оптимизировать день/ })).toBeVisible()
 })
 

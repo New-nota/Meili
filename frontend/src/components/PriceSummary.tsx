@@ -17,12 +17,12 @@ export default function PriceSummary({ amount, currency }: Props) {
     return (
         <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 13, color: '#374151', padding: '6px 0',
+            fontSize: 13, color: 'var(--text-primary)', padding: '6px 0',
         }}>
             <span>💰</span>
             {formatted
                 ? <strong>{formatted}</strong>
-                : <span style={{ color: '#9ca3af' }}>{t('booking.priceAtPartner')}</span>}
+                : <span style={{ color: 'var(--text-muted)' }}>{t('booking.priceAtPartner')}</span>}
         </div>
     )
 }

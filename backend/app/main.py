@@ -12,7 +12,7 @@ from app.core.logging import configure_logging, get_logger
 
 # логи настраиваются до создания приложения (WP-0)
 configure_logging()
-logger = get_logger("wanderown.api")
+logger = get_logger("meili.api")
 
 # --- Sentry: включить на деплое (WP-0) ---
 # if settings.SENTRY_DSN:
@@ -33,7 +33,7 @@ from app.api.budget import router as budget_router
 from app.api.export import router as export_router
 
 app = FastAPI(
-    title="WanderOwn API",
+    title="Meili API",
     version="0.1.0"
 )
 
@@ -106,7 +106,7 @@ def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
     openapi_schema = get_openapi(
-        title="wanderOwn API",
+        title="Meili API",
         version="0.1.0",
         routes=app.routes,
     )

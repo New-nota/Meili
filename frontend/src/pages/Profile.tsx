@@ -31,7 +31,7 @@ const passwordSchema = z.object({
 type PasswordForm = z.infer<typeof passwordSchema>
 
 const card: React.CSSProperties = {
-    border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16,
+    border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginBottom: 16,
 }
 
 function TripCards({ trips, onOpen }: { trips: Trip[]; onOpen: (id: string) => void }) {
@@ -41,11 +41,11 @@ function TripCards({ trips, onOpen }: { trips: Trip[]; onOpen: (id: string) => v
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
             {trips.map(trip => (
                 <div key={trip.id} onClick={() => onOpen(trip.id)}
-                    style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, cursor: 'pointer' }}>
+                    style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, cursor: 'pointer' }}>
                     <strong style={{ fontSize: 14 }}>{trip.title || t('common.untitled')}</strong>
-                    {trip.city && <div style={{ fontSize: 12, color: '#6b7280' }}>📍 {trip.city}</div>}
+                    {trip.city && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>📍 {trip.city}</div>}
                     {trip.start_date && (
-                        <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                             {dateFmt.format(new Date(trip.start_date))}
                             {trip.end_date ? ` – ${dateFmt.format(new Date(trip.end_date))}` : ''}
                         </div>
@@ -135,7 +135,7 @@ export default function Profile() {
 
     const inputStyle: React.CSSProperties = {
         display: 'block', width: '100%', marginTop: 4, padding: '8px 10px',
-        border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, boxSizing: 'border-box',
+        border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box',
     }
 
     return (
@@ -143,7 +143,7 @@ export default function Profile() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button onClick={() => navigate('/discover')} style={{
-                        background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#6b7280' }}>←</button>
+                        background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)' }}>←</button>
                     <h2 style={{ margin: 0 }}>{t('profile.title')}</h2>
                 </div>
                 <LanguageSwitcher />
@@ -154,20 +154,20 @@ export default function Profile() {
                 {me.avatar_url
                     ? <img src={me.avatar_url} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover' }} />
                     : <div style={{
-                        width: 72, height: 72, borderRadius: '50%', background: '#3b82f6',
-                        color: 'white', display: 'flex', alignItems: 'center',
+                        width: 72, height: 72, borderRadius: '50%', background: 'var(--accent)',
+                        color: 'var(--surface)', display: 'flex', alignItems: 'center',
                         justifyContent: 'center', fontSize: 24, fontWeight: 'bold',
                       }}>{initials}</div>}
                 <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 18, fontWeight: 'bold' }}>{me.name || me.email}</div>
-                    {me.home_city && <div style={{ fontSize: 13, color: '#6b7280' }}>📍 {me.home_city}</div>}
-                    <div style={{ fontSize: 12, color: '#9ca3af' }}>{t('profile.memberSince', { date: memberSince })}</div>
+                    {me.home_city && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>📍 {me.home_city}</div>}
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('profile.memberSince', { date: memberSince })}</div>
                 </div>
                 <div>
                     <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
                         onChange={e => onAvatarPick(e.target.files?.[0])} />
                     <button onClick={() => fileRef.current?.click()} disabled={avatarBusy}
-                        style={{ padding: '6px 12px', border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                        style={{ padding: '6px 12px', border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
                         {avatarBusy ? t('profile.uploading') : t('profile.changePhoto')}
                     </button>
                 </div>
@@ -177,23 +177,23 @@ export default function Profile() {
             <div style={card}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{t('profile.personalData')}</h3>
                 <form onSubmit={saveProfile}>
-                    <label style={{ fontSize: 13, color: '#6b7280' }}>{t('auth.email')}
-                        <input value={me.email} readOnly disabled style={{ ...inputStyle, background: '#f9fafb' }} />
+                    <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('auth.email')}
+                        <input value={me.email} readOnly disabled style={{ ...inputStyle, background: 'var(--surface)' }} />
                     </label>
-                    <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginTop: 10 }}>{t('profile.name')}
+                    <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginTop: 10 }}>{t('profile.name')}
                         <input {...form.register('name')} style={inputStyle} />
                     </label>
-                    <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginTop: 10 }}>{t('profile.homeCity')}
+                    <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'block', marginTop: 10 }}>{t('profile.homeCity')}
                         <input {...form.register('home_city')} style={inputStyle} />
                     </label>
-                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 10 }}>{t('profile.travelStyle')}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 10 }}>{t('profile.travelStyle')}</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                         {TRAVEL_STYLES.map(s => (
                             <button type="button" key={s} onClick={() => toggleStyle(s)}
                                 style={{
                                     padding: '4px 10px', borderRadius: 16, fontSize: 12, cursor: 'pointer',
-                                    border: `1px solid ${selectedStyles.includes(s) ? '#3b82f6' : '#e5e7eb'}`,
-                                    background: selectedStyles.includes(s) ? '#eff6ff' : 'white',
+                                    border: `1px solid ${selectedStyles.includes(s) ? 'var(--accent)' : 'var(--border)'}`,
+                                    background: selectedStyles.includes(s) ? 'var(--surface)' : 'var(--surface-raised)',
                                 }}>
                                 {t(`profile.style${s.charAt(0).toUpperCase() + s.slice(1)}`)}
                             </button>
@@ -201,17 +201,17 @@ export default function Profile() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
                         <button type="submit" style={{
-                            padding: '8px 20px', background: '#3b82f6', color: 'white',
+                            padding: '8px 20px', background: 'var(--accent)', color: 'var(--surface)',
                             border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
                             {t('common.save')}
                         </button>
-                        {formMsg && <span style={{ fontSize: 13, color: formMsg === '✓' ? '#10b981' : 'red' }}>{formMsg}</span>}
+                        {formMsg && <span style={{ fontSize: 13, color: formMsg === '✓' ? 'var(--accent)' : 'var(--accent-hover)' }}>{formMsg}</span>}
                     </div>
                 </form>
 
                 {/* Смена пароля — только у локальных аккаунтов */}
                 {me.has_password && (
-                    <form onSubmit={savePassword} style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
+                    <form onSubmit={savePassword} style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--surface)' }}>
                         <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>{t('profile.changePassword')}</h4>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <input type="password" placeholder={t('profile.oldPassword')}
@@ -221,15 +221,15 @@ export default function Profile() {
                                 {...pwdForm.register('new_password')}
                                 style={{ ...inputStyle, width: 'auto', flex: 1, minWidth: 140, marginTop: 0 }} />
                             <button type="submit" style={{
-                                padding: '8px 16px', background: 'white', color: '#374151',
-                                border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                                padding: '8px 16px', background: 'var(--surface-raised)', color: 'var(--text-primary)',
+                                border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
                                 {t('common.save')}
                             </button>
                         </div>
                         {pwdForm.formState.errors.new_password && (
-                            <p style={{ color: 'red', fontSize: 12, margin: '6px 0 0' }}>min 8</p>
+                            <p style={{ color: 'var(--accent)', fontSize: 12, margin: '6px 0 0' }}>min 8</p>
                         )}
-                        {pwdMsg && <p style={{ fontSize: 13, margin: '6px 0 0', color: pwdMsg === t('profile.passwordChanged') ? '#10b981' : 'red' }}>{pwdMsg}</p>}
+                        {pwdMsg && <p style={{ fontSize: 13, margin: '6px 0 0', color: pwdMsg === t('profile.passwordChanged') ? 'var(--accent)' : 'var(--accent-hover)' }}>{pwdMsg}</p>}
                     </form>
                 )}
             </div>
@@ -244,9 +244,9 @@ export default function Profile() {
                         ['statsLikesGiven', me.stats.likes_given],
                         ['statsLikesReceived', me.stats.likes_received],
                     ] as const).map(([key, val]) => (
-                        <div key={key} style={{ background: '#f9fafb', borderRadius: 8, padding: 12, textAlign: 'center' }}>
+                        <div key={key} style={{ background: 'var(--surface)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
                             <div style={{ fontSize: 22, fontWeight: 'bold' }}>{val}</div>
-                            <div style={{ fontSize: 12, color: '#6b7280' }}>{t(`profile.${key}`)}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t(`profile.${key}`)}</div>
                         </div>
                     ))}
                 </div>
@@ -258,10 +258,10 @@ export default function Profile() {
                 {myTrips && myTrips.length > 0
                     ? <TripCards trips={myTrips} onOpen={id => navigate(`/trips/${id}`)} />
                     : (
-                        <div style={{ textAlign: 'center', color: '#9ca3af', padding: 16 }}>
+                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 16 }}>
                             {t('profile.noTrips')}<br />
                             <button onClick={() => navigate('/discover')} style={{
-                                marginTop: 8, padding: '6px 14px', background: '#3b82f6', color: 'white',
+                                marginTop: 8, padding: '6px 14px', background: 'var(--accent)', color: 'var(--surface)',
                                 border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
                                 {t('profile.createTrip')}
                             </button>
@@ -274,7 +274,7 @@ export default function Profile() {
                 <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{t('profile.likedTrips')}</h3>
                 {liked && liked.length > 0
                     ? <TripCards trips={liked} onOpen={id => navigate(`/trips/${id}`)} />
-                    : <div style={{ color: '#9ca3af', fontSize: 13 }}>{t('profile.noLiked')}</div>}
+                    : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('profile.noLiked')}</div>}
             </div>
 
             {/* Рекомендации (S5) — внизу страницы */}
@@ -283,21 +283,21 @@ export default function Profile() {
                 {recommended && recommended.length > 0 ? (
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         {recommended.map(trip => (
-                            <div key={trip.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                            <div key={trip.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
                                 <strong style={{ fontSize: 13 }}>{trip.title}</strong>
-                                {trip.city && <div style={{ fontSize: 12, color: '#6b7280' }}>{trip.city}</div>}
+                                {trip.city && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{trip.city}</div>}
                                 <button onClick={async () => {
                                     const copy = await cloneTrip(trip.id)
                                     navigate(`/trips/${copy.id}`)
                                 }} style={{
-                                    marginTop: 6, padding: '4px 10px', background: '#3b82f6', color: 'white',
+                                    marginTop: 6, padding: '4px 10px', background: 'var(--accent)', color: 'var(--surface)',
                                     border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
                                     {t('trip.clone')}
                                 </button>
                             </div>
                         ))}
                     </div>
-                ) : <div style={{ color: '#9ca3af', fontSize: 13 }}>{t('profile.recommendedEmpty')}</div>}
+                ) : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('profile.recommendedEmpty')}</div>}
             </div>
         </div>
     )
