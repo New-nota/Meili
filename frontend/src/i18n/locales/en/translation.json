@@ -27,7 +27,12 @@
     "email": "Email",
     "password": "Password",
     "invalidCredentials": "Invalid email or password",
-    "googleSignIn": "Sign in with Google"
+    "googleSignIn": "Sign in with Google",
+    "signUp": "Sign up",
+    "nameOptional": "Name (optional)",
+    "passwordMin": "Password must be at least 8 characters",
+    "noAccount": "No account? Sign up",
+    "haveAccount": "Already have an account? Sign in"
   },
   "trip": {
     "route": "Route",
@@ -201,6 +206,7 @@
     "day_locations_missing": "Day start/finish locations are not set",
     "day_no_stops": "The day has no stops",
     "day_has_stops": "Move stops out of the day being removed first",
-    "location_in_use": "Location is used by a trip day"
+    "location_in_use": "Location is used by a trip day",
+    "email_taken": "This email is already registered"
   }
 }

@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from uuid import UUID
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
+    # минимум 8 символов — согласовано со сменой пароля в профиле (S9)
+    password: str = Field(min_length=8)
     name: str | None = None
 
 class LoginRequest(BaseModel):

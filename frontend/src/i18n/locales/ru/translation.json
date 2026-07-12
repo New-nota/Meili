@@ -27,7 +27,12 @@
     "email": "Email",
     "password": "Пароль",
     "invalidCredentials": "Неверный email или пароль",
-    "googleSignIn": "Войти через Google"
+    "googleSignIn": "Войти через Google",
+    "signUp": "Регистрация",
+    "nameOptional": "Имя (опционально)",
+    "passwordMin": "Пароль — минимум 8 символов",
+    "noAccount": "Нет аккаунта? Зарегистрируйтесь",
+    "haveAccount": "Уже есть аккаунт? Войти"
   },
   "trip": {
     "route": "Маршрут",
@@ -203,6 +208,7 @@
     "day_locations_missing": "У дня не заданы точки старта/финиша",
     "day_no_stops": "В дне нет остановок",
     "day_has_stops": "Сначала перенеси стопы из удаляемого дня",
-    "location_in_use": "Локация используется днём поездки"
+    "location_in_use": "Локация используется днём поездки",
+    "email_taken": "Этот email уже зарегистрирован"
   }
 }

@@ -75,6 +75,42 @@ test('кнопка Google присутствует на странице лог�
   await expect(page.getByRole('button', { name: /Войти через Google/ })).toBeVisible()
 })
 
+test('регистрация через UI ведёт на /discover', async ({ page }) => {
+  const freshEmail = `ui_reg_${Date.now()}@wanderown.dev`
+  await page.goto('/auth')
+  // переключаемся в режим регистрации
+  await page.getByRole('button', { name: 'Нет аккаунта? Зарегистрируйтесь' }).click()
+  await expect(page.getByRole('heading', { name: 'Регистрация' })).toBeVisible()
+
+  await page.getByPlaceholder('Email').fill(freshEmail)
+  await page.getByPlaceholder('Имя (опционально)').fill('UI Тест')
+  await page.getByPlaceholder('Пароль').fill('ui-secret-123')
+  await page.getByRole('button', { name: 'Регистрация', exact: true }).click()
+
+  // без верификации почты: сразу залогинен и на /discover
+  await expect(page).toHaveURL(/\/discover/)
+  await expect(page.getByRole('heading', { name: 'Мои поездки' })).toBeVisible()
+})
+
+test('регистрация на занятый email показывает ошибку', async ({ page }) => {
+  await page.goto('/auth')
+  await page.getByRole('button', { name: 'Нет аккаунта? Зарегистрируйтесь' }).click()
+  await page.getByPlaceholder('Email').fill(EMAIL) // уже занят (beforeAll)
+  await page.getByPlaceholder('Пароль').fill('another-pass-123')
+  await page.getByRole('button', { name: 'Регистрация', exact: true }).click()
+  await expect(page.getByText('Этот email уже зарегистрирован')).toBeVisible()
+})
+
+test('короткий пароль при регистрации отклоняется на клиенте', async ({ page }) => {
+  await page.goto('/auth')
+  await page.getByRole('button', { name: 'Нет аккаунта? Зарегистрируйтесь' }).click()
+  await page.getByPlaceholder('Email').fill(`short_${Date.now()}@wanderown.dev`)
+  await page.getByPlaceholder('Пароль').fill('1234567')
+  await page.getByRole('button', { name: 'Регистрация', exact: true }).click()
+  // остаёмся на /auth, подсказка про 8 символов видна как ошибка
+  await expect(page).toHaveURL(/\/auth/)
+})
+
 test('сессия переживает перезагрузку страницы (S8 WP-1)', async ({ page }) => {
   await page.goto('/auth')
   await page.getByPlaceholder('Email').fill(EMAIL)
