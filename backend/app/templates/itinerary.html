@@ -29,7 +29,8 @@
 
     {% for day in days %}
     <div class="day">
-        <h2>День {{ day.day.day_index + 1 }} · {{ day.day.date }}</h2>
+        {# S16: у дня может быть имя; иначе дефолтная подпись из position #}
+        <h2>{{ day.day.title or "День " ~ day.day.position }} · {{ day.day.date }}</h2>
         {% if day.start_location %}
         <div class="depot">🏁 Старт: {{ day.start_location.name or day.start_location.address }} в {{ day.day.start_time.strftime('%H:%M') }}</div>
         {% endif %}

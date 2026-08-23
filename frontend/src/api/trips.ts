@@ -1,4 +1,5 @@
-import type { Stop, Trip } from '../types/index'
+import type { Stop, TransportMode, Trip } from '../types/index'
+import type { TripDay } from './days'
 import { apiFetch, API_URL, getAccessToken } from "./client"
 
 
@@ -6,39 +7,35 @@ import { apiFetch, API_URL, getAccessToken } from "./client"
 
 
 
-export const getStops = async (tripId: string): Promise<Stop[]> => 
+export const getStops = async (tripId: string): Promise<Stop[]> =>
     apiFetch<Stop[]>(`/trips/${tripId}/stops`)
 
-type ValhallaRouteResponse = {trip: {legs: { shape: string}[]}}
-
-// маршрут по произвольным точкам (S8 WP-3: старт дня + стопы + финиш дня)
-export const getValhallaRouteForPoints = async (
-    locations: {lat: number, lon: number}[],
-    costing: string = 'pedestrian',
-): Promise<number[][]> => {
-    if (locations.length < 2) return []
-    let data: ValhallaRouteResponse
-    try {
-        data = await apiFetch<ValhallaRouteResponse>('/route',{
-            method: 'POST',
-            body: JSON.stringify({locations, costing, directions_options:{units: 'km'} }),
-        })
-    } catch {
-        return []
-    }
-    const allCoords: number[][] = []
-    for (const leg of data.trip.legs){
-        allCoords.push(...decodePolyline(leg.shape))
-    }
-    return allCoords
+// S16 §1.6: маршрут дня по перегонам — у каждого свой транспорт и геометрия
+export interface RouteLeg {
+    from_stop_id: string | null   // null = старт из точки отправления дня
+    to_stop_id: string | null     // null = финиш
+    duration_seconds: number
+    distance_meters: number
+    costing: TransportMode
+    geometry: string              // encoded polyline
 }
 
-export const getValhallaRoute = (stops: Stop[], costing: string = 'pedestrian') =>
-    getValhallaRouteForPoints(
-        stops.filter(s => s.place_lat && s.place_lon)
-            .map(s => ({lat: s.place_lat!, lon: s.place_lon!})),
-        costing,
-    )
+export interface DayRoute {
+    day_id: string
+    legs: RouteLeg[]
+    total_duration_seconds: number
+    total_distance_meters: number
+}
+
+export const getDayRoute = (tripId: string, dayId: string) =>
+    apiFetch<DayRoute>(`/trips/${tripId}/route?day_id=${dayId}`)
+
+/** Координаты всей линии дня — склейка геометрии перегонов. */
+export const legsToCoordinates = (legs: RouteLeg[]): number[][] =>
+    legs.flatMap(leg => decodePolyline(leg.geometry))
+
+// S16: маршрут строится только через GET /trips/{id}/route (перегоны с
+// собственным costing) — прокси-хелперов по произвольным точкам больше нет.
 
 function decodePolyline(encoded: string, precision = 6): number[][] {
     const factor = Math.pow(10, precision)
@@ -87,8 +84,13 @@ export async function updateStopTransport(tripId: string, stopId: string, transp
     await updateStop(tripId, stopId, {transport_to_next: transport})
 }
 
-export async function getTrip(tripId:string): Promise<Trip> {
-    return apiFetch<Trip>(`/trips/${tripId}`) 
+// S16 §1.4: карточка поездки — дни с вложенными остановками
+export interface TripDetail extends Trip {
+    days: TripDay[]
+}
+
+export async function getTrip(tripId:string): Promise<TripDetail> {
+    return apiFetch<TripDetail>(`/trips/${tripId}`)
 }
 
 export async function updateTrip(tripId: string, data: Record<string, unknown>): Promise<Trip> {
@@ -103,6 +105,14 @@ export async function updateTrip(tripId: string, data: Record<string, unknown>):
 export async function cloneTrip(tripId:string): Promise<Trip> {
     return apiFetch<Trip>(`/trips/${tripId}/clone`, {
         method: 'POST'})
+}
+
+// S13: лайк/анлайк чужой публичной поездки (превью)
+export async function likeTrip(tripId: string): Promise<void> {
+    await apiFetch(`/trips/${tripId}/like`, { method: 'POST' })
+}
+export async function unlikeTrip(tripId: string): Promise<void> {
+    await apiFetch(`/trips/${tripId}/like`, { method: 'DELETE' })
 }
 // S9 WP-B: скачать экспорт (PDF/ICS) как файл
 export async function downloadExport(tripId: string, kind: 'pdf' | 'ics'): Promise<void> {

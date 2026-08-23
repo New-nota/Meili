@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.place import Place
 from app.models.user import User
-from app.schemas.places import PlaceCreate, PlaceResponse, VisitedPlaceRequest
+from app.schemas.places import PlaceCreate, PlaceResponse, PlaceUpdate, VisitedPlaceRequest
 from app.services.places import create_place, place_to_dict
 from app.services.overpass import search_places_overpass
 from app.models.social import UserVisitedPlace
@@ -35,6 +35,26 @@ async def get_place(
     place = result.scalar_one_or_none()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
+    return place_to_dict(place)
+
+@router.patch("/{place_id}", response_model=PlaceResponse)
+async def update_place(
+    place_id: UUID,
+    data: PlaceUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    # ТЗ-E: ручное проставление цен (реальный сид 2GIS — отдельная задача).
+    # Авто-оценки существующих стопов НЕ пересчитываются — для этого есть
+    # POST /trips/{id}/recompute-estimates
+    result = await db.execute(select(Place).where(Place.id == place_id))
+    place = result.scalar_one_or_none()
+    if not place:
+        raise HTTPException(status_code=404, detail="Place not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(place, field, value)
+    await db.commit()
+    await db.refresh(place)
     return place_to_dict(place)
 
 @router.get("/", response_model=list[PlaceResponse])
@@ -75,11 +95,30 @@ async def mark_visited(
     current_user: User = Depends(get_current_user)
 ):
     mark = pg_insert(UserVisitedPlace).values(
-        user_id=current_user.id, place_id=place_id, rating=data.rating, visited_at=datetime.utcnow()
+        user_id=current_user.id, place_id=place_id, rating=data.rating,
+        comment=data.comment, visited_at=datetime.utcnow()
     ).on_conflict_do_update(
-        index_elements=['user_id', 'place_id'],# по этой паре смотрим конфликт 
-        set_={'rating': data.rating, 'visited_at': datetime.utcnow() }
+        index_elements=['user_id', 'place_id'],# по этой паре смотрим конфликт
+        set_={'rating': data.rating, 'comment': data.comment, 'visited_at': datetime.utcnow()}
     )
     await db.execute(mark)
     await db.commit()
+
+
+@router.delete("/{place_id}/visited", status_code=204)
+async def unmark_visited(
+    place_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # S15: снять отметку «посещено» (вместе с оценкой и комментарием)
+    result = await db.execute(
+        sql_delete(UserVisitedPlace).where(
+            UserVisitedPlace.user_id == current_user.id,
+            UserVisitedPlace.place_id == place_id,
+        )
+    )
+    await db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Visited mark not found")
 

@@ -18,6 +18,24 @@ services:
     env_file:
       - ./backend/.env
 
+  # ТЗ-Meili M5.3: фоновая работа ассистента (суммаризация истории).
+  # Интерактивный диалог живёт в backend (SSE в запросе), фон — здесь.
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+      - VALHALLA_URL=http://valhalla:8002
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - ./backend/.env
+
   postgres:
     image: postgis/postgis:15-3.3-alpine
     restart: unless-stopped

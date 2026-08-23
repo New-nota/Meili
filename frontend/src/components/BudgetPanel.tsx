@@ -2,24 +2,28 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
-    addExpense, deleteExpense, getBudget, getExpenses, updateTripBudget,
-    type Expense,
+    addExpense, deleteExpense, getBudget, getExpenses, recomputeEstimates,
+    updateTripBudget, type Expense,
 } from '../api/budget'
 import type { TripDay } from '../api/days'
+import { formatMoney } from '../utils/money'
+import { dayLabelShort } from '../utils/dayLabel'
 
 // Вкладка «Бюджет» (S9 WP-A): лимит + прогресс, разбивки, статьи расходов.
 // Живое обновление: мутации инвалидируют ['budget', tripId] (TanStack Query).
 interface Props {
     tripId: string
     days: TripDay[]
+    onStopsChanged?: () => void // ТЗ-E: recompute менял суммы стопов — перезагрузить их
 }
 
 const CATEGORIES = ['lodging', 'transport', 'food', 'other'] as const
 
-export default function BudgetPanel({ tripId, days }: Props) {
+export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
     const { t, i18n } = useTranslation()
     const queryClient = useQueryClient()
     const [limitInput, setLimitInput] = useState<string | null>(null)
+    const [recomputing, setRecomputing] = useState(false)
     const [form, setForm] = useState({
         category: 'lodging' as Expense['category'],
         title: '', amount: '', day_id: '',
@@ -35,9 +39,7 @@ export default function BudgetPanel({ tripId, days }: Props) {
     if (!budget) return <div style={{ padding: 16 }}>{t('common.loading')}</div>
 
     const fmt = (v: string | null) =>
-        v === null ? '—' : new Intl.NumberFormat(i18n.language, {
-            style: 'currency', currency: budget.currency,
-        }).format(parseFloat(v))
+        v === null ? '—' : formatMoney(v, budget.currency, i18n.language)
 
     const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ['budget', tripId] })
@@ -48,6 +50,18 @@ export default function BudgetPanel({ tripId, days }: Props) {
         await updateTripBudget(tripId, { budget_total: limitInput || null })
         setLimitInput(null)
         invalidate()
+    }
+
+    const refreshEstimates = async () => {
+        // ТЗ-E: ручной пересчёт авто-оценок (после обновления цен мест)
+        setRecomputing(true)
+        try {
+            await recomputeEstimates(tripId)
+            invalidate()
+            onStopsChanged?.()
+        } finally {
+            setRecomputing(false)
+        }
     }
 
     const submitExpense = async () => {
@@ -69,7 +83,7 @@ export default function BudgetPanel({ tripId, days }: Props) {
 
     const dayLabel = (dayId: string) => {
         const d = days.find(x => x.id === dayId)
-        return d ? t('day.dayShort', { num: d.day_index + 1 }) : t('budget.wholeTrip')
+        return d ? dayLabelShort(d, t) : t('budget.wholeTrip')
     }
 
     const row: React.CSSProperties = {
@@ -117,6 +131,18 @@ export default function BudgetPanel({ tripId, days }: Props) {
                     ⚠ {t('budget.overBudget')}
                 </div>
             )}
+
+            {/* ТЗ-E: пересчитать авто-оценки из актуальных цен мест */}
+            <button onClick={refreshEstimates} disabled={recomputing}
+                title={t('budget.approxHint')}
+                style={{
+                    marginTop: 6, padding: '4px 10px', fontSize: 12,
+                    background: 'var(--surface-raised)', color: 'var(--text-primary)',
+                    border: '1px solid var(--border)', borderRadius: 6,
+                    cursor: recomputing ? 'wait' : 'pointer',
+                }}>
+                ↻ {t('budget.refreshEstimates')}
+            </button>
 
             {/* Разбивка по категориям */}
             <h4 style={{ margin: '14px 0 6px', fontSize: 13 }}>{t('budget.byCategory')}</h4>
@@ -166,7 +192,7 @@ export default function BudgetPanel({ tripId, days }: Props) {
                         style={{ flex: 1, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'var(--surface-raised)' }}>
                         <option value="">{t('budget.wholeTrip')}</option>
                         {days.map(d => (
-                            <option key={d.id} value={d.id}>{t('day.dayShort', { num: d.day_index + 1 })}</option>
+                            <option key={d.id} value={d.id}>{dayLabelShort(d, t)}</option>
                         ))}
                     </select>
                 </div>

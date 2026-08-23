@@ -1,9 +1,12 @@
-import {useQuery, useMutation} from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { getRecommendedTrips } from "../api/recommendations"
 import { useNavigate } from "react-router-dom"
-import { cloneTrip } from "../api/trips"
+import RecommendedTripCard from "./trip/RecommendedTripCard"
 
+// S13: клик по карточке чужой поездки открывает превью (readOnly-планировщик),
+// где лайк/копирование живут в шапке. Кнопку «Клонировать» с карточки убрали.
+// S16 §2.5: карточка — общая с блоком «Похожие выбирают» в профиле.
 export function RecommendedTrips({ city }: {city?: string}) {
     const { t } = useTranslation()
     const navigate = useNavigate()
@@ -13,32 +16,26 @@ export function RecommendedTrips({ city }: {city?: string}) {
         queryFn: () => getRecommendedTrips(city),
     })
 
-    const cloneMutation = useMutation({
-        mutationFn: (tripId: string) => cloneTrip(tripId),
-        onSuccess: (newTrip) => {navigate(`/trips/${newTrip.id}`)},
-    })
-
-    if (isLoading) return <p>{t('trip.recommendedLoading')}</p>
-    if (isError) return <p>{t('trip.recommendedError')}</p>
-    if(!trips || trips.length === 0) return null;
+    // S17: секция рендерится всегда — она отбивает нижнюю часть Discover,
+    // и пустой заголовок без подписи выглядел бы поломкой
+    const muted: React.CSSProperties = { fontSize: 13, color: 'var(--text-muted)' }
 
     return (
-        <section style={{marginTop: 24}}>
-            <h2>{t('trip.recommendedTitle')}</h2>
-            <div style={{display: "flex", gap: 12, flexWrap: "wrap"}}>
-                {trips.map((trip) => (
-                    <div key={trip.id} style={{ border: "1px solid var(--border)", padding: 12, borderRadius: 8}}>
-                        <h3>{trip.title}</h3>
-                        <p>{trip.city}</p>
-                        <button 
-                        onClick={() => cloneMutation.mutate(trip.id)}
-                        disabled={cloneMutation.isPending}
-                        style={{padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius:6, cursor: "pointer"}}>
-                            {cloneMutation.isPending ? t('trip.cloning') : t('trip.clone')}
-                        </button>
-                    </div>
-                ))}
-            </div>
+        <section style={{marginTop: 16}}>
+            <h2 style={{fontSize: 17, margin: '0 0 10px'}}>{t('trip.recommendationsTitle')}</h2>
+            {isLoading && <p style={muted}>{t('trip.recommendedLoading')}</p>}
+            {isError && <p style={muted}>{t('trip.recommendedError')}</p>}
+            {!isLoading && !isError && (!trips || trips.length === 0) && (
+                <p style={muted}>{t('trip.recommendationsEmpty')}</p>
+            )}
+            {trips && trips.length > 0 && (
+                <div className="recommended-grid">
+                    {trips.map((trip) => (
+                        <RecommendedTripCard key={trip.id} trip={trip}
+                            onOpen={id => navigate(`/trips/${id}/preview`)} />
+                    ))}
+                </div>
+            )}
         </section>
     );
 }

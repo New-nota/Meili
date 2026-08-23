@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { apiFetch, API_URL, setAccessToken, ApiError } from "../api/client"
 import LanguageSwitcher from "../components/LanguageSwitcher"
-import Logo from "../components/Logo"
+import HermodLogo from "../components/HermodLogo"
 
-// Вход и регистрация (без верификации почты — она отложена; бэкенд
-// сразу выдаёт access + refresh-cookie, письмо-подтверждение — позже).
-type Mode = 'login' | 'register'
+// Вход и регистрация. S14: жёсткий гейт — register шлёт 6-значный код на
+// почту (юзер в БД не создаётся), токены выдаёт только /auth/verify.
+type Mode = 'login' | 'register' | 'verify'
+
+const RESEND_COOLDOWN_S = 60
 
 export default function Auth() {
     const { t } = useTranslation()
@@ -15,8 +17,12 @@ export default function Auth() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [name, setName] = useState('')
+    const [code, setCode] = useState('')
     const [error, setError] = useState<string | null>(null)
     const [busy, setBusy] = useState(false)
+    // отсчёт до следующего «выслать заново»
+    const [resendIn, setResendIn] = useState(0)
+    const timerRef = useRef<number | undefined>(undefined)
     const navigate = useNavigate()
 
     // возврат из Google OAuth: бэкенд редиректит на /auth#token=<jwt>
@@ -29,9 +35,31 @@ export default function Auth() {
         }
     }, [navigate])
 
+    useEffect(() => () => window.clearInterval(timerRef.current), [])
+
+    const startResendTimer = () => {
+        setResendIn(RESEND_COOLDOWN_S)
+        window.clearInterval(timerRef.current)
+        timerRef.current = window.setInterval(() => {
+            setResendIn(prev => {
+                if (prev <= 1) { window.clearInterval(timerRef.current); return 0 }
+                return prev - 1
+            })
+        }, 1000)
+    }
+
     const switchMode = (next: Mode) => {
         setMode(next)
         setError(null)
+    }
+
+    // машинный код ошибки с бэка -> локализованный текст (стиль S9 WP-C)
+    const showApiError = (e: unknown) => {
+        const detail = e instanceof ApiError
+            ? (e.body as { detail?: string })?.detail : undefined
+        setError(typeof detail === 'string'
+            ? t(`errors.${detail}`, t('common.error'))
+            : t('common.error'))
     }
 
     const handleSubmit = async () => {
@@ -42,29 +70,65 @@ export default function Auth() {
         }
         setBusy(true)
         try {
-            const path = mode === 'login' ? '/auth/login' : '/auth/register'
-            const body = mode === 'login'
-                ? { email, password }
-                : { email, password, name: name || null }
-            const data = await apiFetch<{ access_token: string }>(path, {
-                method: 'POST',
-                body: JSON.stringify(body),
-            })
-            setAccessToken(data.access_token)
-            navigate('/discover')
+            if (mode === 'login') {
+                const data = await apiFetch<{ access_token: string }>('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password }),
+                })
+                setAccessToken(data.access_token)
+                navigate('/discover')
+            } else {
+                // S14: register -> код на почту, переходим к вводу кода
+                await apiFetch('/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password, name: name || null }),
+                })
+                setCode('')
+                switchMode('verify')
+                startResendTimer()
+            }
         } catch (e) {
             if (mode === 'login') {
                 setError(t('auth.invalidCredentials'))
             } else {
-                // регистрация: код с бэка (email_taken) или общая ошибка
-                const code = e instanceof ApiError
-                    ? (e.body as { detail?: string })?.detail : undefined
-                setError(typeof code === 'string'
-                    ? t(`errors.${code}`, t('common.error'))
-                    : t('common.error'))
+                showApiError(e)
             }
         } finally {
             setBusy(false)
+        }
+    }
+
+    const handleVerify = async () => {
+        if (code.length !== 6) {
+            setError(t('auth.codeSixDigits'))
+            return
+        }
+        setError(null)
+        setBusy(true)
+        try {
+            const data = await apiFetch<{ access_token: string }>('/auth/verify', {
+                method: 'POST',
+                body: JSON.stringify({ email, code }),
+            })
+            setAccessToken(data.access_token)
+            navigate('/discover')
+        } catch (e) {
+            showApiError(e)
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const handleResend = async () => {
+        setError(null)
+        try {
+            await apiFetch('/auth/resend-code', {
+                method: 'POST',
+                body: JSON.stringify({ email }),
+            })
+            startResendTimer()
+        } catch (e) {
+            showApiError(e)
         }
     }
 
@@ -74,12 +138,59 @@ export default function Auth() {
         background: 'var(--surface-raised)',
     }
 
+    // --- Экран ввода кода (S14) ---------------------------------------------
+    if (mode === 'verify') {
+        return (
+            <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80, gap: 12}}>
+                <div style={{position: 'absolute', top: 16, right: 16}}>
+                    <LanguageSwitcher />
+                </div>
+                <HermodLogo size={64} withWordmark vertical />
+                <h2>{t('auth.verifyTitle')}</h2>
+                <p style={{fontSize: 13, color: 'var(--text-muted)', margin: 0, maxWidth: 300, textAlign: 'center'}}>
+                    {t('auth.codeSentTo', { email })}
+                </p>
+
+                <input placeholder="••••••" value={code} inputMode="numeric" autoFocus
+                    onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onKeyDown={e => e.key === 'Enter' && handleVerify()}
+                    style={{...inputStyle, textAlign: 'center', letterSpacing: 8,
+                        fontSize: 20, fontVariantNumeric: 'tabular-nums', width: 200}} />
+
+                {error && <p style={{color: 'var(--accent)', fontSize: 13}}>{error}</p>}
+
+                <button onClick={handleVerify} disabled={busy}
+                    style={{padding: '8px 24px', background: busy ? 'var(--text-muted)' : 'var(--accent)',
+                        color: 'var(--surface)', border: 'none', borderRadius: 'var(--radius)',
+                        cursor: busy ? 'wait' : 'pointer', fontWeight: 500}}>
+                    {t('auth.confirm')}
+                </button>
+
+                <button onClick={handleResend} disabled={resendIn > 0}
+                    style={{background: 'none', border: 'none',
+                        cursor: resendIn > 0 ? 'default' : 'pointer',
+                        color: resendIn > 0 ? 'var(--text-muted)' : 'var(--accent)',
+                        fontSize: 13, padding: 0}}>
+                    {resendIn > 0
+                        ? t('auth.resendIn', { s: resendIn })
+                        : t('auth.resend')}
+                </button>
+
+                <button onClick={() => switchMode('register')}
+                    style={{background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-muted)', fontSize: 13, padding: 0}}>
+                    {t('common.back')}
+                </button>
+            </div>
+        )
+    }
+
     return (
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80, gap: 12}}>
             <div style={{position: 'absolute', top: 16, right: 16}}>
                 <LanguageSwitcher />
             </div>
-            <Logo size={64} withWordmark vertical />
+            <HermodLogo size={64} withWordmark vertical />
             <h2>{mode === 'login' ? t('auth.signIn') : t('auth.signUp')}</h2>
 
             <input placeholder={t('auth.email')} value={email}

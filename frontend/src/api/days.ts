@@ -14,12 +14,14 @@ export interface TripLocation {
 export interface TripDay {
     id: string
     date: string
-    day_index: number
+    position: number          // S16: 1-based
+    title: string | null      // S16: null -> подпись «День {position}» рисует UI
     start_location: TripLocation | null
     end_location: TripLocation | null
     start_time: string
     end_time: string
     stops: Stop[]
+    stops_count: number
 }
 
 export interface OptimizeResult {
@@ -45,6 +47,7 @@ export const updateDay = (
     tripId: string,
     dayId: string,
     data: Partial<{
+        title: string | null    // S16: пустая строка/пробелы -> сброс к «День N»
         start_location_id: string
         end_location_id: string
         start_time: string
@@ -55,6 +58,10 @@ export const updateDay = (
     body: JSON.stringify(data),
 })
 
+// S16 §1.5: переименование дня (тот же PATCH, отдельная точка входа для UI)
+export const renameDay = (tripId: string, dayId: string, title: string | null) =>
+    updateDay(tripId, dayId, { title })
+
 export const optimizeDay = (
     tripId: string,
     dayId: string,
@@ -64,3 +71,11 @@ export const optimizeDay = (
     method: 'POST',
     body: JSON.stringify({ mode, time_budget_minutes: timeBudgetMinutes ?? null }),
 })
+
+// S16 §1.5: реордер дней — новый порядок id всех дней поездки. Переставляется
+// содержимое (день едет со своим именем и стопами), даты остаются по возрастанию.
+export const reorderDays = (tripId: string, dayIds: string[]) =>
+    apiFetch<TripDay[]>(`/trips/${tripId}/days/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ day_ids: dayIds }),
+    })

@@ -1,6 +1,6 @@
 """Экспорт календаря .ics (S9 WP-B): VEVENT на каждый included-стоп.
 
-DTSTART = visit_date + visit_time в таймзоне поездки; без visit_time —
+DTSTART = дата дня + visit_time в таймзоне поездки; без visit_time —
 start_time дня. Длительность из duration_minutes (дефолт 60 минут).
 """
 from datetime import datetime, timedelta
@@ -24,9 +24,9 @@ async def render_trip_ics(db: AsyncSession, trip: Trip) -> str:
         day = day_block["day"]
         for item in day_block["stops"]:
             stop, place = item["stop"], item["place"]
-            date = stop.visit_date or day.date
+            # S16: дата стопа = дата его дня (visit_date снесён)
             time_ = stop.visit_time or day.start_time
-            begin = datetime.combine(date, time_, tzinfo=tz)
+            begin = datetime.combine(day.date, time_, tzinfo=tz)
             minutes = stop.duration_minutes or DEFAULT_EVENT_MINUTES
 
             event = Event(

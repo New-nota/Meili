@@ -4,3 +4,6 @@ from app.models.trip import Trip, TripStop, TripLocation, TripDay, TripExpense
 from app.core.database import Base
 from app.models.social import TripLike, UserVisitedPlace
 from app.models.booking import Booking
+from app.models.conversation import Conversation
+from app.models.message import Message
+from app.models.meili_plan import MeiliPlan

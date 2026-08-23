@@ -1,4 +1,5 @@
 """S8 WP-4: selective TSP через API — бюджет, must-visit, возврат в full."""
+from tests.integration.conftest import D1
 from app.services import optimizer as optimizer_module
 
 
@@ -13,7 +14,7 @@ async def _setup_day_with_stops(client, headers, monkeypatch, durations):
 
     r = await client.post(
         "/trips/",
-        json={"title": "Selective", "start_date": "2026-08-01", "end_date": "2026-08-01"},
+        json={"title": "Selective", "start_date": D1, "end_date": D1},
         headers=headers,
     )
     trip = r.json()

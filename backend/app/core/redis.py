@@ -1,3 +1,6 @@
+import json
+import time
+
 import redis.asyncio as aioredis
 from app.core.config import settings
 
@@ -37,3 +40,55 @@ async def revoke_all_refresh(user_id: str) -> int:
         await redis_client.delete(key)
         revoked += 1
     return revoked
+
+
+# --- Pending-регистрация по коду на почту (S14) ------------------------------
+# До подтверждения кода User в БД НЕ создаём: черновик регистрации живёт здесь
+# (TTL 1ч, сама протухнет — фоновой чистки нет). Код валиден 10 мин внутри
+# черновика; попытки ввода ограничены. Resend — с кулдауном 60с.
+
+PENDING_REG_TTL = 3600   # 1 час — живучесть черновика регистрации
+CODE_TTL = 600           # 10 мин — валидность конкретного кода
+RESEND_COOLDOWN = 60     # сек между «выслать заново»
+MAX_CODE_ATTEMPTS = 5
+
+
+def _pending_key(email: str) -> str:
+    return f"pending_reg:{email.lower()}"
+
+
+def _cooldown_key(email: str) -> str:
+    return f"reg_cooldown:{email.lower()}"
+
+
+async def store_pending_registration(email: str, password_hash: str, name: str | None, code: str) -> None:
+    """Создать/перезаписать черновик регистрации (новый код, попытки сброшены)."""
+    payload = json.dumps({
+        "password_hash": password_hash,
+        "name": name,
+        "code": code,
+        "code_expires": time.time() + CODE_TTL,
+        "attempts": 0,
+    })
+    await redis_client.set(_pending_key(email), payload, ex=PENDING_REG_TTL)
+
+
+async def get_pending_registration(email: str) -> dict | None:
+    raw = await redis_client.get(_pending_key(email))
+    return json.loads(raw) if raw else None
+
+
+async def save_pending_registration(email: str, data: dict) -> None:
+    """Перезаписать черновик, сохранив остаток TTL (счётчик попыток и т.п.)."""
+    await redis_client.set(_pending_key(email), json.dumps(data), keepttl=True)
+
+
+async def delete_pending_registration(email: str) -> None:
+    await redis_client.delete(_pending_key(email))
+
+
+async def start_resend_cooldown(email: str) -> bool:
+    """True — кулдаун поставлен (можно слать); False — ещё рано (уже стоит)."""
+    # SET NX EX: атомарно поставить, только если ключа нет
+    ok = await redis_client.set(_cooldown_key(email), "1", ex=RESEND_COOLDOWN, nx=True)
+    return bool(ok)

@@ -11,10 +11,12 @@
     "close": "Закрыть",
     "return": "вернуть",
     "min": "мин",
+    "hoursShort": "ч",
     "notSet": "— не задано —",
     "untitled": "Без названия",
     "search": "Поиск...",
-    "error": "Что-то пошло не так"
+    "error": "Что-то пошло не так",
+    "km": "км"
   },
   "nav": {
     "myTrips": "Мои поездки",
@@ -32,7 +34,13 @@
     "nameOptional": "Имя (опционально)",
     "passwordMin": "Пароль — минимум 8 символов",
     "noAccount": "Нет аккаунта? Зарегистрируйтесь",
-    "haveAccount": "Уже есть аккаунт? Войти"
+    "haveAccount": "Уже есть аккаунт? Войти",
+    "verifyTitle": "Подтвердите почту",
+    "codeSentTo": "Мы отправили 6-значный код на {{email}}",
+    "codeSixDigits": "Введите 6 цифр из письма",
+    "confirm": "Подтвердить",
+    "resend": "Выслать код заново",
+    "resendIn": "Выслать заново через {{s}} с"
   },
   "trip": {
     "route": "Маршрут",
@@ -66,7 +74,33 @@
     "recommendedLoading": "Загружаем рекомендации...",
     "recommendedError": "Не удалось загрузить рекомендации...",
     "clone": "Клонировать",
-    "cloning": "Клонируем..."
+    "cloning": "Клонируем...",
+    "resizePanel": "Потяните, чтобы изменить ширину панели",
+    "wizard": {
+      "title": "Новая поездка",
+      "name": "Название",
+      "city": "Город",
+      "cityPlaceholder": "Начните вводить город…",
+      "region": "Калининградская область",
+      "adults": "Взрослые",
+      "children": "Дети",
+      "ages": "Возраст детей",
+      "childN": "Ребёнок {{n}}",
+      "start": "Дата начала",
+      "end": "Дата конца",
+      "currency": "Валюта",
+      "budget": "Бюджет (необязательно)",
+      "errTitle": "Введите название поездки",
+      "errCity": "Выберите город из списка",
+      "errAdults": "Нужен хотя бы один взрослый",
+      "errAges": "Возраст ребёнка — от 0 до 17",
+      "errDates": "Укажите даты поездки",
+      "errPast": "Дата начала не может быть в прошлом",
+      "errRange": "Дата конца раньше начала",
+      "errTooLong": "Поездка длиннее {{max}} дней"
+    },
+    "recommendationsTitle": "Рекомендации",
+    "recommendationsEmpty": "Пока нечего посоветовать — загляните позже"
   },
   "day": {
     "title": "День {{num}}",
@@ -81,6 +115,7 @@
     "modeFull": "Все места",
     "modeSelective": "Максимум за время",
     "moveToDay": "Перенести в день",
+    "dragDay": "Перетащите, чтобы поменять дни местами",
     "dayShort": "Д{{num}}",
     "priorityHint": "Приоритет: обычный / важный / обязательно",
     "returnHint": "Пометить обязательным и вернуть при следующей оптимизации",
@@ -135,8 +170,25 @@
     "children_few": "{{count}} ребёнка",
     "children_many": "{{count}} детей"
   },
+  "visited": {
+    "rateTitle": "Оценка",
+    "markVisited": "Отметить посещённым",
+    "visited": "Посещено",
+    "commentPlaceholder": "Комментарий (необязательно)",
+    "surveyTitle": "Как вам день?",
+    "surveyLeft": "осталось: {{count}}",
+    "skip": "Пропустить",
+    "swipeHint": "Свайп влево — пропустить без оценки"
+  },
+  "preview": {
+    "like": "Нравится",
+    "copy": "Скопировать себе",
+    "budgetHint": "Примерная стоимость активностей чужого маршрута",
+    "noBudget": "Стоимость активностей не указана"
+  },
   "budget": {
     "title": "Бюджет",
+    "activities": "Активности",
     "limit": "Лимит",
     "noLimit": "без лимита",
     "planned": "Запланировано",
@@ -157,7 +209,13 @@
     "category_lodging": "Жильё",
     "category_transport": "Транспорт",
     "category_food": "Еда",
-    "category_other": "Прочее"
+    "category_other": "Прочее",
+    "free": "Бесплатно",
+    "noPrice": "цена не указана",
+    "approxHint": "примерно, из цен места",
+    "manualHint": "введено вручную",
+    "backToAuto": "вернуть авто",
+    "refreshEstimates": "Обновить оценки"
   },
   "profile": {
     "title": "Профиль",
@@ -177,19 +235,56 @@
     "statsVisited": "Посещено мест",
     "statsLikesGiven": "Лайков поставлено",
     "statsLikesReceived": "Лайков получено",
-    "myTrips": "Мои маршруты",
-    "noTrips": "Пока нет маршрутов",
-    "createTrip": "Создать поездку",
-    "likedTrips": "Понравившиеся маршруты",
-    "noLiked": "Пока нет понравившихся маршрутов",
-    "recommended": "Рекомендуем вам",
-    "recommendedEmpty": "Рекомендации появятся, когда наберётся история поездок и лайков",
     "styleCulture": "культура",
     "styleNature": "природа",
     "styleFood": "гастрономия",
     "styleActive": "активный отдых",
     "styleFamily": "семейный",
-    "styleNightlife": "ночная жизнь"
+    "styleNightlife": "ночная жизнь",
+    "myTrips": {
+      "title": "Мои маршруты",
+      "viewAll": "Все поездки",
+      "create": "Создать поездку",
+      "empty": {
+        "title": "Пока ни одного маршрута",
+        "subtitle": "Город, даты — маршрут соберём вместе"
+      }
+    },
+    "status": {
+      "completed": "завершён",
+      "draft": "черновик"
+    },
+    "meta": {
+      "days_one": "{{count}} день",
+      "days_few": "{{count}} дня",
+      "days_many": "{{count}} дней",
+      "stops_one": "{{count}} остановка",
+      "stops_few": "{{count}} остановки",
+      "stops_many": "{{count}} остановок",
+      "adults_one": "{{count}} взрослый",
+      "adults_few": "{{count}} взрослых",
+      "adults_many": "{{count}} взрослых",
+      "children_one": "{{count}} ребёнок",
+      "children_few": "{{count}} ребёнка",
+      "children_many": "{{count}} детей"
+    },
+    "liked": {
+      "title": "Понравившиеся",
+      "remove": "Убрать из понравившихся",
+      "removeError": "Не удалось убрать из понравившихся",
+      "empty": {
+        "title": "Здесь появятся маршруты по твоему вкусу",
+        "subtitle": "Отмечай сердечком поездки, которые нравятся"
+      }
+    },
+    "similar": {
+      "title": "Похожие выбирают",
+      "subtitle": "маршруты путешественников с похожим вкусом",
+      "likedBy_one": "нравится {{count}} путешественнику",
+      "likedBy_few": "нравится {{count}} путешественникам",
+      "likedBy_many": "нравится {{count}} путешественникам",
+      "stops": "остановок"
+    }
   },
   "export": {
     "pdf": "Скачать PDF",
@@ -209,6 +304,66 @@
     "day_no_stops": "В дне нет остановок",
     "day_has_stops": "Сначала перенеси стопы из удаляемого дня",
     "location_in_use": "Локация используется днём поездки",
-    "email_taken": "Этот email уже зарегистрирован"
+    "email_taken": "Этот email уже зарегистрирован",
+    "invalid_code": "Неверный код",
+    "code_expired": "Код истёк — вышлите новый",
+    "too_many_attempts": "Слишком много попыток — вышлите новый код",
+    "no_pending_registration": "Регистрация не найдена — начните заново",
+    "resend_cooldown": "Подождите минуту перед повторной отправкой"
+  },
+  "meili": {
+    "title": "Meili",
+    "intro": "Привет! Я Meili — помогу спланировать поездку. Расскажите, куда и с кем едете.",
+    "placeholder": "Спросите Meili…",
+    "send": "Отправить",
+    "error": "Ассистент недоступен, попробуйте ещё раз",
+    "notConfigured": "Ассистент не настроен (нет ключа LLM)",
+    "connectError": "Не удалось открыть диалог",
+    "actionCreateTrip": "Создать поездку «{{title}}»",
+    "actionAddStop": "Добавить место: {{name}}",
+    "actionRemoveStop": "Убрать остановку",
+    "actionSetBudget": "Бюджет: {{amount}} {{currency}}",
+    "actionSetStopCost": "Стоимость остановки",
+    "actionOptimize": "Оптимизировать маршрут",
+    "actionType_create_trip": "Создание поездки",
+    "actionType_add_stop": "Добавление места",
+    "actionType_remove_stop": "Удаление остановки",
+    "actionType_set_budget": "Бюджет",
+    "actionType_set_stop_cost": "Стоимость остановки",
+    "actionType_optimize": "Оптимизация маршрута",
+    "closeBtn": "закрыть",
+    "editBtn": "изменить",
+    "applyBtn": "Применить",
+    "applyError": "Не удалось применить план",
+    "editorTitle": "Правка плана",
+    "editorEmpty": "Все действия удалены — план пуст",
+    "editError": "Не удалось сохранить правки",
+    "dayLabel": "день",
+    "planTotal": "Итого по плану",
+    "containsEstimates": "содержит оценки",
+    "planWith": "Спланировать с Meili",
+    "consult": "Посоветоваться с Meili",
+    "draftPrefix": "Хочу спланировать поездку:"
+  },
+  "planner": {
+    "day": {
+      "default": "День {{position}}",
+      "rename": "Переименовать день",
+      "nameLabel": "Название дня"
+    },
+    "leg": {
+      "walking": "пешком",
+      "driving": "на машине",
+      "transit": "на транспорте"
+    },
+    "stop": {
+      "onSite": "{{duration}} на месте",
+      "editDuration": "Изменить время на месте"
+    },
+    "error": {
+      "rename": "Не удалось переименовать день",
+      "transport": "Не удалось сменить транспорт",
+      "duration": "Не удалось изменить время"
+    }
   }
 }

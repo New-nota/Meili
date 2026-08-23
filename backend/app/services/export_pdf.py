@@ -24,7 +24,7 @@ async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
     days = (await db.execute(
         select(TripDay)
         .where(TripDay.trip_id == trip.id)
-        .order_by(TripDay.day_index)
+        .order_by(TripDay.position)
         .options(
             selectinload(TripDay.start_location),
             selectinload(TripDay.end_location),

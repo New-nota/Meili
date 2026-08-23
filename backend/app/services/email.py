@@ -55,7 +55,8 @@ def booking_confirmation_body(
     visit_date: str | None = None,
 ) -> tuple[str, str]:
     """(subject, body) письма о подтверждённой брони."""
-    subject = f"Meili: бронь подтверждена — {place_name or 'место в маршруте'}"
+    # письмо шлёт сервис (Hermod), не ассистент; сухая подпись — ТЗ-rename шаг 5
+    subject = f"Hermod: бронь подтверждена — {place_name or 'место в маршруте'}"
     lines = [
         "Ваша бронь подтверждена!",
         "",
@@ -65,7 +66,7 @@ def booking_confirmation_body(
     ]
     if visit_date:
         lines.append(f"Дата визита: {visit_date}")
-    lines += ["", "Хорошей поездки!", "— Meili"]
+    lines += ["", "Хорошей поездки!", "", "Hermod. Маршрут доставлен."]
     return subject, "\n".join(lines)
 
 
@@ -79,4 +80,23 @@ async def send_booking_confirmation(
     subject, body = booking_confirmation_body(
         place_name, provider, booking_ref, visit_date
     )
+    return await send_email(to, subject, body)
+
+
+def registration_code_body(code: str) -> tuple[str, str]:
+    """(subject, body) письма с кодом подтверждения регистрации (S14)."""
+    subject = "Hermod: код подтверждения регистрации"
+    body = "\n".join([
+        f"Ваш код подтверждения: {code}",
+        "",
+        "Код действует 10 минут. Если вы не регистрировались в Hermod —",
+        "просто проигнорируйте это письмо.",
+        "",
+        "Hermod. Маршрут доставлен.",
+    ])
+    return subject, body
+
+
+async def send_registration_code(to: str, code: str) -> bool:
+    subject, body = registration_code_body(code)
     return await send_email(to, subject, body)

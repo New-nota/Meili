@@ -32,6 +32,8 @@ function App() {
     <Routes>
       <Route path="/auth" element={<Auth />} />
       <Route path="/trips/:tripId" element={<ProtectedRoute><TripPlanner /></ProtectedRoute>} />
+      {/* S13: превью чужой поездки — тот же планировщик в режиме чтения */}
+      <Route path="/trips/:tripId/preview" element={<ProtectedRoute><TripPlanner readOnly /></ProtectedRoute>} />
       <Route path="/discover" element={<ProtectedRoute><Discover /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/discover" replace />} />

@@ -14,7 +14,9 @@
     "notSet": "— not set —",
     "untitled": "Untitled",
     "search": "Searching...",
-    "error": "Something went wrong"
+    "error": "Something went wrong",
+    "km": "km",
+    "hoursShort": "h"
   },
   "nav": {
     "myTrips": "My trips",
@@ -61,7 +63,9 @@
     "recommendedLoading": "Loading recommendations...",
     "recommendedError": "Failed to load recommendations...",
     "clone": "Clone",
-    "cloning": "Cloning..."
+    "cloning": "Cloning...",
+    "recommendationsTitle": "Recomendaciones",
+    "recommendationsEmpty": "Nada que sugerir aún: vuelve más tarde"
   },
   "day": {
     "title": "Day {{num}}",
@@ -169,19 +173,51 @@
     "statsVisited": "Places visited",
     "statsLikesGiven": "Likes given",
     "statsLikesReceived": "Likes received",
-    "myTrips": "My routes",
-    "noTrips": "No routes yet",
-    "createTrip": "Create a trip",
-    "likedTrips": "Liked routes",
-    "noLiked": "No liked routes yet",
-    "recommended": "Recommended for you",
-    "recommendedEmpty": "Recommendations will appear once there is some trip and like history",
     "styleCulture": "culture",
     "styleNature": "nature",
     "styleFood": "food",
     "styleActive": "active",
     "styleFamily": "family",
-    "styleNightlife": "nightlife"
+    "styleNightlife": "nightlife",
+    "myTrips": {
+      "title": "Mis rutas",
+      "viewAll": "Todos los viajes",
+      "create": "Crear viaje",
+      "empty": {
+        "title": "Aún no hay rutas",
+        "subtitle": "Ciudad y fechas: armamos la ruta juntos"
+      }
+    },
+    "status": {
+      "completed": "terminado",
+      "draft": "borrador"
+    },
+    "meta": {
+      "days_one": "{{count}} día",
+      "days_other": "{{count}} días",
+      "stops_one": "{{count}} parada",
+      "stops_other": "{{count}} paradas",
+      "adults_one": "{{count}} adulto",
+      "adults_other": "{{count}} adultos",
+      "children_one": "{{count}} niño",
+      "children_other": "{{count}} niños"
+    },
+    "liked": {
+      "title": "Favoritos",
+      "remove": "Quitar de favoritos",
+      "removeError": "No se pudo quitar de favoritos",
+      "empty": {
+        "title": "Aquí aparecerán rutas a tu gusto",
+        "subtitle": "Marca con el corazón los viajes que te gusten"
+      }
+    },
+    "similar": {
+      "title": "Viajeros parecidos eligen",
+      "subtitle": "rutas de viajeros con gustos similares",
+      "likedBy_one": "le gusta a {{count}} viajero",
+      "likedBy_other": "les gusta a {{count}} viajeros",
+      "stops": "paradas"
+    }
   },
   "export": {
     "pdf": "Download PDF",
@@ -201,5 +237,31 @@
     "day_no_stops": "The day has no stops",
     "day_has_stops": "Move stops out of the day being removed first",
     "location_in_use": "Location is used by a trip day"
+  },
+  "planner": {
+    "day": {
+      "default": "Día {{position}}",
+      "rename": "Renombrar el día",
+      "nameLabel": "Nombre del día"
+    },
+    "leg": {
+      "walking": "a pie",
+      "driving": "en coche",
+      "transit": "en transporte"
+    },
+    "stop": {
+      "onSite": "{{duration}} en el lugar",
+      "editDuration": "Cambiar el tiempo en el lugar"
+    },
+    "error": {
+      "rename": "No se pudo renombrar el día",
+      "transport": "No se pudo cambiar el transporte",
+      "duration": "No se pudo cambiar el tiempo"
+    }
+  },
+  "meili": {
+    "planWith": "Planificar con Meili",
+    "consult": "Consultar con Meili",
+    "draftPrefix": "Quiero planificar un viaje:"
   }
 }

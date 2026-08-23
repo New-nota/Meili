@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.stops import get_trip_or_404, stop_to_dict
+from app.api.stops import get_trip_or_404, get_trip_readable, stop_to_dict
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.place import Place
@@ -14,6 +14,7 @@ from app.models.trip import TripDay, TripLocation, TripStop
 from app.models.user import User
 from app.schemas.days import (
     TripDayResponse,
+    TripDaysReorder,
     TripDayUpdate,
     TripLocationCreate,
     TripLocationResponse,
@@ -32,7 +33,7 @@ async def list_locations(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await get_trip_or_404(trip_id, current_user.id, db)
+    await get_trip_readable(trip_id, current_user.id, db)  # S13: и для превью
     result = await db.execute(
         select(TripLocation)
         .where(TripLocation.trip_id == trip_id)
@@ -119,22 +120,26 @@ async def _day_or_404(db: AsyncSession, trip_id: UUID, day_id: UUID) -> TripDay:
     return day
 
 
-async def _day_to_response(db: AsyncSession, day: TripDay) -> dict:
+async def day_to_response(db: AsyncSession, day: TripDay) -> dict:
+    """День со стопами внутри (S16). Публичный: им же собирает GET /trips/{id}."""
     stops_result = await db.execute(
         select(TripStop, Place)
         .join(Place, TripStop.place_id == Place.id)
         .where(TripStop.day_id == day.id)
         .order_by(TripStop.position)
     )
+    stops = [stop_to_dict(s, p) for s, p in stops_result.all()]
     return {
         "id": day.id,
         "date": day.date,
-        "day_index": day.day_index,
+        "position": day.position,   # S16: 1-based
+        "title": day.title,         # S16: None -> фронт рисует «День N»
         "start_location": day.start_location,
         "end_location": day.end_location,
         "start_time": day.start_time,
         "end_time": day.end_time,
-        "stops": [stop_to_dict(s, p) for s, p in stops_result.all()],
+        "stops": stops,
+        "stops_count": len(stops),
     }
 
 
@@ -144,17 +149,62 @@ async def list_days(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await get_trip_or_404(trip_id, current_user.id, db)
+    await get_trip_readable(trip_id, current_user.id, db)  # S13: и для превью
     result = await db.execute(
         select(TripDay)
         .where(TripDay.trip_id == trip_id)
-        .order_by(TripDay.day_index)
+        .order_by(TripDay.position)
         .options(
             selectinload(TripDay.start_location),
             selectinload(TripDay.end_location),
         )
     )
-    return [await _day_to_response(db, d) for d in result.scalars().all()]
+    return [await day_to_response(db, d) for d in result.scalars().all()]
+
+
+@router.post("/{trip_id}/days/reorder", response_model=list[TripDayResponse])
+async def reorder_days(
+    trip_id: UUID,
+    body: TripDaysReorder,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """S16 §1.5: перестановка дней.
+
+    Переставляется СОДЕРЖИМОЕ дней, а даты остаются отсортированными по
+    возрастанию: день (со своим названием и стопами) сохраняет идентичность,
+    ему присваивается новая позиция и новая дата из отсортированного пула.
+
+    Уникальности (trip_id, date) и (trip_id, position) — DEFERRABLE, поэтому
+    промежуточные состояния внутри транзакции разрешены.
+    """
+    await get_trip_or_404(trip_id, current_user.id, db)
+    days = (await db.execute(
+        select(TripDay)
+        .where(TripDay.trip_id == trip_id)
+        .order_by(TripDay.position)
+        .options(
+            selectinload(TripDay.start_location),
+            selectinload(TripDay.end_location),
+        )
+    )).scalars().all()
+    by_id = {d.id: d for d in days}
+    if len(body.day_ids) != len(days) or set(body.day_ids) != set(by_id):
+        raise HTTPException(
+            status_code=422, detail="day_ids must be a permutation of trip days"
+        )
+
+    dates = sorted(d.date for d in days)      # пул дат, порядок не меняется
+    for i, day_id in enumerate(body.day_ids):
+        day = by_id[day_id]
+        day.position = i + 1
+        day.date = dates[i]
+    await db.commit()
+
+    ordered = sorted(days, key=lambda d: d.position)
+    return [await day_to_response(db, d) for d in ordered]
+
+
 
 
 @router.patch("/{trip_id}/days/{day_id}", response_model=TripDayResponse)
@@ -186,4 +236,4 @@ async def update_day(
         setattr(day, field, value)
     await db.commit()
     day = await _day_or_404(db, trip_id, day_id)  # перечитать с relations
-    return await _day_to_response(db, day)
+    return await day_to_response(db, day)

@@ -5,12 +5,7 @@ from typing import List, Dict
 from shapely import wkb
 
 from app.core.config import settings
-
-COSTING_MAP = {
-        "walking" : "pedestrian",
-        "auto": "auto",
-        "bicycle": "bicycle",
-    }
+from app.services.valhalla import costing_for
 
 # буфер на пробки: Valhalla считает по статическим скоростям (см. PROGRESS, С3)
 AUTO_TRAFFIC_FACTOR = 1.4
@@ -250,7 +245,8 @@ async def optimize_day_stops(
     locations += [_stop_coords(s) for s in stops]
     locations.append({"lat": day.end_location.lat, "lon": day.end_location.lon})
 
-    costing = COSTING_MAP.get(transport or "walking", "pedestrian")
+    # S16: costing берётся из единственного маппинга (services/valhalla)
+    costing = costing_for(transport)
     try:
         matrix = await get_time_matrix(locations, costing=costing)
     except httpx.HTTPStatusError as e:
@@ -292,3 +288,28 @@ async def optimize_day_stops(
 
     inner = [i for i in order if 0 < i < n - 1]
     return [str(stops[i - 1].id) for i in inner], []
+
+async def apply_day_optimization(
+    day,
+    stops: list,
+    transport: str | None,
+    mode: str = "full",
+    time_budget_minutes: int | None = None,
+) -> tuple[List[str], List[str]]:
+    """Оптимизировать день И записать результат в стопы (ORM, без commit).
+
+    Общая точка api/optimize и Meili-executor: вошедшие получают порядок и
+    included_in_route=true, выкинутые селективным прогоном — позиции в хвосте
+    и included=false (position NOT NULL, семантику несёт флаг).
+    """
+    ordered_ids, dropped_ids = await optimize_day_stops(
+        day, stops, transport, mode=mode, time_budget_minutes=time_budget_minutes,
+    )
+    by_id = {str(s.id): s for s in stops}
+    for new_pos, stop_id in enumerate(ordered_ids):
+        by_id[str(stop_id)].position = new_pos
+        by_id[str(stop_id)].included_in_route = True
+    for offset, stop_id in enumerate(dropped_ids):
+        by_id[str(stop_id)].position = len(ordered_ids) + offset
+        by_id[str(stop_id)].included_in_route = False
+    return ordered_ids, dropped_ids

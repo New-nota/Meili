@@ -1,6 +1,7 @@
 // Стоимость брони. На этапе deep-link цену знает только сайт партнёра,
 // поэтому до подтверждения показываем подсказку, после — сумму из брони.
 import { useTranslation } from 'react-i18next'
+import { formatMoney } from '../utils/money'
 
 interface Props {
     amount: string | null
@@ -9,11 +10,7 @@ interface Props {
 
 export default function PriceSummary({ amount, currency }: Props) {
     const { t, i18n } = useTranslation()
-    const formatted = amount
-        ? new Intl.NumberFormat(i18n.language, {
-            style: 'currency', currency: currency || 'EUR',
-          }).format(parseFloat(amount))
-        : null
+    const formatted = amount ? formatMoney(amount, currency, i18n.language) : null
     return (
         <div style={{
             display: 'flex', alignItems: 'center', gap: 6,

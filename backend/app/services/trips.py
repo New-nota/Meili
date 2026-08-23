@@ -1,11 +1,33 @@
-"""Логика дней поездки (S8 WP-3): генерация из диапазона дат, автоподстановка
-старта дня из финиша предыдущего."""
+"""Логика поездок: дни (S8 WP-3) и обогащение строк для профиля (S16)."""
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.trip import Trip, TripDay, TripStop
+
+
+async def decorate_trip_rows(db: AsyncSession, trips: list[Trip]) -> list[Trip]:
+    """S16 §2.2: добить строки поездок полями для профиля/Discover.
+
+    stops_count — одной группировкой (без N+1); is_draft — поездка без дат;
+    planned_total считает тот же compute_budget, что и вкладка «Бюджет»,
+    чтобы правило «факт брони важнее оценки» не дублировалось.
+    """
+    from app.services.budget import compute_budget  # поздний импорт: цикл
+
+    if not trips:
+        return trips
+    counts = dict((await db.execute(
+        select(TripStop.trip_id, func.count())
+        .where(TripStop.trip_id.in_([t.id for t in trips]))
+        .group_by(TripStop.trip_id)
+    )).all())
+    for trip in trips:
+        trip.stops_count = counts.get(trip.id, 0)
+        trip.is_draft = trip.start_date is None or trip.end_date is None
+        trip.planned_total = (await compute_budget(db, trip)).planned_total
+    return trips
 
 
 class DayError(Exception):
@@ -32,7 +54,7 @@ async def sync_trip_days(db: AsyncSession, trip: Trip) -> None:
     wanted = [trip.start_date + timedelta(days=i) for i in range(n_days)]
 
     result = await db.execute(
-        select(TripDay).where(TripDay.trip_id == trip.id).order_by(TripDay.day_index)
+        select(TripDay).where(TripDay.trip_id == trip.id).order_by(TripDay.position)
     )
     existing = {d.date: d for d in result.scalars().all()}
 
@@ -48,15 +70,10 @@ async def sync_trip_days(db: AsyncSession, trip: Trip) -> None:
             await db.delete(day)
             del existing[d_date]
 
-    # переиндексация в два прохода: UNIQUE(trip_id, day_index) не deferrable,
-    # прямой сдвиг индексов мог бы столкнуться сам с собой в момент flush
-    if existing:
-        for offset, day in enumerate(existing.values()):
-            day.day_index = 10_000 + offset
-        await db.flush()
-
-    # создаём недостающие и проставляем финальные индексы; старт нового
-    # дня N (N>0) по умолчанию = финиш дня N-1
+    # S16: uq_trip_days_trip_position теперь DEFERRABLE — позиции можно
+    # переставлять прямо, проверка уникальности отложена до commit
+    # создаём недостающие и проставляем финальные позиции (1-based); старт
+    # нового дня N (N>1) по умолчанию = финиш дня N-1
     prev_day: TripDay | None = None
     for index, d_date in enumerate(wanted):
         day = existing.get(d_date)
@@ -64,12 +81,12 @@ async def sync_trip_days(db: AsyncSession, trip: Trip) -> None:
             day = TripDay(
                 trip_id=trip.id,
                 date=d_date,
-                day_index=index,
+                position=index + 1,
                 start_location_id=(
                     prev_day.end_location_id if prev_day is not None else None
                 ),
             )
             db.add(day)
         else:
-            day.day_index = index
+            day.position = index + 1
         prev_day = day

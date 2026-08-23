@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { dayLabel } from '../utils/dayLabel'
 import type { TripDay } from '../api/days'
 
 // Мобильная пилюля переключателя дней поверх карты (S10, ТЗ Meili зад. 6).
@@ -17,7 +18,7 @@ export default function DayPill({ days, activeDayId, onSelect }: Props) {
 
     const active = days.find(d => d.id === activeDayId) ?? null
     const label = active
-        ? t('day.title', { num: active.day_index + 1 })
+        ? dayLabel(active, t)
         : t('day.allDays')
 
     const pick = (id: string | null) => {
@@ -61,9 +62,9 @@ export default function DayPill({ days, activeDayId, onSelect }: Props) {
                         }}>
                             <span style={{
                                 width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                                background: `var(--day-${(i % 6) + 1})`,
+                                background: `var(--day-${(i % 12) + 1})`,
                             }} />
-                            {t('day.title', { num: d.day_index + 1 })}
+                            {dayLabel(d, t)}
                         </div>
                     ))}
                 </div>

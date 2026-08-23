@@ -10,6 +10,19 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+# --- S14: регистрация по коду на почту ---------------------------------------
+
+class RegisterResponse(BaseModel):
+    # токенов нет — они выдаются только после /auth/verify
+    status: str = "code_sent"
+
+class VerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+class ResendRequest(BaseModel):
+    email: EmailStr
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

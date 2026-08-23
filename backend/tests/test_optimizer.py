@@ -9,7 +9,6 @@ from shapely import wkb as shp_wkb
 
 from app.services import optimizer
 from app.services.optimizer import (
-    COSTING_MAP,
     OutOfCoverageError,
     get_time_matrix,
     optimize_day_stops,
@@ -346,8 +345,16 @@ def test_selective_priority_orders_which_dropped():
     assert sorted(dropped) == [1, 3]
 
 
-# ---------- COSTING_MAP ------------------------------------------------------
-def test_costing_map_covers_supported_modes():
-    assert COSTING_MAP["walking"] == "pedestrian"
-    assert COSTING_MAP["auto"] == "auto"
-    assert COSTING_MAP["bicycle"] == "bicycle"
+# ---------- VALHALLA_COSTING (S16) -------------------------------------------
+def test_costing_map_covers_three_modes():
+    """S16: доменных режимов ровно три, маппинг живёт в services/valhalla."""
+    from app.models.enums import TransportMode
+    from app.services.valhalla import VALHALLA_COSTING, costing_for
+
+    assert set(VALHALLA_COSTING) == set(TransportMode)
+    assert VALHALLA_COSTING[TransportMode.WALKING] == "pedestrian"
+    assert VALHALLA_COSTING[TransportMode.DRIVING] == "auto"
+    assert VALHALLA_COSTING[TransportMode.TRANSIT] == "multimodal"
+    # мусор и None -> дефолтный режим, а не падение
+    assert costing_for(None) == "pedestrian"
+    assert costing_for("bicycle") == "pedestrian"

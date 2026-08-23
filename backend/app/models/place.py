@@ -1,5 +1,6 @@
 import uuid
-from sqlalchemy import String, Integer, Boolean, ARRAY, DECIMAL, JSON, Index, text
+from decimal import Decimal
+from sqlalchemy import String, Integer, Boolean, ARRAY, DECIMAL, JSON, Numeric, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
 from app.core.database import Base
@@ -31,3 +32,12 @@ class Place(Base):
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # ТЗ-E: цены для авто-оценки бюджета. Enum хранится строкой (стиль проекта:
+    # trip_expenses.category, trip_locations.kind), значения валидирует Pydantic.
+    # per_person -> осмыслен avg_check; ticketed -> ticket_adult (+ опц. ticket_child);
+    # free -> цены игнорируются. Нет данных -> NULL, цену не выдумываем.
+    pricing_model: Mapped[str] = mapped_column(String(20), nullable=False, default="free", server_default="free")
+    avg_check: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    ticket_adult: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    ticket_child: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    price_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)

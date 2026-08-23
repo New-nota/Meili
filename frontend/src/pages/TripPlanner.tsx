@@ -4,84 +4,37 @@ import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Stop } from '../types/index'
-import { getStops, getValhallaRouteForPoints, reorderStops, updateStopTransport, getTrip, downloadExport } from '../api/trips'
-import { addLocation, getDays, getLocations, updateDay, type TripDay, type TripLocation } from '../api/days'
+import { getStops, getDayRoute, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
+import { addLocation, getDays, getLocations, updateDay, reorderDays, type TripDay, type TripLocation } from '../api/days'
 import DayCard from '../components/DayCard'
 import BudgetPanel from '../components/BudgetPanel'
+import PreviewBudget from '../components/PreviewBudget'
 import { formatPlaceLabel, type ClickedPoint, type NominatimReverseResult } from '../utils/mapPoint'
 import { applyPaperStyle, DAY_HEX } from '../utils/mapStyle'
-import Logo from '../components/Logo'
+import HermodLogo from '../components/HermodLogo'
 import DayPill from '../components/DayPill'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
 import StopDetailPanel from '../components/StopDetailPanel'
+import MeiliChat from '../components/meili/MeiliChat'
 import { apiFetch } from '../api/client'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getVisitedPlaces } from '../api/visited'
 import type { Place } from '../types/index'
 
-const TRANSPORT_OPTIONS = [
-    {value: 'pedestrian', label: '🚶'},
-    {value: 'bicycle', label: '🚲'},
-    {value: 'auto', label:'🚗'},
-]
 // стартовый вид карты до загрузки остановок (MVP-регион — Калининград);
 // после загрузки камера подстраивается через fitBounds
 const DEFAULT_MAP_CENTER: [number, number] = [20.5114, 54.7104]
 const DEFAULT_MAP_ZOOM = 13
-interface SortableStopProps {
-    stop: Stop
-    index: number
-    isLast: boolean
-    onTransportChange: (stopId: string, transport: string) => void
-    onDelete: (stopId: string) => void
-    onSelect: (stop: Stop) => void
-}
-
-function SortableStop({stop, index, isLast, onTransportChange, onDelete, onSelect }: SortableStopProps){
-    const { t } = useTranslation()
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: stop.id})
-    return (
-        <div ref={setNodeRef} style = {{transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1}}
-        {...attributes}>
-            {/*строка с номером и названием*/}
-            <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4}}>
-                <span {...listeners} style={{cursor: 'grab', color: 'var(--text-muted)', fontSize: 18, userSelect: 'none'}}>
-                     ⠿
-                </span>
-                <div style={{
-                    width: 24, height: 24, background: 'var(--accent)', borderRadius: '50%',
-                    color: 'var(--surface)', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', fontSize: 12, fontWeight: 'bold', flexShrink: 0
-                }}>
-                    { index + 1}
-                </div>
-                <span onClick={() => onSelect(stop)} style={{fontSize: 14, cursor: 'pointer', flex: 1}}>
-                    {stop.place_name || t('common.untitled')}
-                    {stop.is_booked && <span title="🎟"> 🎟</span>}
-                </span>
-                <button onClick={() => onDelete(stop.id)} style={{background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--text-muted)', fontSize: 16, padding: '0 4px', lineHeight: 1
-                }}>✕</button>
-            </div>
-            {/* переключатель транспорта не показываем для последней точки*/}
-            {!isLast && (
-                <div style={{display: 'flex', gap: 4, marginLeft: 44, marginBottom: 10}}>
-                    {TRANSPORT_OPTIONS.map(opt => (<button key={opt.value} onClick={() => onTransportChange(stop.id, opt.value)}
-                    style={{padding: '2px 8px', border: `1px solid ${stop.transport_to_next === opt.value ? 'var(--surface)' : 'var(--border)'}`,
-                    borderRadius: 12, background: stop.transport_to_next == opt.value ? 'var(--surface)' : 'var(--surface-raised)', cursor: 'pointer', fontSize: 14}}> 
-                    {opt.label} </button>
-                    ))}
-                    </div>
-            )}
-        </div>
-    )
-}
-
-export default function TripPlanner() {
+// S11: ресайз панели — дефолт 400, мин 320, макс min(640, 50vw); память в localStorage
+const PANEL_MIN = 320
+const PANEL_DEFAULT = 400
+const PANEL_KEY = 'hermod:panelWidth'
+const panelMax = () => Math.min(640, window.innerWidth * 0.5)
+const clampPanel = (w: number) => Math.max(PANEL_MIN, Math.min(panelMax(), w))
+export default function TripPlanner({ readOnly = false }: { readOnly?: boolean } = {}) {
     const { t, i18n } = useTranslation()
     const {tripId} = useParams<{tripId: string}>()
     const mapContainer = useRef<HTMLDivElement>(null)
@@ -89,23 +42,104 @@ export default function TripPlanner() {
     const markersRef = useRef<maplibregl.Marker[]>([])
     const [stops, setStops] = useState<Stop[]>([])
     const [error, setError] = useState<string | null>(null)
-    const sensors = useSensors(useSensor(PointerSensor))
-    const [trip, setTrip] = useState<{start_lat?: number, start_lon?: number, start_address?: string, start_time?: string, adults_count?: number, children_count?: number} | null>(null)
+    // S12: реордер дней — активация после 5px, чтобы клик по грипу не путался
+    // с toggle аккордеона; сам drag висит на грипе в шапке DayCard
+    const daySensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+    const [trip, setTrip] = useState<{title?: string, start_lat?: number, start_lon?: number, start_address?: string, start_time?: string, adults_count?: number, children_count?: number, currency?: string, city_lat?: number | null, city_lon?: number | null, liked_by_me?: boolean} | null>(null)
     const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
     // S8 WP-3: мульти-день
     const [days, setDays] = useState<TripDay[]>([])
     const [locations, setLocations] = useState<TripLocation[]>([])
     const [expandedDayId, setExpandedDayId] = useState<string | null>(null)
-    const [panelTab, setPanelTab] = useState<'route' | 'budget'>('route')
+    const [panelTab, setPanelTab] = useState<'route' | 'budget' | 'meili'>('route')
     // S9 WP-E: карточка точки на карте (toggle, Esc, «сделать точкой старта»)
     const [clickedPoint, setClickedPoint] = useState<ClickedPoint | null>(null)
     const clickedPointRef = useRef<ClickedPoint | null>(null)
     clickedPointRef.current = clickedPoint
+    // S13: readOnly в замыканиях эффектов карты (клик, отрисовка депо) читаем через ref
+    const readOnlyRef = useRef(readOnly)
+    readOnlyRef.current = readOnly
     const i18nRef = useRef(i18n)
     i18nRef.current = i18n
     const pinRef = useRef<maplibregl.Marker | null>(null)
     const navigate = useNavigate()
     const queryClient = useQueryClient()
+    // S11: ширина панели (ресайз тягой за границу), помним в localStorage
+    const [panelWidth, setPanelWidth] = useState<number>(() => {
+        const saved = Number(localStorage.getItem(PANEL_KEY))
+        return saved ? clampPanel(saved) : PANEL_DEFAULT
+    })
+    const [resizing, setResizing] = useState(false)
+    // S11: реальная ширина панели (для «спрессовывания» шапки) — учитывает и
+    // ресайз, и мобильную раскладку (там панель во всю ширину)
+    const panelElRef = useRef<HTMLDivElement>(null)
+    const [panelPx, setPanelPx] = useState(PANEL_DEFAULT)
+    useEffect(() => {
+        const el = panelElRef.current
+        if (!el) return
+        const ro = new ResizeObserver(entries => setPanelPx(entries[0].contentRect.width))
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
+    const compactHeader = panelPx < 380
+
+    const startResize = (e: React.PointerEvent) => {
+        e.preventDefault()
+        setResizing(true)
+        // панель прижата к левому краю вьюпорта -> новая ширина = clientX
+        const onMove = (ev: PointerEvent) => setPanelWidth(clampPanel(ev.clientX))
+        const onUp = () => {
+            setResizing(false)
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            setPanelWidth(w => { localStorage.setItem(PANEL_KEY, String(w)); return w })
+        }
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+    }
+
+    // карта (WebGL-канвас) должна пересчитаться под новую ширину контейнера
+    useEffect(() => { mapRef.current?.resize() }, [panelWidth])
+
+    // S15: отметки «посещено» — бейджи ✓ в днях (в превью не показываем)
+    const { data: visitedList } = useQuery({
+        queryKey: ['visited'], queryFn: getVisitedPlaces, enabled: !readOnly,
+    })
+    const visitedPlaceIds = new Set((visitedList ?? []).map(v => v.place_id))
+
+    // S15: последняя открытая поездка — адресат вечернего опроса «как вам день»
+    useEffect(() => {
+        if (!readOnly && tripId) localStorage.setItem('hermod:lastOpenedTripId', tripId)
+    }, [tripId, readOnly])
+
+    // S11: центрируем карту на выбранном городе — только для пустой поездки
+    // (есть стопы -> fitBounds по ним главнее)
+    useEffect(() => {
+        const map = mapRef.current
+        if (!map || trip?.city_lat == null || trip?.city_lon == null) return
+        const hasPoints = stops.length > 0 || days.some(d => d.stops.length > 0)
+        if (hasPoints) return
+        const center: [number, number] = [trip.city_lon, trip.city_lat]
+        const go = () => map.jumpTo({ center, zoom: DEFAULT_MAP_ZOOM })
+        if (map.isStyleLoaded()) go(); else map.once('load', go)
+    }, [trip, stops, days])
+
+    // S13: превью — лайк (оптимистично) и копирование в свою редактируемую поездку
+    const toggleLike = async () => {
+        if (!trip) return
+        const liked = !!trip.liked_by_me
+        setTrip(prev => prev ? { ...prev, liked_by_me: !liked } : prev)
+        try {
+            if (liked) await unlikeTrip(tripId!)
+            else await likeTrip(tripId!)
+        } catch {
+            setTrip(prev => prev ? { ...prev, liked_by_me: liked } : prev)
+        }
+    }
+    const copyTrip = async () => {
+        const nt = await cloneTrip(tripId!)
+        navigate(`/trips/${nt.id}`)
+    }
 
     const reloadDays = async () => {
         const [d, l] = await Promise.all([getDays(tripId!), getLocations(tripId!)])
@@ -154,6 +188,8 @@ export default function TripPlanner() {
             })
         })
         map.on('click', async (e) => {
+            // S13: в превью карта не редактируется — клик ничего не добавляет
+            if (readOnlyRef.current) return
             // S9 WP-E Fix 1: toggle как в Google Maps — при открытой карточке
             // клик по пустой карте закрывает её, новый пин не ставится
             if (clickedPointRef.current !== null) {
@@ -238,18 +274,17 @@ export default function TripPlanner() {
                 for (let i = 0; i < days.length; i++) {
                     const day = days[i]
                     const dayStops = day.stops.filter(st => st.included_in_route !== false && st.place_lat && st.place_lon)
-                    const pts = [
-                        ...(day.start_location ? [{lat: day.start_location.lat, lon: day.start_location.lon}] : []),
-                        ...dayStops.map(st => ({lat: st.place_lat!, lon: st.place_lon!})),
-                        ...(day.end_location ? [{lat: day.end_location.lat, lon: day.end_location.lon}] : []),
-                    ]
-                    const coords = await getValhallaRouteForPoints(pts)
+                    // S16: геометрия берётся из перегонов — у каждого свой транспорт
+                    const coords = dayStops.length
+                        ? await getDayRoute(tripId!, day.id)
+                            .then(r => legsToCoordinates(r.legs)).catch(() => [])
+                        : []
                     ;(map.getSource(`route-day-${i % DAY_HEX.length}`) as maplibregl.GeoJSONSource | undefined)
                         ?.setData({type: 'Feature', geometry: {type: 'LineString', coordinates: coords}, properties: {}})
                     // номерные бейджи цвета дня
                     dayStops.forEach((st, idx) => {
                         const el = document.createElement('div')
-                        el.style.cssText = `width:24px;height:24px;background:var(--day-${(i % 6) + 1});border:2px solid var(--surface-raised);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--surface-raised);font-weight:bold;font-size:11px;cursor:pointer;`
+                        el.style.cssText = `width:24px;height:24px;background:var(--day-${(i % 12) + 1});border:2px solid var(--surface-raised);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--surface-raised);font-weight:bold;font-size:11px;cursor:pointer;`
                         el.textContent = String(idx + 1)
                         markersRef.current.push(
                             new maplibregl.Marker({element: el})
@@ -270,20 +305,13 @@ export default function TripPlanner() {
             return
         }
 
-        // точки маршрута: [старт дня] + стопы + [финиш дня];
         // исключённые селективным прогоном (S8 WP-4) в линию не входят
         const includedStops = routeStops.filter(s => s.included_in_route !== false)
-        const stopPoints = includedStops
-            .filter(s => s.place_lat && s.place_lon)
-            .map(s => ({lat: s.place_lat!, lon: s.place_lon!}))
-        const routePoints = activeDay
-            ? [
-                ...(activeDay.start_location ? [{lat: activeDay.start_location.lat, lon: activeDay.start_location.lon}] : []),
-                ...stopPoints,
-                ...(activeDay.end_location ? [{lat: activeDay.end_location.lat, lon: activeDay.end_location.lon}] : []),
-              ]
-            : stopPoints
-        const coordinates = await getValhallaRouteForPoints(routePoints)
+        // S16: линия дня — геометрия перегонов (учитывает транспорт каждого)
+        const coordinates = activeDay && includedStops.length
+            ? await getDayRoute(tripId!, activeDay.id)
+                .then(r => legsToCoordinates(r.legs)).catch(() => [])
+            : []
         // ждем карту
         const updateMap = () => {
             markersRef.current.forEach(m => m.remove())
@@ -368,9 +396,10 @@ export default function TripPlanner() {
                 const m = new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(m)
             }
-            if (activeDay?.start_location) depotMarker(activeDay.start_location, t('day.startOfDay'))
-            if (activeDay?.end_location) depotMarker(activeDay.end_location, t('day.endOfDay'))
-            if (!activeDay && trip?.start_lat && trip?.start_lon) {
+            // S13: депо старта/финиша и «дом» в превью не рисуем (Q9)
+            if (!readOnlyRef.current && activeDay?.start_location) depotMarker(activeDay.start_location, t('day.startOfDay'))
+            if (!readOnlyRef.current && activeDay?.end_location) depotMarker(activeDay.end_location, t('day.endOfDay'))
+            if (!readOnlyRef.current && !activeDay && trip?.start_lat && trip?.start_lon) {
                 const el = document.createElement('div')
                 el.style.cssText = `
                     width: 32px; height: 32px; background: var(--accent); border: 2px solid var(--surface-raised);
@@ -384,8 +413,8 @@ export default function TripPlanner() {
             // выравниваем по узлам дня (депо + стопы), чтобы всё было видно
                 const lons = routeStops.filter(s => s.place_lon).map(s => s.place_lon!)
                 const lats = routeStops.filter(s => s.place_lat).map( s => s.place_lat!)
-                if (activeDay?.start_location) { lons.push(activeDay.start_location.lon); lats.push(activeDay.start_location.lat) }
-                if (activeDay?.end_location) { lons.push(activeDay.end_location.lon); lats.push(activeDay.end_location.lat) }
+                if (!readOnlyRef.current && activeDay?.start_location) { lons.push(activeDay.start_location.lon); lats.push(activeDay.start_location.lat) }
+                if (!readOnlyRef.current && activeDay?.end_location) { lons.push(activeDay.end_location.lon); lats.push(activeDay.end_location.lat) }
                 
                 if (lons.length > 1) {
                     
@@ -408,19 +437,18 @@ export default function TripPlanner() {
 
     }, [stops, trip, days, expandedDayId])
     
-    const handleDragEnd = async (event: DragEndEvent) => {
-        const {active, over} = event
-        if(!over || active.id === over.id) return
-        const oldIndex = stops.findIndex(s => s.id === active.id)
-        const newIndex = stops.findIndex(s => s.id === over.id)
-        const newStops = arrayMove (stops, oldIndex, newIndex)
-        setStops(newStops)
-        await reorderStops(tripId!, newStops.map(s => s.id))
-    }
-    const handleTransportChange = async (stopId: string, transport: string) => {
-        setStops(prev => prev.map(s => s.id === stopId ? {...s, transport_to_next: transport}: s))
-        await updateStopTransport(tripId!, stopId, transport)
-        setStops(await getStops(tripId!))
+    // S16 §1.5: реордер дней — новый порядок id; сервер переставляет содержимое
+    // по фиксированному пулу дат и возвращает дни уже в новом порядке
+    const handleDaysDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event
+        if (!over || active.id === over.id) return
+        const oldIndex = days.findIndex(d => d.id === active.id)
+        const newIndex = days.findIndex(d => d.id === over.id)
+        if (oldIndex < 0 || newIndex < 0) return
+        const newOrder = arrayMove(days, oldIndex, newIndex)
+        const updated = await reorderDays(tripId!, newOrder.map(d => d.id))
+        setDays(updated)
+        await reloadStops()
     }
      const reloadStops = async () => {
         const fresh = await getStops(tripId!)
@@ -432,12 +460,9 @@ export default function TripPlanner() {
         // сводка бюджета пересчитывается вживую (S9 WP-A)
         queryClient.invalidateQueries({ queryKey: ['budget', tripId] })
     }
-    const handleDelete = async (stopId: string) => {
-        await apiFetch(`/trips/${tripId!}/stops/${stopId}`, {
-            method: 'DELETE',
-        })
-        await reloadStops()
-    }
+    // S16 §3.2: оптимистичное переименование дня (откат делает DayHeader)
+    const renameDayLocally = (dayId: string, title: string | null) =>
+        setDays(prev => prev.map(d => d.id === dayId ? { ...d, title } : d))
 
     // S9 WP-E: действия карточки точки
     const addClickedToRoute = async () => {
@@ -481,35 +506,80 @@ export default function TripPlanner() {
 
     if (!tripId) return <div>{t('trip.notFound')}</div>
     return (
-        <div className="planner-layout">
+        <div className="planner-layout"
+            style={{
+                ['--panel-w' as string]: `${panelWidth}px`,
+                ...(resizing ? { cursor: 'col-resize', userSelect: 'none' } : {}),
+            } as React.CSSProperties}>
             {/*Left pannel — на мобильных уезжает под карту (см. index.css)*/}
-            <div className="planner-panel">
+            <div className="planner-panel" ref={panelElRef}>
                 {/* Заголовок */}
-                <div style={{padding: '16px', borderBottom: '1px solid var(--border)'}}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom:12}}>
+                {readOnly ? (
+                    /* S13: превью-шапка — назад · название · ❤ · ⧉ + вкладки Маршрут/Бюджет */
+                    <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border)'}}>
+                        <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10}}>
+                            <button onClick={() => navigate('/discover')} title={t('common.back')}
+                                style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)'}}>←</button>
+                            <strong style={{flex: 1, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                                {trip?.title ?? ''}
+                            </strong>
+                            <button onClick={toggleLike} title={t('preview.like')}
+                                style={{background: 'none', border: '1px solid var(--border)', borderRadius: 6,
+                                    cursor: 'pointer', fontSize: 15, padding: '4px 8px',
+                                    color: trip?.liked_by_me ? 'var(--accent)' : 'var(--text-muted)'}}>
+                                {trip?.liked_by_me ? '❤' : '🤍'}
+                            </button>
+                            <button onClick={copyTrip} title={t('preview.copy')}
+                                style={{background: 'var(--accent)', color: 'var(--surface)', border: 'none',
+                                    borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '5px 10px', whiteSpace: 'nowrap'}}>
+                                ⧉ {t('trip.clone')}
+                            </button>
+                        </div>
+                        <div style={{display: 'flex', gap: 4}}>
+                            {(['route', 'budget'] as const).map(tab => (
+                                <button key={tab} onClick={() => setPanelTab(tab)} style={{
+                                    padding: '4px 10px', fontSize: 13, cursor: 'pointer', border: 'none', borderRadius: 6,
+                                    background: panelTab === tab ? 'var(--accent)' : 'transparent',
+                                    color: panelTab === tab ? 'var(--surface)' : 'var(--text-primary)',
+                                }}>
+                                    {tab === 'route' ? t('trip.route') : t('budget.title')}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                <div style={{padding: compactHeader ? '12px' : '16px', borderBottom: '1px solid var(--border)'}}>
+                {/* S11: flex-wrap — при нехватке ширины кластеры переносятся на 2-ю строку,
+                    а не обрезаются за полосой ресайза; отступы ужимаются */}
+                <div style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between',
+                    alignItems: 'center', gap: 8, marginBottom: 12}}>
                     <span style={{display: 'flex', alignItems: 'center', gap: 6}}>
                         <span onClick={() => navigate('/discover')} style={{cursor: 'pointer', display: 'flex'}}>
-                            <Logo size={26} withWordmark />
+                            <HermodLogo size={26} withWordmark={!compactHeader} />
                         </span>
                         <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 18, color:'var(--text-muted)'}}>&#9881;</button>
                     </span>
                 <div style={{display: 'flex', gap: 4}}>
-                    {(['route', 'budget'] as const).map(tab => (
-                        <button key={tab} onClick={() => setPanelTab(tab)} style={{
-                            padding: '4px 10px', fontSize: 13, cursor: 'pointer',
+                    {(['route', 'budget', 'meili'] as const).map(tab => {
+                        // S11: при узкой панели вкладки схлопываются в иконки
+                        const label = tab === 'route' ? t('trip.route') : tab === 'budget' ? t('budget.title') : t('meili.title')
+                        const icon = tab === 'route' ? '🗺' : tab === 'budget' ? '💰' : '✨'
+                        return (
+                        <button key={tab} onClick={() => setPanelTab(tab)} title={compactHeader ? label : undefined} style={{
+                            padding: compactHeader ? '4px 8px' : '4px 10px', fontSize: 13, cursor: 'pointer',
                             border: 'none', borderRadius: 6,
                             background: panelTab === tab ? 'var(--accent)' : 'transparent',
                             color: panelTab === tab ? 'var(--surface)' : 'var(--text-primary)',
                         }}>
-                            {tab === 'route' ? t('trip.route') : t('budget.title')}
+                            {compactHeader ? icon : label}
                         </button>
-                    ))}
+                    )})}
                 </div>
                 <span style={{display: 'flex', gap: 4}}>
-                    {/* экспорт (S9 WP-B) */}
+                    {/* экспорт (S9 WP-B) — в компактном режиме без текста «PDF» */}
                     <button title={t('export.pdf')} onClick={() => downloadExport(tripId, 'pdf').catch(() => setError(t('export.error')))}
                         style={{border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
-                        ⬇ PDF
+                        {compactHeader ? '⬇' : '⬇ PDF'}
                     </button>
                     <button title={t('export.ics')} onClick={() => downloadExport(tripId, 'ics').catch(() => setError(t('export.error')))}
                         style={{border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
@@ -518,30 +588,44 @@ export default function TripPlanner() {
                 </span>
                 </div>
                 </div>
-                {panelTab === 'budget' ? (
-                    <div style={{flex: 1, overflowY: 'auto'}}>
-                        <BudgetPanel tripId={tripId} days={days} />
+                )}
+                {panelTab === 'meili' ? (
+                    /* AI-ассистент (ТЗ-Meili): диалог привязан к открытой поездке */
+                    <div style={{flex: 1, overflowY: 'hidden'}}>
+                        <MeiliChat tripId={tripId} onApplied={reloadStops} />
                     </div>
-                ) : selectedStop ? (
+                ) : panelTab === 'budget' ? (
+                    <div style={{flex: 1, overflowY: 'auto'}}>
+                        {/* S13: в превью — только активности из стопов, без owner-ручки бюджета */}
+                        {readOnly
+                            ? <PreviewBudget days={days} currency={trip?.currency} />
+                            : <BudgetPanel tripId={tripId} days={days} onStopsChanged={reloadStops} />}
+                    </div>
+                ) : selectedStop && !readOnly ? (
                     /* Детали остановки + бронирование (Sprint 6) */
                     <div style={{flex: 1, overflowY: 'auto'}}>
                         <StopDetailPanel
                             stop={selectedStop}
                             trip={trip}
+                            // S16: дата визита приходит от дня стопа
+                            dayDate={days.find(d => d.id === selectedStop.day_id)?.date ?? null}
                             onClose={() => setSelectedStop(null)}
                             onChanged={reloadStops}
                         />
                     </div>
                 ) : (
                 <>
-                {days.length === 0 && <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>}
-                <PlaceSearch tripId={tripId} dayId={expandedDayId} onPlaceAdded={reloadStops}/>
+                {/* S13: в превью старт-точка и поиск мест недоступны */}
+                {!readOnly && days.length === 0 && <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>}
+                {!readOnly && <PlaceSearch tripId={tripId} dayId={expandedDayId} onPlaceAdded={reloadStops}/>}
                 {/*Сприсок остановок скролится  */}
                 <div style={{flex: 1, overflowY: 'auto', padding: 16}}>
                 {error && <p style={{color: 'var(--accent)', fontSize:13}}>{error}</p>}
+                {/* S16: стоп всегда живёт в дне — веток «без дня» больше нет */}
                 {days.length > 0 ? (
-                    /* S8 WP-3: по-дневная панель — аккордеон дней */
-                    <>
+                    /* S8 WP-3: по-дневная панель — аккордеон дней; S12: DnD-реордер дней */
+                    <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDaysDragEnd}>
+                        <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
                         {days.map(day => (
                             <DayCard
                                 key={day.id}
@@ -549,40 +633,30 @@ export default function TripPlanner() {
                                 day={day}
                                 allDays={days}
                                 locations={locations}
+                                currency={trip?.currency}
                                 expanded={expandedDayId === day.id}
                                 onToggle={() => setExpandedDayId(prev => prev === day.id ? null : day.id)}
                                 onChanged={reloadStops}
                                 onSelectStop={setSelectedStop}
+                                onDayRenamed={renameDayLocally}
+                                readOnly={readOnly}
+                                visitedPlaceIds={visitedPlaceIds}
                             />
                         ))}
-                        {/* стопы без дня (созданы до мульти-дня) */}
-                        {stops.filter(s => !s.day_id).length > 0 && (
-                            <div style={{marginTop: 8}}>
-                                <div style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 4}}>{t('trip.noDayGroup')}</div>
-                                {stops.filter(s => !s.day_id).map((stop, i) => (
-                                    <SortableStop key={stop.id} stop={stop} index={i} isLast onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
-                                ))}
-                            </div>
-                        )}
-                    </>
+                        </SortableContext>
+                    </DndContext>
                 ) : (
-                    <>
                     <p style={{fontSize: 12, color: 'var(--text-muted)'}}>
                         {t('trip.setDatesHint')}
                     </p>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                        <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                            {stops.map((stop, i)=>(
-                                <SortableStop key={stop.id} stop={stop} index={i} isLast={i === stops.length - 1} onTransportChange={handleTransportChange} onDelete={handleDelete} onSelect={setSelectedStop}/>
-                                ))}
-                        </SortableContext>
-                    </DndContext>
-                    </>
                 )}
                 </div>
                 </>
                 )}
                 </div>
+                {/* S11: полоса ресайза (на мобилке скрыта через CSS) */}
+                <div className={`panel-resize-handle${resizing ? ' dragging' : ''}`}
+                    onPointerDown={startResize} title={t('trip.resizePanel')} />
                 {/* Карта все остальное место займет*/}
                 <div style={{position: 'relative', flex: 1, minHeight: 0, display: 'flex'}}>
                     <div ref={mapContainer} className="planner-map" style={{flex: 1}} />

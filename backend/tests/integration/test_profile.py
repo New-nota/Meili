@@ -87,16 +87,9 @@ async def test_my_trips_and_liked_trips(client, auth_headers):
     )
     my_trip_id = r.json()["id"]
 
-    # чужая публичная поездка + лайк
-    await client.post(
-        "/auth/register",
-        json={"email": "other@wanderown.dev", "password": "secret123"},
-    )
-    other_login = await client.post(
-        "/auth/login",
-        json={"email": "other@wanderown.dev", "password": "secret123"},
-    )
-    other = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
+    # чужая публичная поездка + лайк (S14: регистрация через код)
+    from tests.integration.conftest import register_and_verify
+    other = await register_and_verify(client, "other@wanderown.dev")
     r = await client.post("/trips/", json={"title": "Чужая"}, headers=other)
     other_trip_id = r.json()["id"]
     await client.put(

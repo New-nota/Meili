@@ -42,3 +42,7 @@ export const deleteExpense = (tripId: string, expenseId: string) =>
 export const updateTripBudget = (tripId: string, data: {
     budget_total?: string | null; currency?: string
 }) => apiFetch(`/trips/${tripId}`, { method: 'PATCH', body: JSON.stringify(data) })
+
+// ТЗ-E: ручной пересчёт авто-оценок стопов (после ре-сида цен мест)
+export const recomputeEstimates = (tripId: string) =>
+    apiFetch<{ updated: number }>(`/trips/${tripId}/recompute-estimates`, { method: 'POST' })

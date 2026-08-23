@@ -10,6 +10,7 @@ from app.core.security import get_current_user, hash_password, verify_password
 from app.models.social import TripLike, UserVisitedPlace
 from app.models.trip import Trip
 from app.models.user import User
+from app.schemas.places import VisitedPlaceResponse
 from app.schemas.trips import TripResponse
 from app.schemas.users import (
     AvatarResponse,
@@ -19,6 +20,7 @@ from app.schemas.users import (
     UserProfileUpdate,
 )
 from app.services.storage import StorageError, upload_image
+from app.services.trips import decorate_trip_rows
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -129,7 +131,8 @@ async def my_trips(
     result = await db.execute(
         select(Trip).where(Trip.user_id == current_user.id).order_by(Trip.created_at.desc())
     )
-    return result.scalars().all()
+    # S16: то же обогащение, что и в GET /trips/ (строка маршрута в профиле)
+    return await decorate_trip_rows(db, list(result.scalars().all()))
 
 
 @router.get("/me/liked-trips", response_model=list[TripResponse])
@@ -143,5 +146,18 @@ async def liked_trips(
         .join(TripLike, TripLike.trip_id == Trip.id)
         .where(TripLike.user_id == current_user.id, Trip.is_public.is_(True))
         .order_by(Trip.created_at.desc())
+    )
+    # S16: строке «Понравившиеся» нужны остановки/дни, как и «Моим маршрутам»
+    return await decorate_trip_rows(db, list(result.scalars().all()))
+
+
+@router.get("/me/visited-places", response_model=list[VisitedPlaceResponse])
+async def visited_places(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # S15: мои отметки «посещено» — бейджи ✓ в днях и дедуп вечернего опроса
+    result = await db.execute(
+        select(UserVisitedPlace).where(UserVisitedPlace.user_id == current_user.id)
     )
     return result.scalars().all()

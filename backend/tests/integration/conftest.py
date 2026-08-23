@@ -11,9 +11,23 @@
 integration аккуратно скипается.
 """
 import os
+from datetime import date, timedelta
 
 import pytest
 import pytest_asyncio
+
+
+def future_date(days_ahead: int) -> str:
+    """Дата в будущем (ISO).
+
+    Даты в тестах ОБЯЗАНЫ быть относительными: TripCreate (S11) запрещает
+    старт в прошлом, поэтому захардкоженный «2026-08-01» однажды протухает
+    и роняет весь пакет.
+    """
+    return (date.today() + timedelta(days=days_ahead)).isoformat()
+
+
+D1, D2, D3, D4 = future_date(1), future_date(2), future_date(3), future_date(4)
 
 # та же БД-нода, что у приложения, но отдельная база
 _APP_DB_URL = os.environ["DATABASE_URL"]  # postgresql+asyncpg://user:pass@host:port/db
@@ -85,18 +99,30 @@ async def client(_test_database):
         await redis_client.connection_pool.disconnect()
 
 
-@pytest_asyncio.fixture
-async def auth_headers(client):
-    """Зарегистрированный пользователь + его Bearer-заголовок."""
-    email = "it_user@wanderown.dev"
+async def register_and_verify(
+    client, email: str, password: str = "secret123", name: str | None = "IT"
+) -> dict:
+    """S14: полный поток регистрации — register → код из Redis → verify.
+
+    Возвращает Bearer-заголовки. Код читаем напрямую из pending-черновика
+    (SMTP в тестах нет — письмо ушло бы в лог)."""
+    from app.core.redis import get_pending_registration
+
     r = await client.post(
         "/auth/register",
-        json={"email": email, "password": "secret123", "name": "IT"},
+        json={"email": email, "password": password, "name": name},
     )
     assert r.status_code == 200, r.text
+    pending = await get_pending_registration(email)
+    assert pending is not None
     r = await client.post(
-        "/auth/login", json={"email": email, "password": "secret123"}
+        "/auth/verify", json={"email": email, "code": pending["code"]}
     )
     assert r.status_code == 200, r.text
-    token = r.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+@pytest_asyncio.fixture
+async def auth_headers(client):
+    """Зарегистрированный (и подтверждённый — S14) пользователь + Bearer."""
+    return await register_and_verify(client, "it_user@wanderown.dev")

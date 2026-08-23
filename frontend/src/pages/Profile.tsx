@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Heart, Plus } from 'lucide-react'
+import HermodLogo from '../components/HermodLogo'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -9,9 +11,14 @@ import {
     changePassword, getLikedTrips, getMe, getMyTrips, updateMe, uploadAvatar,
 } from '../api/users'
 import { getRecommendedTrips } from '../api/recommendations'
-import { cloneTrip } from '../api/trips'
+import { unlikeTrip } from '../api/trips'
+import { logout } from '../api/client'
 import type { Trip } from '../types'
 import LanguageSwitcher from '../components/LanguageSwitcher'
+import CreateTripModal from '../components/CreateTripModal'
+import TripRow from '../components/trip/TripRow'
+import LikedTripRow from '../components/trip/LikedTripRow'
+import RecommendedTripCard from '../components/trip/RecommendedTripCard'
 
 // Страница профиля (S9 WP-D): шапка, личные данные (RHF+Zod), статистика,
 // мои маршруты, понравившиеся, рекомендации.
@@ -34,24 +41,40 @@ const card: React.CSSProperties = {
     border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginBottom: 16,
 }
 
-function TripCards({ trips, onOpen }: { trips: Trip[]; onOpen: (id: string) => void }) {
-    const { t, i18n } = useTranslation()
-    const dateFmt = new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short' })
+// S16 §2: заголовок блока — слева h2, справа действия
+function SectionHead({ title, children }: { title: string; children?: React.ReactNode }) {
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
-            {trips.map(trip => (
-                <div key={trip.id} onClick={() => onOpen(trip.id)}
-                    style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, cursor: 'pointer' }}>
-                    <strong style={{ fontSize: 14 }}>{trip.title || t('common.untitled')}</strong>
-                    {trip.city && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>📍 {trip.city}</div>}
-                    {trip.start_date && (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                            {dateFmt.format(new Date(trip.start_date))}
-                            {trip.end_date ? ` – ${dateFmt.format(new Date(trip.end_date))}` : ''}
-                        </div>
-                    )}
-                </div>
-            ))}
+        <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 8, gap: 8,
+        }}>
+            <h2 style={{ margin: 0, fontSize: 17 }}>{title}</h2>
+            <span style={{ display: 'flex', gap: 6 }}>{children}</span>
+        </div>
+    )
+}
+
+const ghostButton: React.CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: 'var(--accent)', fontSize: 13, padding: '4px 8px', borderRadius: 6,
+}
+
+// пустое состояние блока: иконка в круге, заголовок, подпись, действие
+function EmptyState({ icon, title, subtitle, action }: {
+    icon: React.ReactNode; title: string; subtitle: string; action?: React.ReactNode
+}) {
+    return (
+        <div style={{ textAlign: 'center', padding: '28px 16px' }}>
+            <div style={{
+                width: 44, height: 44, borderRadius: '50%', margin: '0 auto 10px',
+                background: 'var(--surface)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', color: 'var(--accent)',
+            }}>
+                {icon}
+            </div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>
+            {action && <div style={{ marginTop: 12 }}>{action}</div>}
         </div>
     )
 }
@@ -65,6 +88,8 @@ export default function Profile() {
     const [formMsg, setFormMsg] = useState<string | null>(null)
     const [pwdMsg, setPwdMsg] = useState<string | null>(null)
     const [styles, setStyles] = useState<string[] | null>(null)
+    const [creating, setCreating] = useState(false)
+    const [toast, setToast] = useState<string | null>(null)
 
     const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe })
     const { data: myTrips } = useQuery({ queryKey: ['me-trips'], queryFn: getMyTrips })
@@ -127,6 +152,21 @@ export default function Profile() {
         }
     }
 
+    // S16 §2.3: снятие лайка — оптимистично; при ошибке строка возвращается
+    const removeLike = async (tripId: string) => {
+        const prev = queryClient.getQueryData<Trip[]>(['me-liked'])
+        queryClient.setQueryData<Trip[]>(['me-liked'],
+            old => (old ?? []).filter(x => x.id !== tripId))
+        try {
+            await unlikeTrip(tripId)
+            queryClient.invalidateQueries({ queryKey: ['me'] })  // счётчик лайков
+        } catch {
+            queryClient.setQueryData(['me-liked'], prev)
+            setToast(t('profile.liked.removeError'))
+            setTimeout(() => setToast(null), 3000)
+        }
+    }
+
     const toggleStyle = (s: string) =>
         setStyles(prev => {
             const cur = prev ?? me.travel_style ?? []
@@ -144,9 +184,23 @@ export default function Profile() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button onClick={() => navigate('/discover')} style={{
                         background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)' }}>←</button>
+                    {/* лок-ап сервиса (ТЗ-rename, шаг 4) */}
+                    <span onClick={() => navigate('/discover')} style={{ cursor: 'pointer', display: 'flex' }}>
+                        <HermodLogo size={26} withWordmark />
+                    </span>
                     <h2 style={{ margin: 0 }}>{t('profile.title')}</h2>
                 </div>
-                <LanguageSwitcher />
+                {/* S18: язык и выход живут только здесь (с Discover убраны) */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <LanguageSwitcher />
+                    <button onClick={async () => { await logout(); navigate('/auth') }}
+                        style={{
+                            padding: '6px 14px', background: 'none', color: 'var(--text-muted)',
+                            border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+                        }}>
+                        {t('nav.logout')}
+                    </button>
+                </div>
             </div>
 
             {/* Шапка профиля */}
@@ -252,53 +306,89 @@ export default function Profile() {
                 </div>
             </div>
 
-            {/* Мои маршруты */}
-            <div style={card}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{t('profile.myTrips')}</h3>
-                {myTrips && myTrips.length > 0
-                    ? <TripCards trips={myTrips} onOpen={id => navigate(`/trips/${id}`)} />
-                    : (
-                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 16 }}>
-                            {t('profile.noTrips')}<br />
-                            <button onClick={() => navigate('/discover')} style={{
-                                marginTop: 8, padding: '6px 14px', background: 'var(--accent)', color: 'var(--surface)',
-                                border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
-                                {t('profile.createTrip')}
-                            </button>
-                        </div>
-                    )}
-            </div>
-
-            {/* Понравившиеся */}
-            <div style={card}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{t('profile.likedTrips')}</h3>
-                {liked && liked.length > 0
-                    ? <TripCards trips={liked} onOpen={id => navigate(`/trips/${id}`)} />
-                    : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('profile.noLiked')}</div>}
-            </div>
-
-            {/* Рекомендации (S5) — внизу страницы */}
-            <div style={card}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{t('profile.recommended')}</h3>
-                {recommended && recommended.length > 0 ? (
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {recommended.map(trip => (
-                            <div key={trip.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-                                <strong style={{ fontSize: 13 }}>{trip.title}</strong>
-                                {trip.city && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{trip.city}</div>}
-                                <button onClick={async () => {
-                                    const copy = await cloneTrip(trip.id)
-                                    navigate(`/trips/${copy.id}`)
-                                }} style={{
-                                    marginTop: 6, padding: '4px 10px', background: 'var(--accent)', color: 'var(--surface)',
-                                    border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
-                                    {t('trip.clone')}
-                                </button>
-                            </div>
+            {/* S16 §2.2: Мои маршруты — вертикальный список строк без окантовки */}
+            <section style={{ marginBottom: 24 }}>
+                <SectionHead title={t('profile.myTrips.title')}>
+                    <button onClick={() => setCreating(true)} style={ghostButton}>
+                        {t('profile.myTrips.create')}
+                    </button>
+                    <button onClick={() => navigate('/discover')} style={ghostButton}>
+                        {t('profile.myTrips.viewAll')} →
+                    </button>
+                </SectionHead>
+                {myTrips && myTrips.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {myTrips.map(trip => (
+                            <TripRow key={trip.id} trip={trip}
+                                onOpen={id => navigate(`/trips/${id}`)} />
                         ))}
                     </div>
-                ) : <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{t('profile.recommendedEmpty')}</div>}
-            </div>
+                ) : (
+                    <EmptyState
+                        icon={<Plus size={22} />}
+                        title={t('profile.myTrips.empty.title')}
+                        subtitle={t('profile.myTrips.empty.subtitle')}
+                        action={
+                            <button onClick={() => setCreating(true)} style={{
+                                padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
+                                border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                                {t('profile.myTrips.create')}
+                            </button>
+                        } />
+                )}
+            </section>
+
+            {/* S16 §2.3: Понравившиеся */}
+            <section style={{ marginBottom: 24 }}>
+                <SectionHead title={t('profile.liked.title')} />
+                {liked && liked.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {liked.map(trip => (
+                            <LikedTripRow key={trip.id} trip={trip}
+                                onOpen={id => navigate(`/trips/${id}/preview`)}
+                                onRemove={removeLike} />
+                        ))}
+                    </div>
+                ) : (
+                    <EmptyState
+                        icon={<Heart size={20} />}
+                        title={t('profile.liked.empty.title')}
+                        subtitle={t('profile.liked.empty.subtitle')} />
+                )}
+            </section>
+
+            {/* S16 §2.4: Похожие выбирают — сетка карточек без превью карты */}
+            {recommended && recommended.length > 0 && (
+                <section style={{ marginBottom: 24 }}>
+                    <SectionHead title={t('profile.similar.title')} />
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+                        {t('profile.similar.subtitle')}
+                    </div>
+                    <div className="recommended-grid">
+                        {recommended.map(trip => (
+                            <RecommendedTripCard key={trip.id} trip={trip}
+                                onOpen={id => navigate(`/trips/${id}/preview`)} />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {creating && (
+                <CreateTripModal
+                    onClose={() => setCreating(false)}
+                    onCreated={trip => navigate(`/trips/${trip.id}`)} />
+            )}
+
+            {/* toast об ошибке действия (снятие лайка) */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+                    background: 'var(--text-primary)', color: 'var(--surface)',
+                    padding: '10px 16px', borderRadius: 8, fontSize: 13, zIndex: 1200,
+                }}>
+                    {toast}
+                </div>
+            )}
         </div>
     )
 }

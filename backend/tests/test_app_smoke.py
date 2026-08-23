@@ -25,6 +25,9 @@ def test_openapi_schema_builds():
 # (метод, путь) — ожидаемая карта маршрутов из PROGRESS.md
 EXPECTED_ROUTES = [
     ("POST", "/auth/register"),
+    # S14 — подтверждение почты кодом
+    ("POST", "/auth/verify"),
+    ("POST", "/auth/resend-code"),
     ("POST", "/auth/login"),
     ("GET", "/auth/google/login"),
     ("GET", "/auth/google/callback"),

@@ -1,11 +1,12 @@
 """S9 WP-B: экспорт PDF и ICS."""
+from tests.integration.conftest import D1
 
 
 async def _trip_with_stops(client, headers) -> str:
     r = await client.post(
         "/trips/",
-        json={"title": "Kaliningrad Trip", "start_date": "2026-08-01",
-              "end_date": "2026-08-01"},
+        json={"title": "Kaliningrad Trip", "start_date": D1,
+              "end_date": D1},
         headers=headers,
     )
     trip_id = r.json()["id"]
@@ -47,7 +48,7 @@ async def test_ics_export_valid_calendar_with_timezone(client, auth_headers):
     assert text.count("BEGIN:VEVENT") == 2  # по событию на стоп
     assert "SUMMARY:Собор" in text
     # 09:00 Europe/Kaliningrad (UTC+2) -> 07:00Z: таймзона поездки учтена
-    assert "DTSTART:20260801T070000Z" in text
+    assert f"DTSTART:{D1.replace('-', '')}T070000Z" in text
 
 
 async def test_export_skips_dropped_stops(client, auth_headers, monkeypatch):

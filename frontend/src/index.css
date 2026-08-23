@@ -1,4 +1,4 @@
-/* Базовые стили Meili — все цвета только через токены (src/styles/tokens.css) */
+/* Базовые стили Hermod — все цвета только через токены (src/styles/tokens.css) */
 
 * {
   margin: 0;
@@ -50,7 +50,9 @@ input, select, button, textarea {
   height: 100dvh; /* мобильные браузеры: без прыжков от адресной строки */
 }
 .planner-panel {
-  width: 320px;
+  /* S11: ширина через --panel-w (дефолт 400), задаётся инлайном при ресайзе;
+     var, а не прямой width — чтобы мобильный override width:100% (ниже) выиграл */
+  width: var(--panel-w, 400px);
   flex-shrink: 0;
   background: var(--surface-raised);
   border-right: 1px solid var(--border);
@@ -61,6 +63,50 @@ input, select, button, textarea {
 .planner-map {
   flex: 1;
   min-height: 0;
+}
+/* S11: полоса ресайза между панелью и картой (десктоп) */
+.panel-resize-handle {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  border-right: 1px solid var(--border);
+  /* «мёртвая зона»: полоса шире визуальной линии, кнопки под неё не залезают */
+  margin-left: -3px;
+  z-index: 3;
+  transition: background 0.15s;
+}
+.panel-resize-handle:hover,
+.panel-resize-handle.dragging {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* --- Discover (S17): свои поездки сеткой --- */
+.trip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+/* --- Профиль (S16 §2): строки маршрутов и сетка рекомендаций --- */
+.trip-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.recommended-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 1024px) {
+  .recommended-grid { grid-template-columns: repeat(2, 1fr); }
+}
+/* бюджет живёт в своей колонке; в строку меты уезжает только на узком экране */
+.trip-row-budget-inline { display: none; }
+@media (max-width: 640px) {
+  .recommended-grid { grid-template-columns: 1fr; }
+  .trip-row-budget { display: none; }
+  .trip-row-budget-inline { display: inline; }
 }
 
 /* --- Мобильная пилюля переключателя дней (S10, ТЗ Meili зад. 6) --- */
@@ -75,6 +121,8 @@ input, select, button, textarea {
     border-right: none;
     border-top: 1px solid var(--border);
   }
+  /* S11: на мобилке панель во всю ширину снизу — ресайз не нужен */
+  .panel-resize-handle { display: none; }
   .discover-page { padding: 16px !important; }
   .day-pill {
     display: block;

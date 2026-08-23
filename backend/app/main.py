@@ -31,9 +31,10 @@ from app.api.days import router as days_router
 from app.api.users import router as users_router
 from app.api.budget import router as budget_router
 from app.api.export import router as export_router
+from app.api.meili import router as meili_router
 
 app = FastAPI(
-    title="Meili API",
+    title="Hermod API",
     version="0.1.0"
 )
 
@@ -98,6 +99,7 @@ app.include_router(days_router)
 app.include_router(users_router)
 app.include_router(budget_router)
 app.include_router(export_router)
+app.include_router(meili_router)
 @app.get("/health")
 async def health():
     return {"status":"ok"}
@@ -106,7 +108,7 @@ def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
     openapi_schema = get_openapi(
-        title="Meili API",
+        title="Hermod API",
         version="0.1.0",
         routes=app.routes,
     )

@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Meili',
-        short_name: 'Meili',
+        name: 'Hermod',
+        short_name: 'Hermod',
         description: 'Планировщик маршрутов путешествий',
         lang: 'ru',
         start_url: '/',

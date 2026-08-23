@@ -1,11 +1,11 @@
 """S8 WP-1: refresh-токены — httpOnly cookie, ротация jti в Redis,
 детект переиспользования, logout. Требует живой Redis (docker-стек)."""
+from tests.integration.conftest import register_and_verify
 
 
 async def _login(client, email="refresh_user@wanderown.dev"):
-    await client.post(
-        "/auth/register", json={"email": email, "password": "secret123"}
-    )
+    # S14: регистрация теперь через код — полный поток из conftest
+    await register_and_verify(client, email)
     r = await client.post(
         "/auth/login", json={"email": email, "password": "secret123"}
     )

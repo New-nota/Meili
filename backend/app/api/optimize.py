@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update as sql_update
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.days import _day_or_404
@@ -19,7 +19,7 @@ from app.schemas.optimize import OptimizeRequest, OptimizeResponse
 from app.services.optimizer import (
     MustVisitOverBudgetError,
     OutOfCoverageError,
-    optimize_day_stops,
+    apply_day_optimization,
 )
 
 router = APIRouter(tags=["optimize"])
@@ -52,7 +52,8 @@ async def optimize_day(
         raise HTTPException(status_code=400, detail="day_no_stops")
 
     try:
-        ordered_ids, dropped_ids = await optimize_day_stops(
+        # оптимизация + запись позиций — общий сервис (его же зовёт Meili-executor)
+        ordered_ids, dropped_ids = await apply_day_optimization(
             day,
             stops,
             trip.transport_default,
@@ -67,21 +68,6 @@ async def optimize_day(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # вошедшие в маршрут: порядок + included_in_route=true
-    for new_pos, stop_id in enumerate(ordered_ids):
-        await db.execute(
-            sql_update(TripStop)
-            .where(TripStop.id == stop_id)
-            .values(position=new_pos, included_in_route=True)
-        )
-    # исключённые селективным прогоном: included=false, позиции — после
-    # включённых (position NOT NULL в модели, семантику несёт флаг)
-    for offset, stop_id in enumerate(dropped_ids):
-        await db.execute(
-            sql_update(TripStop)
-            .where(TripStop.id == stop_id)
-            .values(position=len(ordered_ids) + offset, included_in_route=False)
-        )
     await db.commit()
 
     return OptimizeResponse(

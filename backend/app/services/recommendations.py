@@ -156,10 +156,13 @@ async def recommended_places(
 async def _popular_trips(
         db: AsyncSession, city: str | None, exclude: set[str], limit: int
 ) -> list[Trip]:
+    # S17: outerjoin, а не join — на молодом сервисе лайков ещё нет, и с INNER
+    # JOIN блок рекомендаций оставался пустым навсегда. Сначала залайканные,
+    # потом остальные публичные.
     stmt = (
-        select(Trip).join(TripLike, TripLike.trip_id == Trip.id)
+        select(Trip).outerjoin(TripLike, TripLike.trip_id == Trip.id)
         .where(Trip.is_public.is_(True)).group_by(Trip.id)
-        .order_by(func.count(TripLike.user_id).desc())
+        .order_by(func.count(TripLike.user_id).desc(), Trip.created_at.desc())
     )
     if city:
         stmt = stmt.where(Trip.city == city)

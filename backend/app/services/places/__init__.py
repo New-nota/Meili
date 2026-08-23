@@ -40,6 +40,13 @@ def place_to_dict(place: Place)-> dict:
         "tags": place.tags,
         "osm_id": place.osm_id,
         "is_verified": place.is_verified,
+        "opening_hours": place.opening_hours,  # ТЗ-Meili M2.4
+        # ТЗ-E: цены для авто-оценки бюджета
+        "pricing_model": place.pricing_model,
+        "avg_check": place.avg_check,
+        "ticket_adult": place.ticket_adult,
+        "ticket_child": place.ticket_child,
+        "price_currency": place.price_currency,
     }
     if place.location is not None:
         point = to_shape(place.location)

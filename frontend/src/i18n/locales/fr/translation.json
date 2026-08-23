@@ -14,7 +14,9 @@
     "notSet": "— not set —",
     "untitled": "Untitled",
     "search": "Searching...",
-    "error": "Something went wrong"
+    "error": "Something went wrong",
+    "km": "km",
+    "hoursShort": "h"
   },
   "nav": {
     "myTrips": "My trips",
@@ -61,7 +63,9 @@
     "recommendedLoading": "Loading recommendations...",
     "recommendedError": "Failed to load recommendations...",
     "clone": "Clone",
-    "cloning": "Cloning..."
+    "cloning": "Cloning...",
+    "recommendationsTitle": "Recommandations",
+    "recommendationsEmpty": "Rien à suggérer pour l’instant — revenez plus tard"
   },
   "day": {
     "title": "Day {{num}}",
@@ -169,19 +173,51 @@
     "statsVisited": "Places visited",
     "statsLikesGiven": "Likes given",
     "statsLikesReceived": "Likes received",
-    "myTrips": "My routes",
-    "noTrips": "No routes yet",
-    "createTrip": "Create a trip",
-    "likedTrips": "Liked routes",
-    "noLiked": "No liked routes yet",
-    "recommended": "Recommended for you",
-    "recommendedEmpty": "Recommendations will appear once there is some trip and like history",
     "styleCulture": "culture",
     "styleNature": "nature",
     "styleFood": "food",
     "styleActive": "active",
     "styleFamily": "family",
-    "styleNightlife": "nightlife"
+    "styleNightlife": "nightlife",
+    "myTrips": {
+      "title": "Mes itinéraires",
+      "viewAll": "Tous les voyages",
+      "create": "Créer un voyage",
+      "empty": {
+        "title": "Aucun itinéraire pour l’instant",
+        "subtitle": "Ville et dates — on construit l’itinéraire ensemble"
+      }
+    },
+    "status": {
+      "completed": "terminé",
+      "draft": "brouillon"
+    },
+    "meta": {
+      "days_one": "{{count}} jour",
+      "days_other": "{{count}} jours",
+      "stops_one": "{{count}} étape",
+      "stops_other": "{{count}} étapes",
+      "adults_one": "{{count}} adulte",
+      "adults_other": "{{count}} adultes",
+      "children_one": "{{count}} enfant",
+      "children_other": "{{count}} enfants"
+    },
+    "liked": {
+      "title": "Favoris",
+      "remove": "Retirer des favoris",
+      "removeError": "Impossible de retirer des favoris",
+      "empty": {
+        "title": "Les itinéraires à votre goût apparaîtront ici",
+        "subtitle": "Marquez d’un cœur les voyages qui vous plaisent"
+      }
+    },
+    "similar": {
+      "title": "Les voyageurs similaires choisissent",
+      "subtitle": "itinéraires de voyageurs aux goûts proches",
+      "likedBy_one": "{{count}} voyageur aime",
+      "likedBy_other": "{{count}} voyageurs aiment",
+      "stops": "étapes"
+    }
   },
   "export": {
     "pdf": "Download PDF",
@@ -201,5 +237,31 @@
     "day_no_stops": "The day has no stops",
     "day_has_stops": "Move stops out of the day being removed first",
     "location_in_use": "Location is used by a trip day"
+  },
+  "planner": {
+    "day": {
+      "default": "Jour {{position}}",
+      "rename": "Renommer le jour",
+      "nameLabel": "Nom du jour"
+    },
+    "leg": {
+      "walking": "à pied",
+      "driving": "en voiture",
+      "transit": "en transports"
+    },
+    "stop": {
+      "onSite": "{{duration}} sur place",
+      "editDuration": "Modifier le temps sur place"
+    },
+    "error": {
+      "rename": "Impossible de renommer le jour",
+      "transport": "Impossible de changer le transport",
+      "duration": "Impossible de modifier le temps"
+    }
+  },
+  "meili": {
+    "planWith": "Planifier avec Meili",
+    "consult": "Demander conseil à Meili",
+    "draftPrefix": "Je veux planifier un voyage :"
   }
 }

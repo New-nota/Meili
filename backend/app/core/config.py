@@ -38,6 +38,21 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str | None = None
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # AI-ассистент Meili (ТЗ-Meili §4). Объявлено ОДИН раз — правило 1.2.
+    # Смена провайдера = смена LLM_PROVIDER: None в моделях означает
+    # «точный pinned-ID из модуля провайдера» (services/llm/mistral.py|deepseek.py),
+    # так что переключение — действительно одна env-переменная.
+    # Прод — Mistral (ЕС-хостинг, GDPR); DeepSeek — запасной.
+    LLM_PROVIDER: str = "mistral"          # 'mistral' | 'deepseek'
+    LLM_MODEL_LOOP: str | None = None      # override pinned-ID агент-цикла
+    LLM_MODEL_SUMMARY: str | None = None   # override pinned-ID суммаризации
+    LLM_API_KEY: str | None = None         # без ключа /api/meili/... отвечает 501
+    LLM_MAX_STEPS: int = 5
+    LLM_STEP_TIMEOUT_S: int = 30           # молчание стрима, не общая длина шага
+    # M5.3: токен-бюджет окна истории; превышение триггерит фоновую
+    # суммаризацию (Celery) и обрезает окно при сборке контекста
+    MEILI_WINDOW_TOKENS: int = 2000
+
     class Config:
         env_file = ".env"
 

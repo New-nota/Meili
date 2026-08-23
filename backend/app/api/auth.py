@@ -6,9 +6,16 @@ from starlette.responses import RedirectResponse
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import (
+    CODE_TTL,
+    MAX_CODE_ATTEMPTS,
+    delete_pending_registration,
+    get_pending_registration,
     is_refresh_valid,
     revoke_all_refresh,
     revoke_refresh,
+    save_pending_registration,
+    start_resend_cooldown,
+    store_pending_registration,
     store_refresh,
 )
 from app.core.security import (
@@ -20,7 +27,18 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RegisterRequest,
+    RegisterResponse,
+    ResendRequest,
+    TokenResponse,
+    UserResponse,
+    VerifyRequest,
+)
+from app.services.email import send_registration_code
+import secrets
+import time
 import uuid
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -74,29 +92,82 @@ def _google_client():
         client = oauth.create_client("google")
     return client
 
-@router.post("/register", response_model=TokenResponse)
-async def register(
-    data: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)
-):
-    # email check
+# --- S14: регистрация по коду на почту (жёсткий гейт) -------------------------
+# До подтверждения кода User в БД не создаётся: черновик живёт в Redis (TTL 1ч).
+# Повторный register на неподтверждённый email просто перезаписывает черновик
+# новым кодом — реальный владелец почты всегда может «перехватить» регистрацию.
+
+def _new_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+@router.post("/register", response_model=RegisterResponse)
+async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    # занят только ПОДТВЕРЖДЁННЫЙ юзер (в БД все такие — S14)
     result = await db.execute(select(User).where(User.email == data.email))
-    existing = result.scalar_one_or_none()
-    if existing:
+    if result.scalar_one_or_none():
         # машинный код — текст локализует фронт (стиль S9 WP-C)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="email_taken"
         )
+    code = _new_code()
+    await store_pending_registration(
+        data.email, hash_password(data.password), data.name, code
+    )
+    # dev без SMTP: код уходит в лог (docker logs backend)
+    await send_registration_code(data.email, code)
+    return RegisterResponse()
+
+
+@router.post("/verify", response_model=TokenResponse)
+async def verify(
+    data: VerifyRequest, response: Response, db: AsyncSession = Depends(get_db)
+):
+    pending = await get_pending_registration(data.email)
+    if pending is None:
+        raise HTTPException(status_code=400, detail="no_pending_registration")
+    if pending["attempts"] >= MAX_CODE_ATTEMPTS:
+        # код сгорел от перебора — нужен resend
+        raise HTTPException(status_code=400, detail="too_many_attempts")
+    if time.time() > pending["code_expires"]:
+        raise HTTPException(status_code=400, detail="code_expired")
+    if not secrets.compare_digest(pending["code"], data.code):
+        pending["attempts"] += 1
+        await save_pending_registration(data.email, pending)
+        raise HTTPException(status_code=400, detail="invalid_code")
+
+    # код верный → создаём настоящего юзера (гонка: email могли занять)
+    result = await db.execute(select(User).where(User.email == data.email))
+    if result.scalar_one_or_none():
+        await delete_pending_registration(data.email)
+        raise HTTPException(status_code=400, detail="email_taken")
     user = User(
         id=uuid.uuid4(),
         email=data.email,
-        password_hash=hash_password(data.password),
-        name=data.name
+        password_hash=pending["password_hash"],
+        name=pending["name"],
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    await delete_pending_registration(data.email)
     return await _issue_tokens(response, user)
+
+
+@router.post("/resend-code", response_model=RegisterResponse)
+async def resend_code(data: ResendRequest):
+    pending = await get_pending_registration(data.email)
+    if pending is None:
+        raise HTTPException(status_code=400, detail="no_pending_registration")
+    if not await start_resend_cooldown(data.email):
+        raise HTTPException(status_code=429, detail="resend_cooldown")
+    pending["code"] = _new_code()
+    pending["code_expires"] = time.time() + CODE_TTL
+    pending["attempts"] = 0
+    await save_pending_registration(data.email, pending)
+    await send_registration_code(data.email, pending["code"])
+    return RegisterResponse()
 
 @router.post("/login",response_model=TokenResponse)
 async def login(

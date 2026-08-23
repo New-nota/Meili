@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func
 from uuid import UUID
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -8,7 +8,8 @@ from app.core.security import get_current_user
 from app.models.trip import Trip, TripStop, TripDay
 from app.models.place import Place
 from app.models.user import User
-from app.schemas.stops import StopCreate, StopResponse, StopReorder, StopUpdate
+from app.schemas.stops import StopCreate, StopResponse, StopUpdate
+from app.services import stops as stops_service
 from geoalchemy2.shape import to_shape
 
 router = APIRouter(prefix="/trips", tags=["stops"])
@@ -20,23 +21,30 @@ def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
         "place_id": stop.place_id,
         "day_id": stop.day_id,
         "position": stop.position,
-        "visit_date": stop.visit_date,
         "visit_time": stop.visit_time,
         "duration_minutes": stop.duration_minutes,
+        # S16: false -> UI рисует «≈» (подставлено из места)
+        "duration_is_custom": stop.duration_is_custom,
         "transport_to_next": stop.transport_to_next,
         "notes": stop.notes,
         "is_booked": stop.is_booked,
         "priority": stop.priority,
         "estimated_cost": stop.estimated_cost,
+        "cost_source": stop.cost_source,
+        "cost_min": stop.cost_min,
+        "cost_max": stop.cost_max,
+        "cost_is_estimate": stop.cost_is_estimate,
         "included_in_route": stop.included_in_route,
         "place_name": None,
         "place_lat": None,
         "place_lon": None,
         "place_address": None,
+        "place_pricing_model": None,
     }
     if place:
         result["place_name"] = place.name
         result["place_address"] = place.address
+        result["place_pricing_model"] = place.pricing_model
         if place.location:
             point = to_shape(place.location)
             result["place_lon"] = point.x
@@ -53,14 +61,27 @@ async def get_trip_or_404(trip_id: UUID, user_id: UUID, db: AsyncSession) -> Tri
         raise HTTPException(status_code=404, detail="trip not found")
     return trip
 
+
+async def get_trip_readable(trip_id: UUID, user_id: UUID, db: AsyncSession) -> Trip:
+    """S13: чтение для превью — владелец ИЛИ публичная поездка.
+
+    Только для GET-ручек (превью чужой поездки). Мутации по-прежнему через
+    owner-only get_trip_or_404. Приватная чужая — 404, как и раньше.
+    """
+    result = await db.execute(select(Trip).where(Trip.id == trip_id))
+    trip = result.scalar_one_or_none()
+    if not trip or (trip.user_id != user_id and not trip.is_public):
+        raise HTTPException(status_code=404, detail="trip not found")
+    return trip
+
 @router.get("/{trip_id}/stops", response_model=list[StopResponse])
 async def get_stops(
     trip_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # все остановки отсортированные по позициям
-    await get_trip_or_404(trip_id, current_user.id, db)
+    # все остановки отсортированные по позициям (S13: и для превью — readable)
+    await get_trip_readable(trip_id, current_user.id, db)
     result = await db.execute(
         select(TripStop, Place).join(Place, TripStop.place_id == Place.id).where(TripStop.trip_id == trip_id).order_by(TripStop.position)
     )
@@ -75,46 +96,27 @@ async def add_stop(
     current_user: User = Depends(get_current_user),
 ):
     # add stop to visit list
-    await get_trip_or_404(trip_id, current_user.id, db)
+    trip = await get_trip_or_404(trip_id, current_user.id, db)
     place_result = await db.execute(select(Place).where(Place.id == data.place_id))
     place = place_result.scalar_one_or_none()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
 
-    # S8 WP-3: привязка к дню — visit_date зеркалит дату дня,
-    # позиция считается в хвост этого дня
-    visit_date = data.visit_date
-    if data.day_id is not None:
-        day_result = await db.execute(
-            select(TripDay).where(TripDay.id == data.day_id, TripDay.trip_id == trip_id)
-        )
-        day = day_result.scalar_one_or_none()
-        if day is None:
-            raise HTTPException(status_code=404, detail="Day not found")
-        visit_date = day.date
+    # S16: стоп всегда в дне; day_id обязателен (логика — в services/stops)
+    day = (await db.execute(
+        select(TripDay).where(TripDay.id == data.day_id, TripDay.trip_id == trip_id)
+    )).scalar_one_or_none()
+    if day is None:
+        raise HTTPException(status_code=404, detail="Day not found")
 
-    position_scope = (
-        TripStop.day_id == data.day_id
-        if data.day_id is not None
-        else TripStop.trip_id == trip_id
-    )
-    max_result = await db.execute(
-        select(func.max(TripStop.position)).where(position_scope)
-    )
-    max_position = max_result.scalar() or 0 # в случае если в поездку еще ничего не добавили
-    next_position = max_position + 1
-    stop = TripStop(
-        trip_id=trip_id,
-        place_id=data.place_id,
-        day_id=data.day_id,
-        position=next_position,
-        visit_date=visit_date,
+    stop = await stops_service.add_stop(
+        db, trip, place,
+        day=day,
         visit_time=data.visit_time,
         duration_minutes=data.duration_minutes,
         transport_to_next=data.transport_to_next,
         notes=data.notes,
     )
-    db.add(stop)
     await db.commit()
     await db.refresh(stop)
     return stop_to_dict(stop, place)
@@ -130,7 +132,7 @@ async def update_stop(
 ):
     # частичное обновление: дата/время визита, транспорт, заметки,
     # перенос между днями (S8 WP-3)
-    await get_trip_or_404(trip_id, current_user.id, db)
+    trip = await get_trip_or_404(trip_id, current_user.id, db)
     result = await db.execute(
         select(TripStop).where(TripStop.id == stop_id, TripStop.trip_id == trip_id)
     )
@@ -141,7 +143,7 @@ async def update_stop(
     updates = data.model_dump(exclude_unset=True)
 
     # перенос стопа в другой день: позиция в хвост целевого дня,
-    # исходный день смыкается, visit_date = дата нового дня
+    # исходный день смыкается (дата стопа = дата его дня, S16)
     new_day_id = updates.pop("day_id", None)
     if new_day_id is not None and new_day_id != stop.day_id:
         day_result = await db.execute(
@@ -157,23 +159,38 @@ async def update_stop(
         )
         stop.day_id = new_day_id
         stop.position = (max_result.scalar() or 0) + 1
-        stop.visit_date = day.date
 
-        if old_day_id is not None:
-            remaining = await db.execute(
-                select(TripStop).where(
-                    TripStop.day_id == old_day_id, TripStop.position > old_position
-                )
+        remaining = await db.execute(
+            select(TripStop).where(
+                TripStop.day_id == old_day_id, TripStop.position > old_position
             )
-            for s in remaining.scalars().all():
-                s.position -= 1
+        )
+        for s in remaining.scalars().all():
+            s.position -= 1
+
+    # S16: время на точке задано руками -> «≈» больше не показываем.
+    # Флагом управляет только сервер, из API его не выставить.
+    if updates.get("duration_minutes") is not None:
+        stop.duration_is_custom = True
+
+    # ТЗ-E: источник суммы (логика в services/stops — общая с Meili-executor).
+    # Пришёл estimated_cost -> manual; cost_source='auto' -> «вернуть авто».
+    # Место читаем один раз: нужно и авто-пересчёту, и ответу stop_to_dict
+    place = (await db.execute(
+        select(Place).where(Place.id == stop.place_id)
+    )).scalar_one_or_none()
+    cost_source = updates.pop("cost_source", None)
+    if cost_source == "auto":
+        updates.pop("estimated_cost", None)  # авто-режим игнорирует ручную сумму
+        stops_service.reset_cost_to_auto(stop, trip, place)
+    elif "estimated_cost" in updates or cost_source == "manual":
+        stops_service.set_manual_cost_source(stop)
 
     for field, value in updates.items():
         setattr(stop, field, value)
     await db.commit()
     await db.refresh(stop)
-    place_result = await db.execute(select(Place).where(Place.id == stop.place_id))
-    return stop_to_dict(stop, place_result.scalar_one_or_none())
+    return stop_to_dict(stop, place)
 
 @router.delete("/{trip_id}/stops/{stop_id}", status_code=204)
 async def remove_stop(
@@ -190,14 +207,7 @@ async def remove_stop(
     stop = result.scalar_one_or_none()
     if not stop:
         raise HTTPException(status_code=404, detail="Stop not found")
-    deleted_position = stop.position
-    await db.delete(stop)
-    remaining = await db.execute(
-        select(TripStop).where(TripStop.trip_id == trip_id, TripStop.position > deleted_position)
-    )
-    for s in remaining.scalars().all():
-        s.position -= 1
-    
+    await stops_service.remove_stop(db, stop)
     await db.commit()
 
 class ReorderRequest(BaseModel):
@@ -215,12 +225,15 @@ async def reorder_stops(
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Trip not found")
-    for new_pos, stop_id in enumerate(body.stop_ids):
-        result = await db.execute(
-            select(TripStop).where(TripStop.id == stop_id, TripStop.trip_id == trip_id)
+    # один запрос вместо N: чужие/несуществующие id просто игнорируются
+    stops = (await db.execute(
+        select(TripStop).where(
+            TripStop.id.in_(body.stop_ids), TripStop.trip_id == trip_id
         )
-        stop = result.scalar_one_or_none()
-        if stop:
+    )).scalars().all()
+    by_id = {str(s.id): s for s in stops}
+    for new_pos, stop_id in enumerate(body.stop_ids):
+        if stop := by_id.get(stop_id):
             stop.position = new_pos
     await db.commit()
     # status_code=204: ответ без тела

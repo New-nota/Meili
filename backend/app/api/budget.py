@@ -12,6 +12,7 @@ from app.models.trip import TripDay, TripExpense
 from app.models.user import User
 from app.schemas.expenses import ExpenseCreate, ExpenseResponse, ExpenseUpdate
 from app.services.budget import BudgetSummary, compute_budget
+from app.services.budget_estimate import recompute_auto_stops
 
 router = APIRouter(prefix="/trips", tags=["budget"])
 
@@ -24,6 +25,22 @@ async def get_budget(
 ):
     trip = await get_trip_or_404(trip_id, current_user.id, db)
     return await compute_budget(db, trip)
+
+
+@router.post("/{trip_id}/recompute-estimates")
+async def recompute_estimates(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """ТЗ-E: ручной пересчёт авто-оценок (кнопка «обновить оценки»).
+
+    Нужен после массового ре-сида цен — он авто-пересчёт не триггерит.
+    """
+    trip = await get_trip_or_404(trip_id, current_user.id, db)
+    updated = await recompute_auto_stops(db, trip)
+    await db.commit()
+    return {"updated": updated}
 
 
 @router.get("/{trip_id}/expenses", response_model=list[ExpenseResponse])

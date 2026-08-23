@@ -1,10 +1,11 @@
 """S9 WP-A: бюджет — расчёт, статьи, валюта, over_budget."""
+from tests.integration.conftest import D1
 
 
 async def _trip_with_day(client, headers) -> tuple[str, str]:
     r = await client.post(
         "/trips/",
-        json={"title": "Бюджетная", "start_date": "2026-08-01", "end_date": "2026-08-01",
+        json={"title": "Бюджетная", "start_date": D1, "end_date": D1,
               "currency": "EUR"},
         headers=headers,
     )
