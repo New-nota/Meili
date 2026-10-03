@@ -127,9 +127,12 @@ async def test_currency_mismatch_gives_null_estimate(client, auth_headers):
 async def test_recompute_endpoint_after_price_update(client, auth_headers):
     """Ре-сид цен не триггерит пересчёт — его делает ручной recompute."""
     trip_id = await _trip(client, auth_headers, adults=2)
-    place_id = await _place(client, auth_headers)  # free по умолчанию
+    # Ревью: дефолт pricing_model теперь 'unknown' — «цены не знаем», а не
+    # «бесплатно». Раньше дефолтом было 'free', и 2701 сидовое место врало,
+    # что вход свободный, подставляя в бюджет выдуманный 0.00
+    place_id = await _place(client, auth_headers)
     stop = await _add_stop(client, auth_headers, trip_id, place_id)
-    assert stop["estimated_cost"] == "0.00"
+    assert stop["estimated_cost"] is None
 
     # у места появилась цена (сид/ручной ввод) — стоп ещё не пересчитан
     r = await client.patch(
@@ -162,3 +165,30 @@ async def test_null_estimates_do_not_break_budget(client, auth_headers):
 
     budget = (await client.get(f"/trips/{trip_id}/budget", headers=auth_headers)).json()
     assert budget["activities_total"] == "20.00"  # 10 * 2 взрослых, null не ломает
+
+
+async def test_unknown_price_is_not_free(client, auth_headers):
+    """Ревью: «не знаем цену» и «бесплатно» — разные вещи.
+
+    Дефолт места — unknown -> оценки нет (None, не 0.00). Явный free — это
+    факт «вход свободный», и он даёт честный 0.00.
+    """
+    trip_id = await _trip(client, auth_headers, adults=2)
+
+    unknown_stop = await _add_stop(
+        client, auth_headers, trip_id,
+        await _place(client, auth_headers, name="Без цены"),
+    )
+    assert unknown_stop["estimated_cost"] is None
+    assert unknown_stop["place_pricing_model"] == "unknown"
+
+    free_stop = await _add_stop(
+        client, auth_headers, trip_id,
+        await _place(client, auth_headers, name="Парк", pricing_model="free"),
+    )
+    assert free_stop["estimated_cost"] == "0.00"
+    assert free_stop["place_pricing_model"] == "free"
+
+    # бюджет: unknown не считается нулём и не ломает сумму
+    budget = (await client.get(f"/trips/{trip_id}/budget", headers=auth_headers)).json()
+    assert budget["activities_total"] == "0"

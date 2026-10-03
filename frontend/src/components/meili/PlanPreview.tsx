@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { apiErrorMessage } from '../../utils/apiError'
 import {
     applyPlan, discardPlan, type PlanAction, type PlanEvent,
 } from '../../api/meili'
 import { apiFetch } from '../../api/client'
-import { costLabelCore } from '../../utils/costLabel'
+import { costText, planTotal } from '../../utils/planCost'
 import { formatMoney } from '../../utils/money'
 
 // Карточка превью плана Meili (ТЗ-Meili M3.4):
@@ -20,34 +21,6 @@ interface Props {
 const ICONS: Record<string, string> = {
     create_trip: '🧳', add_stop: '📍', remove_stop: '✂️',
     set_budget: '💰', set_stop_cost: '💶', optimize: '🧭',
-}
-
-// M5.2: оценка рисуется иначе — «≈ 400–700», приглушённо; точная — обычно.
-// Правило и формат — общие с ярлыком стопа (utils/costLabel)
-export function costText(a: PlanAction, locale: string): { text: string; estimate: boolean } | null {
-    const label = costLabelCore({
-        amount: (a.cost_amount ?? a.amount) as string | undefined,
-        min: a.cost_min as string | undefined,
-        max: a.cost_max as string | undefined,
-        estimate: Boolean(a.cost_is_estimate ?? a.is_estimate),
-    }, (a.cost_currency ?? a.currency ?? null) as string | null, locale)
-    return label ? { text: label.text, estimate: label.approx } : null
-}
-
-// итоговая смета плана: лимит (set_budget) — не расход, оценки помечаются
-function planTotal(rows: { a: PlanAction; cost: ReturnType<typeof costText> }[]) {
-    let min = 0, max = 0, hasEstimate = false, hasAny = false, currency = ''
-    for (const { a, cost } of rows) {
-        if (a.type === 'set_budget' || !cost) continue
-        hasAny = true
-        hasEstimate = hasEstimate || cost.estimate
-        currency = (a.cost_currency ?? a.currency ?? currency) as string
-        const lo = parseFloat((a.cost_min ?? a.cost_amount ?? a.amount ?? '0') as string)
-        const hi = parseFloat((a.cost_max ?? a.cost_amount ?? a.amount ?? '0') as string)
-        if (!isNaN(lo)) min += lo
-        if (!isNaN(hi)) max += hi
-    }
-    return hasAny ? { min, max, hasEstimate, currency } : null
 }
 
 export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Props) {
@@ -84,11 +57,14 @@ export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Pr
                     ? ` (${t('day.dayShort', { num: (a.day_index as number) + 1 })})` : ''
                 return t('meili.actionAddStop', { name }) + day
             }
-            case 'remove_stop': return t('meili.actionRemoveStop')
+            // QA: после заморозки система кладёт в план название стопа
+            case 'remove_stop': return a.stop_name
+                ? `${t('meili.actionRemoveStop')}: ${a.stop_name as string}` : t('meili.actionRemoveStop')
             case 'set_budget':
                 return t('meili.actionSetBudget',
                     { amount: a.amount as string, currency: a.currency as string })
-            case 'set_stop_cost': return t('meili.actionSetStopCost')
+            case 'set_stop_cost': return a.stop_name
+                ? `${t('meili.actionSetStopCost')}: ${a.stop_name as string}` : t('meili.actionSetStopCost')
             case 'optimize': return t('meili.actionOptimize')
             default: return a.type
         }
@@ -96,13 +72,16 @@ export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Pr
 
     const handleApply = async () => {
         // анти-дабл-клик (M4.5): кнопка гаснет на время запроса
+        if (busy) return
         setBusy(true)
         setError(null)
         try {
             const result = await applyPlan(plan.plan_id)
             onApplied(result.trip_id)
-        } catch {
-            setError(t('meili.applyError'))
+        } catch (e) {
+            // QA: машинный код executor'а (place_out_of_coverage, plan_discarded,
+            // currency_mismatch…) раньше терялся за безликим «не удалось»
+            setError(apiErrorMessage(e, t, t('meili.applyError')))
         } finally {
             setBusy(false)
         }

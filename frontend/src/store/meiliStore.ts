@@ -57,10 +57,19 @@ export const useMeiliStore = create<MeiliState>((set) => ({
     setPlan: (plan) => set({ plan }),
     finishTurn: () => set({ streaming: false, stepLabel: null }),
 
+    // Ревью: убираем НЕДОДИКТОВАННЫЙ ответ этого хода, а не только пустой.
+    // Ход может упасть посреди стрима (таймаут молчания LLM), и раньше рядом
+    // с «ассистент недоступен» оставался огрызок вроде «**Зе». Локальные id
+    // (см. localMessage) есть только у сообщений текущего хода — история,
+    // подгруженная с сервера, не трогается.
     failTurn: (detail) => set(s => ({
         streaming: false, stepLabel: null,
-        messages: [...s.messages.filter(m => m.role !== 'assistant' || m.content !== ''),
-            localMessage('assistant', `⚠ ${detail}`)],
+        messages: [
+            ...s.messages.filter(m => !(
+                m.role === 'assistant' && m.id.startsWith('local-')
+            )),
+            localMessage('assistant', `⚠ ${detail}`),
+        ],
     })),
 
     reset: () => set({

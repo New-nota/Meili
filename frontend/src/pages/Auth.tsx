@@ -4,12 +4,15 @@ import { useTranslation } from "react-i18next"
 import { apiFetch, API_URL, setAccessToken, ApiError } from "../api/client"
 import LanguageSwitcher from "../components/LanguageSwitcher"
 import HermodLogo from "../components/HermodLogo"
+import { apiErrorMessage } from "../utils/apiError"
 
 // Вход и регистрация. S14: жёсткий гейт — register шлёт 6-значный код на
 // почту (юзер в БД не создаётся), токены выдаёт только /auth/verify.
 type Mode = 'login' | 'register' | 'verify'
 
 const RESEND_COOLDOWN_S = 60
+// грубая проверка формы адреса — точную делает бэкенд (EmailStr)
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function Auth() {
     const { t } = useTranslation()
@@ -18,7 +21,10 @@ export default function Auth() {
     const [password, setPassword] = useState('')
     const [name, setName] = useState('')
     const [code, setCode] = useState('')
-    const [error, setError] = useState<string | null>(null)
+    // возврат из Google с ошибкой (#error=oauth_failed) — сразу в начальное состояние
+    const [error, setError] = useState<string | null>(
+        () => /error=oauth_failed/.test(window.location.hash) ? t('errors.oauth_failed') : null,
+    )
     const [busy, setBusy] = useState(false)
     // отсчёт до следующего «выслать заново»
     const [resendIn, setResendIn] = useState(0)
@@ -26,12 +32,15 @@ export default function Auth() {
     const navigate = useNavigate()
 
     // возврат из Google OAuth: бэкенд редиректит на /auth#token=<jwt>
+    // (или #error=oauth_failed — отмена/сбой на стороне Google, QA)
     useEffect(() => {
         const match = window.location.hash.match(/token=([^&]+)/)
         if (match) {
             setAccessToken(match[1])
             window.history.replaceState(null, '', window.location.pathname)
             navigate('/discover')
+        } else if (/error=oauth_failed/.test(window.location.hash)) {
+            window.history.replaceState(null, '', window.location.pathname)
         }
     }, [navigate])
 
@@ -54,16 +63,21 @@ export default function Auth() {
     }
 
     // машинный код ошибки с бэка -> локализованный текст (стиль S9 WP-C)
-    const showApiError = (e: unknown) => {
-        const detail = e instanceof ApiError
-            ? (e.body as { detail?: string })?.detail : undefined
-        setError(typeof detail === 'string'
-            ? t(`errors.${detail}`, t('common.error'))
-            : t('common.error'))
-    }
+    const showApiError = (e: unknown) => setError(apiErrorMessage(e, t))
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (ev?: React.FormEvent) => {
+        ev?.preventDefault()
+        if (busy) return
         setError(null)
+        // QA: пустой сабмит уходил на бэк и возвращался как «неверный пароль»
+        if (!email.trim() || !password) {
+            setError(t('auth.fillAll'))
+            return
+        }
+        if (!EMAIL_RE.test(email.trim())) {
+            setError(t('auth.invalidEmail'))
+            return
+        }
         if (mode === 'register' && password.length < 8) {
             setError(t('auth.passwordMin'))
             return
@@ -88,7 +102,9 @@ export default function Auth() {
                 startResendTimer()
             }
         } catch (e) {
-            if (mode === 'login') {
+            // «неверный пароль» — только на настоящий 401; лежащий бэк / 429 /
+            // 5xx раньше тоже выдавались за опечатку в пароле
+            if (mode === 'login' && e instanceof ApiError && e.status === 401) {
                 setError(t('auth.invalidCredentials'))
             } else {
                 showApiError(e)
@@ -99,6 +115,7 @@ export default function Auth() {
     }
 
     const handleVerify = async () => {
+        if (busy) return
         if (code.length !== 6) {
             setError(t('auth.codeSixDigits'))
             return
@@ -193,30 +210,38 @@ export default function Auth() {
             <HermodLogo size={64} withWordmark vertical />
             <h2>{mode === 'login' ? t('auth.signIn') : t('auth.signUp')}</h2>
 
-            <input placeholder={t('auth.email')} value={email}
-                onChange={e => setEmail(e.target.value)} style={inputStyle} />
-            {mode === 'register' && (
-                <input placeholder={t('auth.nameOptional')} value={name}
-                    onChange={e => setName(e.target.value)} style={inputStyle} />
-            )}
-            <input placeholder={t('auth.password')} type="password" value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                style={inputStyle} />
-            {mode === 'register' && (
-                <p style={{fontSize: 12, color: 'var(--text-muted)', margin: 0}}>
-                    {t('auth.passwordMin')}
-                </p>
-            )}
+            {/* QA: настоящая <form> — Enter из любого поля, менеджеры паролей
+                и автозаполнение браузера (раньше Enter работал только в пароле) */}
+            <form onSubmit={handleSubmit} noValidate
+                style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12}}>
+                <input placeholder={t('auth.email')} value={email} type="email"
+                    name="email" autoComplete={mode === 'login' ? 'username' : 'email'}
+                    onChange={e => setEmail(e.target.value)} style={inputStyle} />
+                {mode === 'register' && (
+                    <input placeholder={t('auth.nameOptional')} value={name}
+                        name="name" autoComplete="name" maxLength={100}
+                        onChange={e => setName(e.target.value)} style={inputStyle} />
+                )}
+                <input placeholder={t('auth.password')} type="password" value={password}
+                    name="password"
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    onChange={e => setPassword(e.target.value)}
+                    style={inputStyle} />
+                {mode === 'register' && (
+                    <p style={{fontSize: 12, color: 'var(--text-muted)', margin: 0}}>
+                        {t('auth.passwordMin')}
+                    </p>
+                )}
 
-            {error && <p style={{color: 'var(--accent)', fontSize: 13}}>{error}</p>}
+                {error && <p role="alert" style={{color: 'var(--accent)', fontSize: 13, margin: 0}}>{error}</p>}
 
-            <button onClick={handleSubmit} disabled={busy}
-            style={{padding: '8px 24px', background: busy ? 'var(--text-muted)' : 'var(--accent)',
-                color: 'var(--surface)', border: 'none', borderRadius: 'var(--radius)',
-                cursor: busy ? 'wait' : 'pointer', fontWeight: 500}}>
-                {mode === 'login' ? t('auth.signIn') : t('auth.signUp')}
-            </button>
+                <button type="submit" disabled={busy}
+                style={{padding: '8px 24px', background: busy ? 'var(--text-muted)' : 'var(--accent)',
+                    color: 'var(--surface)', border: 'none', borderRadius: 'var(--radius)',
+                    cursor: busy ? 'wait' : 'pointer', fontWeight: 500}}>
+                    {mode === 'login' ? t('auth.signIn') : t('auth.signUp')}
+                </button>
+            </form>
 
             {/* переключение вход <-> регистрация */}
             <button onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}

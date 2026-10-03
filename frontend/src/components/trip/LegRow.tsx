@@ -19,6 +19,14 @@ export default function LegRow({ leg, loading, readOnly, onChangeTransport }: Pr
     const { t } = useTranslation()
     const [open, setOpen] = useState(false)
 
+    // QA: маршрут не построился (Valhalla недоступна / вне покрытия) — раньше
+    // тут висел вечный скелетон «загрузки». Теперь честный прочерк.
+    if (!loading && !leg) {
+        return (
+            <div style={{ margin: '2px 0 6px 32px', fontSize: 12, color: 'var(--text-muted)' }}
+                title={t('planner.leg.unavailable')}>—</div>
+        )
+    }
     // скелетон вместо «0 мин» и вместо пустоты
     if (loading || !leg) {
         return (
@@ -45,6 +53,8 @@ export default function LegRow({ leg, loading, readOnly, onChangeTransport }: Pr
                 {!readOnly && ' ⌄'}
             </button>
 
+            {/* клик мимо меню закрывает его */}
+            {open && <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 4 }} />}
             {open && (
                 <div style={{
                     position: 'absolute', top: '100%', left: 0, zIndex: 5,

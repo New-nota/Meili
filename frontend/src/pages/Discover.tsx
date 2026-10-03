@@ -3,10 +3,12 @@ import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { User } from "lucide-react"
 import { RecommendedTrips } from "../components/RecommendedTrips"
-import { apiFetch } from "../api/client"
+import { apiFetch, ApiError } from "../api/client"
+import { apiErrorMessage } from "../utils/apiError"
 import HermodLogo from "../components/HermodLogo"
 import CreateTripModal from "../components/CreateTripModal"
 import MeiliChatModal from "../components/meili/MeiliChatModal"
+import type { TripDraft } from "../api/meili"
 import TripGridCard from "../components/trip/TripGridCard"
 import type { Trip } from "../types"
 
@@ -15,29 +17,42 @@ export default function Discover() {
     const [trips, setTrips] = useState<Trip[]>([])
     const [isCreating, setIsCreating] =  useState(false)
     // S17: null — чат закрыт; строка — заготовка первого сообщения Meili
+    // S17: заготовка реплики + факты мастера (ревью: факты уходят структурно)
     const [meiliDraft, setMeiliDraft] = useState<string | null>(null)
+    const [meiliDraftFields, setMeiliDraftFields] = useState<TripDraft | null>(null)
     const navigate = useNavigate()
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
+    // сама ошибка, а не текст: перевод — при рендере (смена языка не требует
+    // перезагрузки данных, а эффекту не нужен t в зависимостях)
+    const [loadError, setLoadError] = useState<unknown>(null)
+    const [deleting, setDeleting] = useState(false)
 
     useEffect(() => {
         const load = async () => {
             try {
                 const data = await apiFetch<Trip[]>('/trips/')
                 setTrips(data)
-        } catch {
-            setError(t('trip.loadError'))
+        } catch (e) {
+            setLoadError(e)
         }}
     load()
     }, [])
     const deleteTrip = async (id: string) => {
-        try { await apiFetch(`/trips/${id}`, {method: 'DELETE' })
-        setTrips(prev => prev.filter(tr => tr.id !== id)) }catch {setError(t('common.error'))
-
+        if (deleting) return
+        setDeleting(true)
+        try {
+            await apiFetch(`/trips/${id}`, {method: 'DELETE' })
+            setTrips(prev => prev.filter(tr => tr.id !== id))
+        } catch (e) {
+            // QA: уже удалена (двойной клик, другая вкладка) — цель достигнута,
+            // карточку убираем, а не пугаем ошибкой
+            if (e instanceof ApiError && e.status === 404) setTrips(prev => prev.filter(tr => tr.id !== id))
+            else setError(apiErrorMessage(e, t))
         } finally {
+            setDeleting(false)
             setDeletingId(null)
         }
-
     }
     return (<div className="discover-page" style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
@@ -60,6 +75,7 @@ export default function Discover() {
                 </button>
             </div>
         </div>
+        {loadError != null && <p style={{color: 'var(--accent)', fontSize: 13, marginBottom: 12}}>{apiErrorMessage(loadError, t, t('trip.loadError'))}</p>}
         {error && <p style={{color: 'var(--accent)', fontSize: 13, marginBottom: 12}}>{error}</p>}
         {/* S11: мастер создания — модалка со всеми полями.
             S17: из мастера можно уйти обсуждать поездку с Meili */}
@@ -67,14 +83,17 @@ export default function Discover() {
             <CreateTripModal
                 onClose={() => setIsCreating(false)}
                 onCreated={trip => navigate(`/trips/${trip.id}`)}
-                onPlanWithMeili={draft => { setIsCreating(false); setMeiliDraft(draft) }} />
+                onPlanWithMeili={(text, fields) => {
+                    setIsCreating(false); setMeiliDraft(text); setMeiliDraftFields(fields)
+                }} />
         )}
         {/* S17: чат с Meili прямо с Discover — поездки ещё нет, её создаст план */}
         {meiliDraft !== null && (
             <MeiliChatModal
                 initialInput={meiliDraft || undefined}
-                onClose={() => setMeiliDraft(null)}
-                onTripCreated={id => { setMeiliDraft(null); navigate(`/trips/${id}`) }} />
+                draft={meiliDraftFields}
+                onClose={() => { setMeiliDraft(null); setMeiliDraftFields(null) }}
+                onTripCreated={id => { setMeiliDraft(null); setMeiliDraftFields(null); navigate(`/trips/${id}`) }} />
         )}
 
                     {/* S17: свои поездки — сеткой, крестик в углу ячейки */}
@@ -104,7 +123,7 @@ export default function Discover() {
                                     padding: '8px 16px', background: 'var(--surface-raised)', color: 'var(--text-primary)',
                                     border: '1px solid var(--border)', borderRadius:6, cursor: 'pointer'
                                 }}>{t('common.cancel')}</button>
-                                <button onClick={()=> deleteTrip(deletingId)} style={{
+                                <button onClick={()=> deleteTrip(deletingId)} disabled={deleting} style={{
                                     padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
                                     border: 'none', borderRadius: 6, cursor: 'pointer'
                                 }}>{t('common.delete')}</button>

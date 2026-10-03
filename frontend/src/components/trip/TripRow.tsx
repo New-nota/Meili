@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
 import { getTripStatus, type TripStatus } from '../../utils/tripStatus'
 import { formatMoney } from '../../utils/money'
+import { formatDateRange, metaStyle, rowGrid, tripDaysCount } from './tripRowUtils'
 
 // S16 §2.2: строка маршрута в профиле — без окантовки, во всю ширину блока.
 // Grid: точка статуса | название+мета+описание | бюджет | пилюля.
@@ -10,51 +11,6 @@ const DOT_COLOR: Record<TripStatus, string> = {
     completed: 'var(--accent)',        // терракота
     draft: 'var(--text-muted)',        // нейтральный серый
     active: '#6E8F5E',                 // зелёный: поездка живая
-}
-
-/** «12–15 июля» — месяц пишем один раз, если он общий. */
-export function formatDateRange(
-    start: string | null, end: string | null, locale: string,
-): string | null {
-    if (!start) return null
-    const from = new Date(start + 'T00:00:00')
-    const to = end ? new Date(end + 'T00:00:00') : null
-    const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric' })
-    const fullFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' })
-    if (!to || start === end) return fullFmt.format(from)
-    const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear()
-    return sameMonth
-        ? `${dayFmt.format(from)}–${fullFmt.format(to)}`
-        : `${fullFmt.format(from)} – ${fullFmt.format(to)}`
-}
-
-/** Число дней поездки включительно (для меты). */
-export function tripDaysCount(trip: Pick<Trip, 'start_date' | 'end_date'>): number {
-    if (!trip.start_date || !trip.end_date) return 0
-    const from = new Date(trip.start_date + 'T00:00:00').getTime()
-    const to = new Date(trip.end_date + 'T00:00:00').getTime()
-    return Math.round((to - from) / 86_400_000) + 1
-}
-
-export const rowGrid: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: '10px 1fr auto auto',
-    columnGap: 12,
-    alignItems: 'start',
-    padding: '16px 20px',
-    borderRadius: 12,
-    border: 'none',
-    background: 'transparent',
-    transition: 'background-color 120ms ease-out',
-    cursor: 'pointer',
-    textAlign: 'left',
-    width: '100%',
-    font: 'inherit',
-    color: 'inherit',
-}
-
-export const metaStyle: React.CSSProperties = {
-    fontSize: 13, color: 'var(--text-muted)', marginTop: 2,
 }
 
 /** Однострочное описание с многоточием; пустое — не рендерится вовсе. */

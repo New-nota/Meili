@@ -1,7 +1,7 @@
 import { Heart, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
-import { rowGrid, metaStyle, tripDaysCount } from './TripRow'
+import { rowGrid, metaStyle, tripDaysCount } from './tripRowUtils'
 
 // S16 §2.3: строка понравившейся поездки. Сердце здесь — МАРКЕР, не кнопка:
 // всё в блоке лайкнуто по определению, а снять лайк можно крестиком справа

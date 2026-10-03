@@ -23,3 +23,7 @@ PROGRESS (2).md
 frontend/test-results/
 frontend/playwright-report/
 frontend/dev-dist/
+
+# дизайн-скиллы: бинарник impeccable (14 МБ, лаунчер докачает сам) и локальный конфиг
+.claude/skills/impeccable/scripts/bin/
+.impeccable/config.local.json

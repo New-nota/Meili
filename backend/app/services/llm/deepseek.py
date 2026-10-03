@@ -9,6 +9,7 @@ from app.services.llm.base import OpenAICompatibleClient
 
 MODEL_LOOP = "deepseek-v4-pro"
 MODEL_SUMMARY = "deepseek-v4-flash"
+MODEL_FALLBACKS = ("deepseek-v4-flash",)
 
 
 class DeepSeekClient(OpenAICompatibleClient):

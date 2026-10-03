@@ -1,11 +1,13 @@
 """Профиль пользователя (S9 WP-D)."""
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import _issue_tokens
 from app.core.database import get_db
+from app.core.redis import revoke_all_refresh
 from app.core.security import get_current_user, hash_password, verify_password
 from app.models.social import TripLike, UserVisitedPlace
 from app.models.trip import Trip
@@ -20,6 +22,7 @@ from app.schemas.users import (
     UserProfileUpdate,
 )
 from app.services.storage import StorageError, upload_image
+from app.services.storage import is_configured as storage_configured
 from app.services.trips import decorate_trip_rows
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -62,6 +65,7 @@ def _profile_response(user: User, stats: ProfileStats) -> UserProfileResponse:
         created_at=user.created_at,
         stats=stats,
         has_password=user.password_hash is not None,
+        avatar_upload_enabled=storage_configured(),
     )
 
 
@@ -111,6 +115,7 @@ async def upload_avatar(
 @router.post("/me/password", status_code=204)
 async def change_password(
     data: PasswordChange,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -121,6 +126,11 @@ async def change_password(
         raise HTTPException(status_code=400, detail="wrong_password")
     current_user.password_hash = hash_password(data.new_password)
     await db.commit()
+    # QA: смена пароля не выкидывала другие сессии — утёкший refresh жил ещё
+    # 30 дней после того, как юзер сменил пароль именно из-за утечки. Гасим
+    # все refresh, а этому устройству выдаём свежую куку, чтобы не разлогинить
+    await revoke_all_refresh(str(current_user.id))
+    await _issue_tokens(response, current_user)
 
 
 @router.get("/me/trips", response_model=list[TripResponse])

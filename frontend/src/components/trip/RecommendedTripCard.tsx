@@ -3,7 +3,7 @@ import { Heart } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
 import { likeTrip, unlikeTrip } from '../../api/trips'
-import { tripDaysCount } from './TripRow'
+import { tripDaysCount } from './tripRowUtils'
 
 // S16 §2.4: карточка рекомендованной поездки — одна и та же в блоке
 // «Похожие выбирают» и в Discover (двух реализаций больше нет).

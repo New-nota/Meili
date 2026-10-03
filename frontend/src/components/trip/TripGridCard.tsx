@@ -2,7 +2,7 @@ import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
 import { formatMoney } from '../../utils/money'
-import { formatDateRange, tripDaysCount } from './TripRow'
+import { formatDateRange, tripDaysCount } from './tripRowUtils'
 
 // S17: карточка поездки в сетке Discover — коротко о главном:
 // даты, сколько дней, сколько людей, бюджет. Крестик удаления — в правом

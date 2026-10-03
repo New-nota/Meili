@@ -6,7 +6,7 @@ import { formatMoney } from './money'
 //   «≈ min–max» — диапазон-оценка Meili (приоритетнее суммы)
 //   freeText    — бесплатное место с авто-источником (0.00 ≠ «нет данных»)
 //   «≈ сумма»   — оценка (auto/estimate/cost_is_estimate)
-//   «сумма»     — точная (manual, реальный источник)
+//   «сумма»     — точная (факт брони, manual, реальный источник)
 //   null        — нет данных: вызывающий скрывает или пишет «цена не указана»
 export interface CostLabel {
     text: string
@@ -30,7 +30,7 @@ export function costLabelCore(
 type CostFields = Pick<
     Stop,
     'estimated_cost' | 'cost_source' | 'cost_min' | 'cost_max' | 'cost_is_estimate' | 'place_pricing_model'
->
+> & Partial<Pick<Stop, 'booked_amount'>>
 
 export function stopCostLabel(
     stop: CostFields,
@@ -38,6 +38,10 @@ export function stopCostLabel(
     locale: string,
     freeText: string,
 ): CostLabel | null {
+    // QA: факт подтверждённой брони важнее любой оценки — то же правило, что
+    // в бюджете (иначе в маршруте висело «350», а в бюджете считалось 1200)
+    if (stop.booked_amount)
+        return { text: formatMoney(stop.booked_amount, currency, locale), approx: false }
     if (!(stop.cost_min && stop.cost_max)
         && stop.cost_source === 'auto' && stop.place_pricing_model === 'free')
         return { text: freeText, approx: false }

@@ -122,12 +122,24 @@ async def confirm_booking(
     if booking.status == "cancelled":
         raise BookingError("Booking is cancelled, create a new one")
 
+    stop, _ = await _get_stop_with_place(db, user_id, booking.trip_stop_id)
+    trip = (await db.execute(
+        select(Trip).where(Trip.id == stop.trip_id)
+    )).scalar_one()
+
+    # Ревью: валюта брони не сверялась с валютой поездки, а compute_budget
+    # кладёт booking.amount в сумму КАК ЕСТЬ — «1000 JPY» приезжали в бюджет
+    # EUR-поездки как 1000 EUR. Конвертаций в проекте нет (доменное правило
+    # S9), поэтому чужая валюта — честная 400, как у trip_expenses.
+    currency = data.currency.upper() if data.currency else trip.currency
+    if currency != trip.currency:
+        raise BookingError("booking_currency_mismatch")
+
     booking.status = "confirmed"
     booking.external_id = data.external_id
     booking.amount = data.amount
-    booking.currency = data.currency.upper() if data.currency else None
+    booking.currency = currency
 
-    stop, _ = await _get_stop_with_place(db, user_id, booking.trip_stop_id)
     stop.is_booked = True
     stop.booking_ref = data.external_id or str(booking.id)[:8]
 

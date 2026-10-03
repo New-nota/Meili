@@ -14,6 +14,7 @@ import { getRecommendedTrips } from '../api/recommendations'
 import { unlikeTrip } from '../api/trips'
 import { logout } from '../api/client'
 import type { Trip } from '../types'
+import { apiErrorMessage } from '../utils/apiError'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import CreateTripModal from '../components/CreateTripModal'
 import TripRow from '../components/trip/TripRow'
@@ -91,7 +92,7 @@ export default function Profile() {
     const [creating, setCreating] = useState(false)
     const [toast, setToast] = useState<string | null>(null)
 
-    const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe })
+    const { data: me, error: meError, refetch: refetchMe } = useQuery({ queryKey: ['me'], queryFn: getMe })
     const { data: myTrips } = useQuery({ queryKey: ['me-trips'], queryFn: getMyTrips })
     const { data: liked } = useQuery({ queryKey: ['me-liked'], queryFn: getLikedTrips })
     const { data: recommended } = useQuery({
@@ -104,6 +105,16 @@ export default function Profile() {
     })
     const pwdForm = useForm<PasswordForm>({ resolver: zodResolver(passwordSchema) })
 
+    // QA: упавшая загрузка профиля раньше висела вечным «Загрузка...»
+    if (meError && !me) return (
+        <div style={{ padding: 32 }}>
+            <p style={{ color: 'var(--accent)' }}>{apiErrorMessage(meError, t)}</p>
+            <button onClick={() => refetchMe()} style={{ padding: '6px 14px', cursor: 'pointer',
+                border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-raised)' }}>
+                ↻ {t('common.retry')}
+            </button>
+        </div>
+    )
     if (!me) return <div style={{ padding: 32 }}>{t('common.loading')}</div>
 
     const selectedStyles = styles ?? me.travel_style ?? []
@@ -115,15 +126,17 @@ export default function Profile() {
     const saveProfile = form.handleSubmit(async values => {
         setFormMsg(null)
         try {
+            // QA: пустое поле раньше уходило как undefined («не трогать») —
+            // стереть имя или город было невозможно. Пусто = null = стереть
             await updateMe({
-                name: values.name || undefined,
-                home_city: values.home_city || undefined,
+                name: values.name?.trim() || null,
+                home_city: values.home_city?.trim() || null,
                 travel_style: selectedStyles,
             })
             await queryClient.invalidateQueries({ queryKey: ['me'] })
             setFormMsg('✓')
-        } catch {
-            setFormMsg(t('trip.saveError'))
+        } catch (e) {
+            setFormMsg(apiErrorMessage(e, t, t('trip.saveError')))
         }
     })
 
@@ -134,19 +147,22 @@ export default function Profile() {
             setPwdMsg(t('profile.passwordChanged'))
             pwdForm.reset()
         } catch (e) {
-            const code = (e as { body?: { detail?: string } })?.body?.detail
-            setPwdMsg(code ? t(`errors.${code}`, code) : t('common.error'))
+            setPwdMsg(apiErrorMessage(e, t))
         }
     })
 
     const onAvatarPick = async (file: File | undefined) => {
         if (!file) return
+        // те же правила, что на бэке (storage.py) — без лишней загрузки
+        if (!file.type.startsWith('image/')) { setFormMsg(t('errors.avatar_bad_type')); return }
+        if (file.size > 5 * 1024 * 1024) { setFormMsg(t('errors.avatar_too_large')); return }
         setAvatarBusy(true)
+        setFormMsg(null)
         try {
             await uploadAvatar(file)
             await queryClient.invalidateQueries({ queryKey: ['me'] })
         } catch (e) {
-            setFormMsg(t(`errors.${(e as Error).message}`, t('common.error')))
+            setFormMsg(apiErrorMessage(e, t))
         } finally {
             setAvatarBusy(false)
         }
@@ -219,9 +235,18 @@ export default function Profile() {
                 </div>
                 <div>
                     <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                        onChange={e => onAvatarPick(e.target.files?.[0])} />
-                    <button onClick={() => fileRef.current?.click()} disabled={avatarBusy}
-                        style={{ padding: '6px 12px', border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                        onChange={e => {
+                            onAvatarPick(e.target.files?.[0])
+                            // QA: без сброса повторный выбор ТОГО ЖЕ файла (после
+                            // ошибки) не вызывал onChange — кнопка «не работала»
+                            e.target.value = ''
+                        }} />
+                    <button onClick={() => fileRef.current?.click()}
+                        disabled={avatarBusy || me.avatar_upload_enabled === false}
+                        title={me.avatar_upload_enabled === false ? t('errors.storage_not_configured') : undefined}
+                        style={{ padding: '6px 12px', border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6,
+                            cursor: me.avatar_upload_enabled === false ? 'not-allowed' : 'pointer', fontSize: 13,
+                            opacity: me.avatar_upload_enabled === false ? 0.6 : 1 }}>
                         {avatarBusy ? t('profile.uploading') : t('profile.changePhoto')}
                     </button>
                 </div>
@@ -280,8 +305,11 @@ export default function Profile() {
                                 {t('common.save')}
                             </button>
                         </div>
+                        {pwdForm.formState.errors.old_password && (
+                            <p style={{ color: 'var(--accent)', fontSize: 12, margin: '6px 0 0' }}>{t('profile.oldPasswordRequired')}</p>
+                        )}
                         {pwdForm.formState.errors.new_password && (
-                            <p style={{ color: 'var(--accent)', fontSize: 12, margin: '6px 0 0' }}>min 8</p>
+                            <p style={{ color: 'var(--accent)', fontSize: 12, margin: '6px 0 0' }}>{t('auth.passwordMin')}</p>
                         )}
                         {pwdMsg && <p style={{ fontSize: 13, margin: '6px 0 0', color: pwdMsg === t('profile.passwordChanged') ? 'var(--accent)' : 'var(--accent-hover)' }}>{pwdMsg}</p>}
                     </form>

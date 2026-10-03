@@ -6,7 +6,8 @@ import {
     optimizeDay, updateDay, type TripDay, type TripLocation,
 } from '../api/days'
 import { updateStop, reorderStops, getDayRoute, type RouteLeg } from '../api/trips'
-import { ApiError } from '../api/client'
+import { apiErrorMessage } from '../utils/apiError'
+import IntInput from './IntInput'
 import { stopCostLabel } from '../utils/costLabel'
 import { formatDuration, formatDistance } from '../utils/format'
 import { getDaySummary } from '../utils/tripSummary'
@@ -72,11 +73,14 @@ function DayStopRow({
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
         useSortable({ id: stop.id, disabled: readOnly })
     return (
-        <div ref={setNodeRef} {...attributes}
+        // QA: attributes dnd-kit (role="button", tabIndex) — на грипе, а не на
+        // корне: иначе вся строка (и вся карточка дня) объявлялась кнопкой
+        <div ref={setNodeRef}
             style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {!readOnly && (
-                    <span {...listeners} style={{ cursor: 'grab', color: 'var(--text-muted)', fontSize: 15, userSelect: 'none', touchAction: 'none' }}>⠿</span>
+                    <span {...attributes} {...listeners} aria-label={t('day.dragStop')}
+                        style={{ cursor: 'grab', color: 'var(--text-muted)', fontSize: 15, userSelect: 'none', touchAction: 'none' }}>⠿</span>
                 )}
                 <div style={{
                     width: 20, height: 20, background: 'var(--accent)', borderRadius: '50%',
@@ -131,6 +135,8 @@ export default function DayCard({
     const { t, i18n } = useTranslation()
     const queryClient = useQueryClient()
     const [busy, setBusy] = useState(false)
+    // «Оптимизация…» на кнопке — только для оптимизации, не для любого клика
+    const [optimizing, setOptimizing] = useState(false)
     const [error, setError] = useState<string | null>(null)
     // S8 WP-4: режим оптимизации и бюджет времени (S12: часы + минуты)
     const [mode, setMode] = useState<'full' | 'selective'>('full')
@@ -148,7 +154,7 @@ export default function DayCard({
     // S16 §4: маршрут дня грузим, когда день раскрыт — иначе на 19-дневной
     // поездке это 19 обращений к Valhalla разом
     const routeQueryKey = ['dayRoute', tripId, day.id]
-    const { data: route, isFetching: routeLoading } = useQuery({
+    const { data: route, isFetching: routeLoading, error: routeError } = useQuery({
         queryKey: routeQueryKey,
         queryFn: () => getDayRoute(tripId, day.id),
         enabled: expanded && includedStops.length > 0,
@@ -161,68 +167,76 @@ export default function DayCard({
     const legAfter = (stopId: string): RouteLeg | null =>
         route?.legs.find(l => l.from_stop_id === stopId) ?? null
 
-    const handleOptimize = async () => {
+    // QA: действия дня раньше были голыми await — любая ошибка сети/API
+    // становилась необработанным промисом, а юзер видел, что клик «не сработал».
+    // Общая обёртка: ошибка -> текст под днём, защита от двойного клика.
+    const safely = async (fn: () => Promise<unknown>, fallback?: string) => {
+        if (busy) return
         setBusy(true)
         setError(null)
         try {
-            const budget = budgetH * 60 + budgetM
-            await optimizeDay(tripId, day.id, mode, mode === 'selective' ? budget : undefined)
-            onChanged()
-            invalidateRoute()
+            await fn()
         } catch (e) {
-            if (e instanceof ApiError && e.status === 422) {
-                setError(t('day.outOfCoverage'))
-            } else if (e instanceof ApiError && e.status === 409) {
-                setError(t('day.mustVisitOverBudget'))
-            } else if (e instanceof ApiError && e.status === 400) {
-                setError(t(`errors.${(e.body as { detail?: string })?.detail}`, t('day.optimizeError')))
-            } else {
-                setError(t('day.optimizeError'))
-            }
+            setError(apiErrorMessage(e, t, fallback))
         } finally {
             setBusy(false)
         }
     }
 
-    const cyclePriority = async (stop: Stop) => {
+    const handleOptimize = () => {
+        const budget = budgetH * 60 + budgetM
+        if (mode === 'selective' && budget <= 0) {
+            setError(t('day.budgetRequired'))
+            return
+        }
+        // машинные коды (day_out_of_coverage, must_visit_over_budget,
+        // day_locations_missing…) локализует apiErrorMessage — раньше любая
+        // 422, включая валидацию, выдавалась за «вне покрытия карт»
+        setOptimizing(true)
+        return safely(async () => {
+            await optimizeDay(tripId, day.id, mode, mode === 'selective' ? budget : undefined)
+            onChanged()
+            invalidateRoute()
+        }, t('day.optimizeError')).finally(() => setOptimizing(false))
+    }
+
+    const cyclePriority = (stop: Stop) => safely(async () => {
         await updateStop(tripId, stop.id, { priority: ((stop.priority ?? 0) + 1) % 3 })
         onChanged()
-    }
+    })
 
-    const returnStop = async (stop: Stop) => {
-        // «вернуть»: помечаем обязательным — следующий прогон его включит
-        await updateStop(tripId, stop.id, { priority: 2 })
-        onChanged()
-    }
-
-    const moveStopToDay = async (stopId: string, targetDayId: string) => {
-        if (targetDayId === day.id) return
-        await updateStop(tripId, stopId, { day_id: targetDayId })
+    const returnStop = (stop: Stop) => safely(async () => {
+        // «вернуть»: сразу в хвост маршрута + обязательный, чтобы следующий
+        // селективный прогон его не выкинул снова
+        await updateStop(tripId, stop.id, { priority: 2, included_in_route: true })
         onChanged()
         invalidateRoute()
+    })
+
+    const moveStopToDay = (stopId: string, targetDayId: string) => {
+        if (targetDayId === day.id) return
+        return safely(async () => {
+            await updateStop(tripId, stopId, { day_id: targetDayId })
+            onChanged()
+            invalidateRoute()
+            // маршрут дня-получателя тоже поменялся
+            queryClient.invalidateQueries({ queryKey: ['dayRoute', tripId, targetDayId] })
+        })
     }
 
     // S16 §4.1: транспорт перегона -> пересчёт маршрута дня
-    const changeTransport = async (stopId: string, mode: TransportMode) => {
-        try {
-            await updateStop(tripId, stopId, { transport_to_next: mode })
-            onChanged()
-            invalidateRoute()
-        } catch {
-            setError(t('planner.error.transport'))
-        }
-    }
+    const changeTransport = (stopId: string, mode: TransportMode) => safely(async () => {
+        await updateStop(tripId, stopId, { transport_to_next: mode })
+        onChanged()
+        invalidateRoute()
+    }, t('planner.error.transport'))
 
     // S16 §4.2: время на точке -> меняет сводку дня и результат оптимизации
-    const changeDuration = async (stopId: string, minutes: number) => {
-        try {
-            await updateStop(tripId, stopId, { duration_minutes: minutes })
-            onChanged()
-            invalidateRoute()
-        } catch {
-            setError(t('planner.error.duration'))
-        }
-    }
+    const changeDuration = (stopId: string, minutes: number) => safely(async () => {
+        await updateStop(tripId, stopId, { duration_minutes: minutes })
+        onChanged()
+        invalidateRoute()
+    }, t('planner.error.duration'))
 
     // S12: перестановка стопов внутри дня -> позиции 0..n этого дня
     const handleStopsDragEnd = async (e: DragEndEvent) => {
@@ -232,16 +246,18 @@ export default function DayCard({
         const newI = includedStops.findIndex(s => s.id === over.id)
         if (oldI < 0 || newI < 0) return
         const newIncluded = arrayMove(includedStops, oldI, newI)
-        await reorderStops(tripId, [...newIncluded, ...droppedStops].map(s => s.id))
-        onChanged()
-        invalidateRoute()
+        return safely(async () => {
+            await reorderStops(tripId, [...newIncluded, ...droppedStops].map(s => s.id))
+            onChanged()
+            invalidateRoute()
+        })
     }
 
-    const setLocation = async (field: 'start_location_id' | 'end_location_id', locId: string) => {
+    const setLocation = (field: 'start_location_id' | 'end_location_id', locId: string) => safely(async () => {
         await updateDay(tripId, day.id, { [field]: locId })
         onChanged()
         invalidateRoute()
-    }
+    })
 
     const dateLabel = new Intl.DateTimeFormat(i18n.language, {
         weekday: 'short', day: 'numeric', month: 'short',
@@ -266,8 +282,7 @@ export default function DayCard({
                 border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8,
                 transform: CSS.Transform.toString(transform), transition,
                 opacity: isDragging ? 0.5 : 1, background: 'var(--surface-raised)',
-            }}
-            {...attributes}>
+            }}>
             <DayHeader
                 tripId={tripId}
                 day={day}
@@ -277,7 +292,8 @@ export default function DayCard({
                 onError={setError}
                 readOnly={readOnly}
                 grip={!readOnly && (
-                    <span {...listeners} onClick={e => e.stopPropagation()} title={t('day.dragDay')}
+                    <span {...attributes} {...listeners} onClick={e => e.stopPropagation()} title={t('day.dragDay')}
+                        aria-label={t('day.dragDay')}
                         style={{ cursor: 'grab', color: 'var(--text-muted)', fontSize: 16, userSelect: 'none', touchAction: 'none' }}>⠿</span>
                 )}
                 subtitle={
@@ -325,7 +341,7 @@ export default function DayCard({
                                     {(i < includedStops.length - 1 || day.end_location) && (
                                         <LegRow
                                             leg={legAfter(stop.id)}
-                                            loading={routeLoading && !route}
+                                            loading={(routeLoading && !route) || (!route && !routeError && includedStops.length > 0)}
                                             readOnly={readOnly}
                                             onChangeTransport={mode => changeTransport(stop.id, mode)}
                                         />
@@ -334,6 +350,12 @@ export default function DayCard({
                             ))}
                         </SortableContext>
                     </DndContext>
+                    {/* QA: маршрут дня не строится — говорим почему, а не молчим */}
+                    {routeError && includedStops.length > 0 && (
+                        <p style={{ fontSize: 12, color: 'var(--accent)', margin: '4px 0' }}>
+                            {apiErrorMessage(routeError, t, t('planner.leg.unavailable'))}
+                        </p>
+                    )}
                     {day.stops.length === 0 && (
                         <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0' }}>
                             {t('day.empty')}
@@ -391,12 +413,10 @@ export default function DayCard({
                                 {/* S12: бюджет времени — часы + минуты, а не сырые минуты */}
                                 {mode === 'selective' && (
                                     <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 3 }}>
-                                        <input type="number" min={0} value={budgetH}
-                                            onChange={e => setBudgetH(Math.max(0, parseInt(e.target.value) || 0))}
+                                        <IntInput value={budgetH} min={0} max={24} onChange={setBudgetH}
                                             style={{ width: 46, padding: 2, border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }} />
                                         {t('common.hoursShort')}
-                                        <input type="number" min={0} max={59} value={budgetM}
-                                            onChange={e => setBudgetM(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                                        <IntInput value={budgetM} min={0} max={59} onChange={setBudgetM}
                                             style={{ width: 46, padding: 2, border: '1px solid var(--border)', borderRadius: 4, fontSize: 12 }} />
                                         {t('common.min')}
                                     </span>
@@ -412,7 +432,7 @@ export default function DayCard({
                                     border: 'none', borderRadius: 6,
                                     cursor: busy ? 'not-allowed' : 'pointer', fontSize: 13,
                                 }}>
-                                {busy ? t('day.optimizing') : t('day.optimize')}
+                                {optimizing ? t('day.optimizing') : t('day.optimize')}
                             </button>
                         </>
                     )}

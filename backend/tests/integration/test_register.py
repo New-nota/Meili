@@ -5,12 +5,21 @@
 """
 from app.core.redis import (
     MAX_CODE_ATTEMPTS,
+    clear_register_quota,
     delete_pending_registration,
     get_pending_registration,
 )
 
 
 async def _register(client, email, password="secret123", name=None):
+    """Регистрация с чистой квотой адреса.
+
+    Квота /auth/register (ревью: троттл против спама письмами) живёт в Redis
+    час и переживает TRUNCATE тестовой БД. Адреса здесь фиксированные и часто
+    не подтверждаются, поэтому через несколько прогонов подряд они упирались
+    в 429. Чистим точечно свой адрес — чужие ключи в общем Redis не трогаем.
+    """
+    await clear_register_quota(email)
     return await client.post(
         "/auth/register", json={"email": email, "password": password, "name": name}
     )
@@ -136,4 +145,36 @@ async def test_resend_regenerates_code_and_has_cooldown(client):
 
 async def test_register_short_password_422(client):
     r = await _register(client, "short@wanderown.dev", password="1234567")  # 7 < 8
+    assert r.status_code == 422
+
+
+async def test_email_is_case_insensitive_everywhere(client):
+    """QA: «Mixed.Case@…» и «mixed.case@…» — один аккаунт: хранится в нижнем
+    регистре, логин и повторная регистрация не зависят от регистра/пробелов."""
+    from tests.integration.conftest import register_and_verify
+
+    await register_and_verify(client, "Mixed.Case@WanderOwn.dev")
+    r = await client.post(
+        "/auth/login",
+        json={"email": "  mixed.case@wanderown.dev ", "password": "secret123"},
+    )
+    assert r.status_code == 200, r.text
+    me = await client.get(
+        "/users/me", headers={"Authorization": f"Bearer {r.json()['access_token']}"}
+    )
+    assert me.json()["email"] == "mixed.case@wanderown.dev"
+
+    r = await _register(client, "MIXED.CASE@wanderown.dev")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "email_taken"
+
+
+async def test_register_blank_name_becomes_null_and_long_name_rejected(client):
+    from tests.integration.conftest import register_and_verify
+
+    headers = await register_and_verify(client, "blankname@wanderown.dev", name="   ")
+    me = await client.get("/users/me", headers=headers)
+    assert me.json()["name"] is None
+
+    r = await _register(client, "longname@wanderown.dev", name="x" * 500)
     assert r.status_code == 422

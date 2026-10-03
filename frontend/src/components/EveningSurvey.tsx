@@ -31,10 +31,11 @@ function getSkipped(): Set<string> {
     }
 }
 
-function addSkipped(stopId: string) {
+function addSkipped(...stopIds: string[]) {
     const s = getSkipped()
-    s.add(stopId)
-    localStorage.setItem(skippedKey(), JSON.stringify([...s]))
+    stopIds.forEach(id => s.add(id))
+    // приватный режим Safari бросает на setItem — опрос не должен падать
+    try { localStorage.setItem(skippedKey(), JSON.stringify([...s])) } catch { /* без памяти */ }
 }
 
 export default function EveningSurvey() {
@@ -44,6 +45,8 @@ export default function EveningSurvey() {
     const [comment, setComment] = useState('')
     // свайп-жест карточки
     const [dragX, setDragX] = useState(0)
+    const [dragging, setDragging] = useState(false)
+    const [saveError, setSaveError] = useState(false)
     const dragStart = useRef<number | null>(null)
     const checking = useRef(false)
 
@@ -59,8 +62,10 @@ export default function EveningSurvey() {
             if (!today) return
             const visitedIds = new Set(visited.map(v => v.place_id))
             const skipped = getSkipped()
+            // QA: «не влезло в день» — места, где юзер не был; их не спрашиваем
             const pending = today.stops.filter(
-                s => !visitedIds.has(s.place_id) && !skipped.has(s.id),
+                s => s.included_in_route !== false
+                    && !visitedIds.has(s.place_id) && !skipped.has(s.id),
             )
             setQueue(prev => (prev.length > 0 ? prev : pending))
         } catch {
@@ -71,14 +76,17 @@ export default function EveningSurvey() {
     }, [])
 
     useEffect(() => {
-        check()
+        // первый опрос — колбэком таймера, как и по focus: это подписка на
+        // внешнее состояние (часы, сервер), а не синхронный setState в эффекте
+        const first = window.setTimeout(check, 0)
         window.addEventListener('focus', check)
-        return () => window.removeEventListener('focus', check)
+        return () => { window.clearTimeout(first); window.removeEventListener('focus', check) }
     }, [check])
 
     const current = queue[0] ?? null
 
     const advance = () => {
+        setSaveError(false)
         setQueue(prev => prev.slice(1))
         setRating(0)
         setComment('')
@@ -91,13 +99,32 @@ export default function EveningSurvey() {
         advance()
     }
 
+    // QA: опрос — модалка поверх всего приложения, а выйти можно было только
+    // пролистав каждое место по одному. «Не сегодня» закрывает всю очередь.
+    const dismissAll = () => {
+        addSkipped(...queue.map(s => s.id))
+        setQueue([])
+    }
+
+    useEffect(() => {
+        if (!current) return
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') dismissAll() }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    })
+
     const save = async () => {
         if (!current || rating === 0) return
-        await markVisited(current.place_id, {
-            rating,
-            comment: comment.trim() || null,
-        })
-        advance()
+        setSaveError(false)
+        try {
+            await markVisited(current.place_id, {
+                rating,
+                comment: comment.trim() || null,
+            })
+            advance()
+        } catch {
+            setSaveError(true)
+        }
     }
 
     // Свайп влево = пропустить. БЕЗ setPointerCapture: захват на карточке
@@ -108,11 +135,13 @@ export default function EveningSurvey() {
         if ((e.target as HTMLElement).closest('button, textarea, input, select')) return
         const startX = e.clientX
         dragStart.current = startX
+        setDragging(true)
         const onMove = (ev: PointerEvent) => setDragX(Math.min(0, ev.clientX - startX))
         const onUp = (ev: PointerEvent) => {
             window.removeEventListener('pointermove', onMove)
             window.removeEventListener('pointerup', onUp)
             dragStart.current = null
+            setDragging(false)
             if (ev.clientX - startX < -80) skip()
             else setDragX(0)
         }
@@ -134,14 +163,19 @@ export default function EveningSurvey() {
                     background: 'var(--surface-raised)', borderRadius: 14, padding: 20,
                     maxWidth: 360, width: '100%', touchAction: 'pan-y',
                     transform: `translateX(${dragX}px) rotate(${dragX / 40}deg)`,
-                    transition: dragStart.current === null ? 'transform .15s' : 'none',
+                    transition: dragging ? 'none' : 'transform .15s',
                     opacity: 1 + dragX / 300,
                     boxShadow: '0 8px 32px color-mix(in srgb, var(--text-primary) 25%, transparent)',
                 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
                     <strong style={{ fontSize: 15 }}>{t('visited.surveyTitle')}</strong>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {t('visited.surveyLeft', { count: queue.length })}
+                    <span style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            {t('visited.surveyLeft', { count: queue.length })}
+                        </span>
+                        <button onClick={dismissAll} title={t('visited.notToday')} aria-label={t('visited.notToday')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer',
+                                color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 0 }}>✕</button>
                     </span>
                 </div>
                 <p style={{ margin: '0 0 10px', fontSize: 14 }}>
@@ -150,7 +184,7 @@ export default function EveningSurvey() {
 
                 <RatingStars value={rating} onChange={setRating} size={28} />
                 <textarea placeholder={t('visited.commentPlaceholder')} value={comment}
-                    onChange={e => setComment(e.target.value)} rows={2}
+                    onChange={e => setComment(e.target.value)} rows={2} maxLength={2000}
                     style={{
                         width: '100%', boxSizing: 'border-box', marginTop: 8, padding: 6,
                         border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
@@ -173,6 +207,9 @@ export default function EveningSurvey() {
                         {t('common.save')}
                     </button>
                 </div>
+                {saveError && (
+                    <p role="alert" style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--accent)' }}>{t('common.error')}</p>
+                )}
                 <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
                     {t('visited.swipeHint')}
                 </p>

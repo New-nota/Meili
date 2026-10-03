@@ -17,6 +17,8 @@ export interface Stop {
     duration_is_custom: boolean  // S16: false -> рисуем «≈»
     notes: string | null
     is_booked: boolean
+    // QA: сумма подтверждённой брони — показывается вместо оценки
+    booked_amount?: string | null
     priority: number              // S8 WP-4: 0 обычный, 1 важный, 2 обязательный
     included_in_route: boolean    // false = «не влезло в день» (selective)
     estimated_cost: string | null // S9 WP-A: оценка стоимости активности

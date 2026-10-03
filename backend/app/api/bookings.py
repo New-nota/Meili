@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -46,6 +46,7 @@ async def my_bookings(
 async def confirm(
     booking_id: UUID,
     data: BookingConfirm,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -54,9 +55,11 @@ async def confirm(
     except BookingError as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
 
-    # email-подтверждение — best effort, сбой почты не роняет бронь (S7)
+    # email-подтверждение — best effort, сбой почты не роняет бронь (S7).
+    # Ревью: и не задерживает ответ — на недоступном SMTP ждали таймаут сокета.
     details = booking.booking_details or {}
-    await send_booking_confirmation(
+    background.add_task(
+        send_booking_confirmation,
         to=current_user.email,
         place_name=details.get("place_name"),
         provider=booking.provider,

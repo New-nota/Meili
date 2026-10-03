@@ -35,8 +35,6 @@ export default function DayHeader({
 
     useEffect(() => {
         if (editing) {
-            setValue(day.title ?? '')
-            savedRef.current = false
             // автофокус с выделением текста: focus() обязателен — select()
             // сам по себе фокус не переносит
             requestAnimationFrame(() => {
@@ -95,7 +93,14 @@ export default function DayHeader({
                         }} />
                 ) : (
                     <button
-                        onClick={e => { e.stopPropagation(); if (!readOnly) startRenaming(day.id) }}
+                        onClick={e => {
+                            e.stopPropagation()
+                            if (readOnly) return
+                            // поле стартует с текущего имени (пусто у «День N»)
+                            setValue(day.title ?? '')
+                            savedRef.current = false
+                            startRenaming(day.id)
+                        }}
                         aria-label={readOnly ? undefined : t('planner.day.rename')}
                         title={readOnly ? undefined : t('planner.day.rename')}
                         style={{

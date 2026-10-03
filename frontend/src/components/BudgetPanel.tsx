@@ -8,6 +8,8 @@ import {
 import type { TripDay } from '../api/days'
 import { formatMoney } from '../utils/money'
 import { dayLabelShort } from '../utils/dayLabel'
+import { apiErrorMessage } from '../utils/apiError'
+import { MAX_MONEY, MONEY_RE } from '../utils/limits'
 
 // Вкладка «Бюджет» (S9 WP-A): лимит + прогресс, разбивки, статьи расходов.
 // Живое обновление: мутации инвалидируют ['budget', tripId] (TanStack Query).
@@ -24,18 +26,32 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
     const queryClient = useQueryClient()
     const [limitInput, setLimitInput] = useState<string | null>(null)
     const [recomputing, setRecomputing] = useState(false)
+    // QA: ошибки мутаций раньше были необработанными промисами — «+» с «12,5»
+    // или «abc» в сумме молча ничего не делал
+    const [error, setError] = useState<string | null>(null)
+    const [busy, setBusy] = useState(false)
     const [form, setForm] = useState({
         category: 'lodging' as Expense['category'],
         title: '', amount: '', day_id: '',
     })
 
-    const { data: budget } = useQuery({
+    const { data: budget, error: budgetError, refetch } = useQuery({
         queryKey: ['budget', tripId], queryFn: () => getBudget(tripId),
     })
     const { data: expenses } = useQuery({
         queryKey: ['expenses', tripId], queryFn: () => getExpenses(tripId),
     })
 
+    // QA: упавшая загрузка раньше висела вечным «Загрузка...»
+    if (budgetError && !budget) return (
+        <div style={{ padding: 16, fontSize: 13 }}>
+            <p style={{ color: 'var(--accent)' }}>{apiErrorMessage(budgetError, t, t('trip.loadError'))}</p>
+            <button onClick={() => refetch()} style={{ padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface-raised)' }}>
+                ↻ {t('common.retry')}
+            </button>
+        </div>
+    )
     if (!budget) return <div style={{ padding: 16 }}>{t('common.loading')}</div>
 
     const fmt = (v: string | null) =>
@@ -46,32 +62,63 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
         queryClient.invalidateQueries({ queryKey: ['expenses', tripId] })
     }
 
-    const saveLimit = async () => {
-        await updateTripBudget(tripId, { budget_total: limitInput || null })
-        setLimitInput(null)
-        invalidate()
+    const safely = async (fn: () => Promise<unknown>) => {
+        if (busy) return
+        setBusy(true)
+        setError(null)
+        try {
+            await fn()
+        } catch (e) {
+            setError(apiErrorMessage(e, t))
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    // «12,5» -> «12.5»; null = невалидно
+    const normalizeMoney = (raw: string): string | null => {
+        const v = raw.trim().replace(',', '.')
+        return MONEY_RE.test(v) && Number(v) <= MAX_MONEY ? v : null
+    }
+
+    const saveLimit = () => {
+        const raw = (limitInput ?? '').trim()
+        const value = raw ? normalizeMoney(raw) : null
+        if (raw && value === null) { setError(t('budget.invalidAmount')); return }
+        return safely(async () => {
+            await updateTripBudget(tripId, { budget_total: value })
+            setLimitInput(null)
+            invalidate()
+        })
     }
 
     const refreshEstimates = async () => {
         // ТЗ-E: ручной пересчёт авто-оценок (после обновления цен мест)
         setRecomputing(true)
         try {
-            await recomputeEstimates(tripId)
-            invalidate()
-            onStopsChanged?.()
+            await safely(async () => {
+                await recomputeEstimates(tripId)
+                invalidate()
+                onStopsChanged?.()
+            })
         } finally {
             setRecomputing(false)
         }
     }
 
-    const submitExpense = async () => {
-        if (!form.title || !form.amount) return
-        await addExpense(tripId, {
-            category: form.category, title: form.title,
-            amount: form.amount, day_id: form.day_id || null,
+    const submitExpense = () => {
+        const title = form.title.trim()
+        if (!title || !form.amount.trim()) { setError(t('budget.fillExpense')); return }
+        const amount = normalizeMoney(form.amount)
+        if (amount === null) { setError(t('budget.invalidAmount')); return }
+        return safely(async () => {
+            await addExpense(tripId, {
+                category: form.category, title,
+                amount, day_id: form.day_id || null,
+            })
+            setForm({ category: form.category, title: '', amount: '', day_id: form.day_id })
+            invalidate()
         })
-        setForm({ category: form.category, title: '', amount: '', day_id: form.day_id })
-        invalidate()
     }
 
     // прогресс-бар в тёплой гамме (S10): сиена, при превышении — глубже.
@@ -104,7 +151,10 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
                     <span style={{ display: 'flex', gap: 4 }}>
                         <input value={limitInput} inputMode="decimal" autoFocus
                             onChange={e => setLimitInput(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && saveLimit()}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') saveLimit()
+                                if (e.key === 'Escape') { setLimitInput(null); setError(null) }
+                            }}
                             style={{ width: 90, padding: 2, border: '1px solid var(--border)', borderRadius: 4, fontSize: 13 }} />
                         <button onClick={saveLimit} style={{ border: 'none', background: 'var(--accent)', color: 'var(--surface)', borderRadius: 4, cursor: 'pointer', fontSize: 12, padding: '0 8px' }}>✓</button>
                     </span>
@@ -131,6 +181,8 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
                     ⚠ {t('budget.overBudget')}
                 </div>
             )}
+
+            {error && <p role="alert" style={{ color: 'var(--accent)', fontSize: 12, margin: '6px 0' }}>{error}</p>}
 
             {/* ТЗ-E: пересчитать авто-оценки из актуальных цен мест */}
             <button onClick={refreshEstimates} disabled={recomputing}
@@ -174,7 +226,8 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
                         {e.day_id && <span style={{ color: 'var(--text-muted)' }}> ({dayLabel(e.day_id)})</span>}
                     </span>
                     <span>{fmt(e.amount)}</span>
-                    <button onClick={async () => { await deleteExpense(tripId, e.id); invalidate() }}
+                    <button onClick={() => safely(async () => { await deleteExpense(tripId, e.id); invalidate() })}
+                        disabled={busy} title={t('common.delete')}
                         style={{ border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginLeft: 4 }}>✕</button>
                 </div>
             ))}
@@ -197,13 +250,15 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
                     </select>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                    <input placeholder={t('budget.expenseTitle')} value={form.title}
+                    <input placeholder={t('budget.expenseTitle')} value={form.title} maxLength={200}
                         onChange={e => setForm({ ...form, title: e.target.value })}
+                        onKeyDown={e => e.key === 'Enter' && submitExpense()}
                         style={{ flex: 2, padding: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} />
                     <input placeholder={t('budget.amount')} value={form.amount} inputMode="decimal"
                         onChange={e => setForm({ ...form, amount: e.target.value })}
+                        onKeyDown={e => e.key === 'Enter' && submitExpense()}
                         style={{ flex: 1, padding: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minWidth: 60 }} />
-                    <button onClick={submitExpense} style={{
+                    <button onClick={submitExpense} disabled={busy} style={{
                         padding: '6px 12px', background: 'var(--accent)', color: 'var(--surface)',
                         border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
                         +

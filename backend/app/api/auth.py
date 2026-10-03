@@ -1,21 +1,27 @@
 from authlib.integrations.starlette_client import OAuth
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 from starlette.responses import RedirectResponse
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import (
     CODE_TTL,
     MAX_CODE_ATTEMPTS,
+    clear_login_fails,
+    clear_register_quota,
+    clear_resend_cooldown,
+    consume_refresh,
     delete_pending_registration,
     get_pending_registration,
-    is_refresh_valid,
+    login_blocked,
+    register_login_fail,
     revoke_all_refresh,
     revoke_refresh,
     save_pending_registration,
     start_resend_cooldown,
     store_pending_registration,
+    take_register_slot,
     store_refresh,
 )
 from app.core.security import (
@@ -37,11 +43,13 @@ from app.schemas.auth import (
     VerifyRequest,
 )
 from app.services.email import send_registration_code
+import logging
 import secrets
 import time
 import uuid
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger("meili.auth")
 
 REFRESH_COOKIE = "refresh_token"
 # cookie отдаётся только на /auth/* — /auth/refresh и /auth/logout
@@ -68,6 +76,27 @@ async def _issue_tokens(response: Response, user: User) -> TokenResponse:
 
 def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
+
+
+def _cookie_clearing_headers() -> dict[str, str]:
+    """Ревью: заголовки Set-Cookie для УДАЛЕНИЯ refresh-куки в ответе-ошибке.
+
+    Инъектированный `Response` FastAPI сливает в ответ только на успешном
+    возврате: после `raise HTTPException` его заголовки теряются, и битая
+    кука оставалась в браузере навсегда (фронт молча ретраил мёртвый refresh).
+    Собираем заголовок тем же starlette-кодом и отдаём его исключению.
+    """
+    probe = Response()
+    _clear_refresh_cookie(probe)
+    return {"set-cookie": probe.headers["set-cookie"]}
+
+
+def _unauthorized(detail: str, *, clear_cookie: bool = False) -> HTTPException:
+    return HTTPException(
+        status_code=401,
+        detail=detail,
+        headers=_cookie_clearing_headers() if clear_cookie else None,
+    )
 
 # --- Google OAuth2 (S7) -------------------------------------------------
 # Клиент регистрируется лениво: без GOOGLE_CLIENT_ID/SECRET эндпоинты
@@ -102,21 +131,35 @@ def _new_code() -> str:
 
 
 @router.post("/register", response_model=RegisterResponse)
-async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(
+    data: RegisterRequest,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     # занят только ПОДТВЕРЖДЁННЫЙ юзер (в БД все такие — S14)
-    result = await db.execute(select(User).where(User.email == data.email))
+    result = await db.execute(select(User).where(func.lower(User.email) == data.email))
     if result.scalar_one_or_none():
         # машинный код — текст локализует фронт (стиль S9 WP-C)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="email_taken"
         )
+    # Ревью: без троттла любой мог долбить /auth/register на чужой адрес
+    # (спам письмами) и жечь наш CPU на bcrypt — ручка публичная. Именно
+    # квота, а не кулдаун: S14 нарочно разрешает повторный register на
+    # неподтверждённый адрес, чтобы владелец почты перехватил регистрацию.
+    # Считаем ДО хеширования — иначе bcrypt отработает зря.
+    if not await take_register_slot(data.email):
+        raise HTTPException(status_code=429, detail="too_many_registrations")
     code = _new_code()
     await store_pending_registration(
         data.email, hash_password(data.password), data.name, code
     )
+    # Ревью: письмо уходит ФОНОМ. send_email и так best-effort (ошибку глотает,
+    # результат никто не читает), но ждали мы его прямо в запросе — с лежащим
+    # SMTP каждая регистрация висела на таймаут сокета (10 с) на ровном месте.
     # dev без SMTP: код уходит в лог (docker logs backend)
-    await send_registration_code(data.email, code)
+    background.add_task(send_registration_code, data.email, code)
     return RegisterResponse()
 
 
@@ -138,9 +181,11 @@ async def verify(
         raise HTTPException(status_code=400, detail="invalid_code")
 
     # код верный → создаём настоящего юзера (гонка: email могли занять)
-    result = await db.execute(select(User).where(User.email == data.email))
+    result = await db.execute(select(User).where(func.lower(User.email) == data.email))
     if result.scalar_one_or_none():
         await delete_pending_registration(data.email)
+        await clear_resend_cooldown(data.email)
+        await clear_register_quota(data.email)
         raise HTTPException(status_code=400, detail="email_taken")
     user = User(
         id=uuid.uuid4(),
@@ -152,11 +197,13 @@ async def verify(
     await db.commit()
     await db.refresh(user)
     await delete_pending_registration(data.email)
+    await clear_resend_cooldown(data.email)
+    await clear_register_quota(data.email)
     return await _issue_tokens(response, user)
 
 
 @router.post("/resend-code", response_model=RegisterResponse)
-async def resend_code(data: ResendRequest):
+async def resend_code(data: ResendRequest, background: BackgroundTasks):
     pending = await get_pending_registration(data.email)
     if pending is None:
         raise HTTPException(status_code=400, detail="no_pending_registration")
@@ -166,21 +213,27 @@ async def resend_code(data: ResendRequest):
     pending["code_expires"] = time.time() + CODE_TTL
     pending["attempts"] = 0
     await save_pending_registration(data.email, pending)
-    await send_registration_code(data.email, pending["code"])
+    background.add_task(send_registration_code, data.email, pending["code"])
     return RegisterResponse()
 
 @router.post("/login",response_model=TokenResponse)
 async def login(
-    data: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+    data: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).where(User.email == data.email))
+    ip = request.client.host if request.client else "unknown"
+    # QA: перебор паролей — до bcrypt, чтобы заблокированный не жёг CPU
+    if await login_blocked(data.email, ip):
+        raise HTTPException(status_code=429, detail="too_many_login_attempts")
+    result = await db.execute(select(User).where(func.lower(User.email) == data.email))
     user = result.scalar_one_or_none()
     # user.password_hash is None у OAuth-пользователей — им вход по паролю недоступен
     if not user or not user.password_hash or not verify_password(data.password, user.password_hash):
+        await register_login_fail(data.email, ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
+    await clear_login_fails(data.email, ip)
     return await _issue_tokens(response, user)
 
 
@@ -196,26 +249,24 @@ async def refresh(
     try:
         payload = decode_refresh_token(token)
     except RefreshTokenError:
-        _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        raise _unauthorized("Invalid refresh token", clear_cookie=True)
 
     user_id, jti = payload["sub"], payload["jti"]
 
-    if not await is_refresh_valid(user_id, jti):
-        # переиспользование ротированного/отозванного refresh —
+    # ротация: старый jti гасим атомарно (см. consume_refresh — гонка
+    # параллельных refresh больше не выкидывает юзера из всех сессий)
+    state = await consume_refresh(user_id, jti)
+    if state == "invalid":
+        # переиспользование давно ротированного/отозванного refresh —
         # подозрение на кражу: отзываем ВСЕ сессии пользователя
         await revoke_all_refresh(user_id)
-        _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="Refresh token reuse detected")
+        raise _unauthorized("Refresh token reuse detected", clear_cookie=True)
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="User not found")
+        raise _unauthorized("User not found", clear_cookie=True)
 
-    # ротация: старый jti гасим, выдаём новую пару
-    await revoke_refresh(user_id, jti)
     return await _issue_tokens(response, user)
 
 
@@ -253,13 +304,21 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
     if client is None:
         raise HTTPException(status_code=501, detail="Google OAuth не настроен")
 
-    token = await client.authorize_access_token(request)
-    userinfo = token.get("userinfo") or await client.userinfo(token=token)
-    email = userinfo.get("email")
+    # QA: «Отмена» на экране Google (?error=access_denied), протухший/чужой
+    # state (кука сессии потерялась) или сбой обмена кода — раньше голый 500
+    # JSON на домене API. Теперь назад на страницу входа с машинным кодом.
+    try:
+        token = await client.authorize_access_token(request)
+        userinfo = token.get("userinfo") or await client.userinfo(token=token)
+    except Exception as e:  # noqa: BLE001 — любые сбои OAuth одинаково ведут на /auth
+        logger.warning("google_oauth_failed error=%s", f"{type(e).__name__}: {e}"[:200])
+        return RedirectResponse(f"{settings.FRONTEND_URL}/auth#error=oauth_failed")
+    email = (userinfo.get("email") or "").strip().lower()
     if not email:
-        raise HTTPException(status_code=400, detail="Google не вернул email")
+        return RedirectResponse(f"{settings.FRONTEND_URL}/auth#error=oauth_failed")
 
-    result = await db.execute(select(User).where(User.email == email))
+    # QA: тот же регистронезависимый поиск, что и в логине по паролю
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
     user = result.scalar_one_or_none()
     if user is None:
         # OAuth-пользователь: password_hash=None (модель это позволяет)

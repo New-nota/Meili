@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.trip import Trip, TripStop, TripDay
+from app.models.booking import Booking
 from app.models.place import Place
 from app.models.user import User
 from app.schemas.stops import StopCreate, StopResponse, StopUpdate
@@ -14,7 +15,26 @@ from geoalchemy2.shape import to_shape
 
 router = APIRouter(prefix="/trips", tags=["stops"])
 
-def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
+async def booked_amounts(db: AsyncSession, stop_ids: list) -> dict:
+    """QA: факт подтверждённой брони по стопам (stop_id -> сумма).
+
+    Бюджет считал «факт брони важнее оценки», а строка стопа, панель и PDF
+    показывали оценку: забронировал за 1200, в маршруте висит «350». Одним
+    запросом на список — без N+1.
+    """
+    if not stop_ids:
+        return {}
+    rows = (await db.execute(
+        select(Booking.trip_stop_id, Booking.amount).where(
+            Booking.trip_stop_id.in_(stop_ids),
+            Booking.status == "confirmed",
+            Booking.amount.is_not(None),
+        )
+    )).all()
+    return {stop_id: amount for stop_id, amount in rows}
+
+
+def stop_to_dict(stop: TripStop, place: Place = None, booked_amount=None) -> dict:
     result = {
         "id": stop.id,
         "trip_id": stop.trip_id,
@@ -28,6 +48,7 @@ def stop_to_dict(stop: TripStop, place: Place = None) -> dict:
         "transport_to_next": stop.transport_to_next,
         "notes": stop.notes,
         "is_booked": stop.is_booked,
+        "booked_amount": booked_amount,
         "priority": stop.priority,
         "estimated_cost": stop.estimated_cost,
         "cost_source": stop.cost_source,
@@ -81,12 +102,15 @@ async def get_stops(
     current_user: User = Depends(get_current_user),
 ):
     # все остановки отсортированные по позициям (S13: и для превью — readable)
-    await get_trip_readable(trip_id, current_user.id, db)
+    trip = await get_trip_readable(trip_id, current_user.id, db)
     result = await db.execute(
         select(TripStop, Place).join(Place, TripStop.place_id == Place.id).where(TripStop.trip_id == trip_id).order_by(TripStop.position)
     )
     rows = result.all()
-    return [stop_to_dict(stop, place) for stop, place in rows]
+    # QA: факт броней автора зрителю превью не показываем
+    booked = (await booked_amounts(db, [stop.id for stop, _ in rows])
+              if trip.user_id == current_user.id else {})
+    return [stop_to_dict(stop, place, booked.get(stop.id)) for stop, place in rows]
 
 @router.post("/{trip_id}/stops", response_model=StopResponse)
 async def add_stop(
@@ -109,14 +133,17 @@ async def add_stop(
     if day is None:
         raise HTTPException(status_code=404, detail="Day not found")
 
-    stop = await stops_service.add_stop(
-        db, trip, place,
-        day=day,
-        visit_time=data.visit_time,
-        duration_minutes=data.duration_minutes,
-        transport_to_next=data.transport_to_next,
-        notes=data.notes,
-    )
+    try:
+        stop = await stops_service.add_stop(
+            db, trip, place,
+            day=day,
+            visit_time=data.visit_time,
+            duration_minutes=data.duration_minutes,
+            transport_to_next=data.transport_to_next,
+            notes=data.notes,
+        )
+    except stops_service.StopError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     await db.commit()
     await db.refresh(stop)
     return stop_to_dict(stop, place)
@@ -159,6 +186,9 @@ async def update_stop(
         )
         stop.day_id = new_day_id
         stop.position = (max_result.scalar() or 0) + 1
+        # QA: «не влезло» — вердикт оптимизации СТАРОГО дня; в новом дне стоп
+        # обычный, иначе он висел бы там зачёркнутым без всякого прогона
+        stop.included_in_route = True
 
         remaining = await db.execute(
             select(TripStop).where(
@@ -186,11 +216,27 @@ async def update_stop(
     elif "estimated_cost" in updates or cost_source == "manual":
         stops_service.set_manual_cost_source(stop)
 
+    # возврат в маршрут: стоп встаёт в хвост ВКЛЮЧЁННЫХ (выкинутые живут
+    # после них — position NOT NULL, семантику несёт флаг, см. optimizer)
+    if updates.get("included_in_route") is True and not stop.included_in_route:
+        included = (await db.execute(
+            select(TripStop).where(
+                TripStop.day_id == stop.day_id,
+                TripStop.id != stop.id,
+            ).order_by(TripStop.position)
+        )).scalars().all()
+        ordered = [s for s in included if s.included_in_route] + [stop] + [
+            s for s in included if not s.included_in_route
+        ]
+        for position, s in enumerate(ordered, start=1):
+            s.position = position
+
     for field, value in updates.items():
         setattr(stop, field, value)
     await db.commit()
     await db.refresh(stop)
-    return stop_to_dict(stop, place)
+    booked = await booked_amounts(db, [stop.id])
+    return stop_to_dict(stop, place, booked.get(stop.id))
 
 @router.delete("/{trip_id}/stops/{stop_id}", status_code=204)
 async def remove_stop(
@@ -211,29 +257,51 @@ async def remove_stop(
     await db.commit()
 
 class ReorderRequest(BaseModel):
-    stop_ids: list[str]
+    # QA: был list[str] — «test» долетал до SQL как uuid-параметр (500)
+    stop_ids: list[UUID] = Field(min_length=1)
 
 @router.post("/{trip_id}/stops/reorder", status_code=204)
 async def reorder_stops(
-    trip_id: str,
+    trip_id: UUID,
     body: ReorderRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    result = await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.user_id == current_user.id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Trip not found")
+    """Порядок стопов ВНУТРИ одного дня (S16: позиции по-дневные).
+
+    Ревью, две правки:
+    1. trip_id был `str` — asyncpg давился нечисловым UUID и отдавал 500;
+       теперь путь типизирован, кривой id это 422.
+    2. позиции раздавались сквозной нумерацией по всему присланному списку,
+       поэтому список из стопов РАЗНЫХ дней переписывал позиции обоих дней
+       одним счётчиком (0,1,2… поперёк дней) и ломал порядок. Нумеруем в
+       рамках дня — семантика позиции та же, что у add_stop/remove_stop.
+    """
+    await get_trip_or_404(trip_id, current_user.id, db)
     # один запрос вместо N: чужие/несуществующие id просто игнорируются
-    stops = (await db.execute(
+    sent = (await db.execute(
         select(TripStop).where(
             TripStop.id.in_(body.stop_ids), TripStop.trip_id == trip_id
         )
     )).scalars().all()
-    by_id = {str(s.id): s for s in stops}
-    for new_pos, stop_id in enumerate(body.stop_ids):
-        if stop := by_id.get(stop_id):
-            stop.position = new_pos
+    by_id = {s.id: s for s in sent}
+    # QA: перенумеровываем ВЕСЬ день, а не только присланные стопы. Раньше
+    # частичный список ([C, B] из A,B,C) давал C=0, B=1 и оставлял A=1 —
+    # дубль позиции и плавающий порядок; плюс нумерация была 0-based, а
+    # add_stop/remove_stop живут в 1-based. Теперь: присланные — в заданном
+    # порядке, неприсланные стопы дня — следом в прежнем порядке, 1..n.
+    order: dict[UUID, list[TripStop]] = {}
+    for stop_id in dict.fromkeys(body.stop_ids):  # дубли id — по первому вхождению
+        stop = by_id.get(stop_id)
+        if stop is not None:
+            order.setdefault(stop.day_id, []).append(stop)
+    for day_id, head in order.items():
+        rest = (await db.execute(
+            select(TripStop)
+            .where(TripStop.day_id == day_id, TripStop.id.not_in([s.id for s in head]))
+            .order_by(TripStop.position)
+        )).scalars().all()
+        for position, stop in enumerate([*head, *rest], start=1):
+            stop.position = position
     await db.commit()
     # status_code=204: ответ без тела

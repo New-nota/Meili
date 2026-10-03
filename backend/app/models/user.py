@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, TIMESTAMP, ARRAY
+from sqlalchemy import ARRAY, TIMESTAMP, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -15,4 +15,10 @@ class User(Base):
     travel_style: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     home_city: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
+
+    # QA: email регистронезависимый (миграция a6b78a4d003a) — дубль по
+    # регистру не пролезет даже мимо нормализации в схемах
+    __table_args__ = (
+        Index("ix_users_email_lower", func.lower(email), unique=True),
+    )
 

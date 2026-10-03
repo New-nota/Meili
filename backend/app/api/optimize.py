@@ -36,10 +36,8 @@ async def optimize_day(
     trip = await get_trip_or_404(trip_id, current_user.id, db)
     day = await _day_or_404(db, trip_id, day_id)
 
-    if day.start_location is None or day.end_location is None:
-        raise HTTPException(
-            status_code=400, detail="day_locations_missing"
-        )
+    # QA: старт/финиш больше не обязательны — недостающее депо оптимизатор
+    # заменяет виртуальным узлом (открытый путь), см. optimize_day_stops
 
     result = await db.execute(
         select(TripStop)

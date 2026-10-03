@@ -164,21 +164,38 @@ async def test_day_optimize_start_and_end_fixed(client, auth_headers, monkeypatc
     assert body["dropped_stop_ids"] == []
 
 
-async def test_day_optimize_without_locations_400(client, auth_headers):
+async def test_day_optimize_without_locations_is_open_path(client, auth_headers, monkeypatch):
+    """QA: без старта/финиша день оптимизируется как открытый путь (раньше 400
+    day_locations_missing — кнопка «Оптимизировать» отказывала на ровном месте)."""
+    calls = []
+
+    async def fake_matrix(locations, costing="pedestrian"):
+        calls.append(len(locations))
+        # точки на прямой: X(0) — Y(1) — Z(2); выгодный путь X→Y→Z или Z→Y→X
+        n = len(locations)
+        return [[abs(i - j) * 100 for j in range(n)] for i in range(n)]
+
+    monkeypatch.setattr(optimizer_module, "get_time_matrix", fake_matrix)
     trip = await _make_trip(
         client, auth_headers, start_date=D1, end_date=D1
     )
     days = (await client.get(f"/trips/{trip['id']}/days", headers=auth_headers)).json()
-    await _make_place_and_stop(
-        client, auth_headers, trip["id"], days[0]["id"], "X", 54.71, 20.47
-    )
+    x = await _make_place_and_stop(client, auth_headers, trip["id"], days[0]["id"], "X", 54.71, 20.47)
+    z = await _make_place_and_stop(client, auth_headers, trip["id"], days[0]["id"], "Z", 54.73, 20.49)
+    y = await _make_place_and_stop(client, auth_headers, trip["id"], days[0]["id"], "Y", 54.72, 20.48)
     r = await client.post(
         f"/trips/{trip['id']}/days/{days[0]['id']}/optimize",
         json={"mode": "full"},
         headers=auth_headers,
     )
-    assert r.status_code == 400
-    assert r.json()["detail"] == "day_locations_missing"
+    assert r.status_code == 200, r.text
+    # в Valhalla ушли только реальные точки — виртуальные депо не запрашиваются
+    assert calls == [3]
+    order = r.json()["ordered_stop_ids"]
+    # матрица построена в порядке позиций X, Z, Y -> «прямая» X(0) Z(1) Y(2)
+    assert order in ([x, z, y], [y, z, x])
+    stops = (await client.get(f"/trips/{trip['id']}/stops", headers=auth_headers)).json()
+    assert sorted(s["position"] for s in stops) == [1, 2, 3]
 
 
 async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):
@@ -203,7 +220,9 @@ async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):
         json={"start_location_id": start["id"], "end_location_id": end["id"]},
         headers=auth_headers,
     )
-    await _make_place_and_stop(client, auth_headers, trip["id"], day["id"], "Лувр", 48.86, 2.34)
+    # QA: стоп вне области теперь не добавить вовсе (place_out_of_coverage),
+    # поэтому сам стоп — в Калининграде, а вне покрытия остаются депо дня
+    await _make_place_and_stop(client, auth_headers, trip["id"], day["id"], "Собор", 54.7065, 20.5110)
 
     r = await client.post(
         f"/trips/{trip['id']}/days/{day['id']}/optimize",
@@ -212,6 +231,22 @@ async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):
     )
     assert r.status_code == 422
     assert r.json()["detail"] == "day_out_of_coverage"
+
+
+async def test_stop_outside_region_rejected_upfront(client, auth_headers):
+    """QA: место вне зоны тайлов ломало маршрут всего дня «на полпути» —
+    теперь отказ сразу при добавлении."""
+    trip = await _make_trip(client, auth_headers, start_date=D1, end_date=D1)
+    day = (await client.get(f"/trips/{trip['id']}/days", headers=auth_headers)).json()[0]
+    place = (await client.post(
+        "/places/", json={"name": "Лувр", "lat": 48.86, "lon": 2.34}, headers=auth_headers
+    )).json()
+    r = await client.post(
+        f"/trips/{trip['id']}/stops",
+        json={"place_id": place["id"], "day_id": day["id"]}, headers=auth_headers,
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"] == "place_out_of_coverage"
 
 
 async def test_delete_location_used_by_day_409(client, auth_headers):

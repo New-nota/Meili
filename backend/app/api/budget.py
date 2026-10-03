@@ -73,13 +73,7 @@ async def add_expense(
         raise HTTPException(status_code=400, detail="expense_currency_mismatch")
 
     if data.day_id is not None:
-        day = await db.execute(
-            select(TripDay.id).where(
-                TripDay.id == data.day_id, TripDay.trip_id == trip_id
-            )
-        )
-        if day.scalar_one_or_none() is None:
-            raise HTTPException(status_code=404, detail="Day not found")
+        await _day_of_trip_or_404(db, trip_id, data.day_id)
 
     expense = TripExpense(
         trip_id=trip_id,
@@ -93,6 +87,14 @@ async def add_expense(
     await db.commit()
     await db.refresh(expense)
     return expense
+
+
+async def _day_of_trip_or_404(db, trip_id, day_id) -> None:
+    day = await db.execute(
+        select(TripDay.id).where(TripDay.id == day_id, TripDay.trip_id == trip_id)
+    )
+    if day.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Day not found")
 
 
 async def _expense_or_404(db, trip_id, expense_id) -> TripExpense:
@@ -117,7 +119,13 @@ async def update_expense(
 ):
     await get_trip_or_404(trip_id, current_user.id, db)
     expense = await _expense_or_404(db, trip_id, expense_id)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    # QA: в create день проверялся, в update — нет: статью можно было
+    # привязать к дню ЧУЖОЙ поездки (id существует — FK молчит), а к
+    # несуществующему дню — уронить FK в 500
+    if updates.get("day_id") is not None:
+        await _day_of_trip_or_404(db, trip_id, updates["day_id"])
+    for field, value in updates.items():
         setattr(expense, field, value)
     await db.commit()
     await db.refresh(expense)

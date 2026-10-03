@@ -64,6 +64,11 @@ async def compute_budget(db: AsyncSession, trip: Trip) -> BudgetSummary:
         if booking is not None and booking.amount is not None:
             cost = Decimal(booking.amount)
             booked_total += cost
+        elif not stop.included_in_route:
+            # QA: «не влезло в день» — места нет в маршруте, PDF и календаре,
+            # а в «Запланировано» оно сидело. Не считаем; бронь — считаем
+            # (выше): подтверждённые деньги потрачены, где бы ни было место
+            continue
         else:
             cost = Decimal(stop.estimated_cost) if stop.estimated_cost is not None else ZERO
         if cost != ZERO:

@@ -15,6 +15,7 @@ from app.models.place import Place
 from app.schemas.places import PlaceCreate
 from app.services.overpass import fetch_places_bbox
 from app.services.places import create_place
+from app.services.places.geo import nearest_city
 
 # bbox Калининградской области: (юг, запад, север, восток)
 KALININGRAD_BBOX = (54.30, 19.60, 55.35, 23.05)
@@ -30,7 +31,10 @@ SEED_CATEGORIES = [
     ("historic", None, "historic"),  # смотровые/памятники: любой historic=*
 ]
 
-CITY = "Калининград"
+# Ревью: константы города больше нет. bbox покрывает ВСЮ область, и «Калининград»
+# для каждого POI подряд было просто неправдой: зеленоградские заведения
+# оказывались калининградскими, а поиск по городу их не находил.
+# Берём addr:city из OSM, иначе — ближайший город по координатам.
 
 
 def _haversine_m(lat1, lon1, lat2, lon2) -> float:
@@ -79,7 +83,7 @@ async def seed() -> tuple[int, int]:
                         lat=poi["lat"],
                         lon=poi["lon"],
                         address=poi.get("address") or None,
-                        city=CITY,
+                        city=poi.get("city") or nearest_city(poi["lat"], poi["lon"]),
                         category=category,
                         osm_id=poi["osm_id"],
                     ),

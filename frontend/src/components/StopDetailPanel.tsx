@@ -6,6 +6,9 @@ import {
     type Booking,
 } from '../api/bookings'
 import { updateStop } from '../api/trips'
+import { apiFetch } from '../api/client'
+import { apiErrorMessage } from '../utils/apiError'
+import { MAX_MONEY, MONEY_RE } from '../utils/limits'
 import { stopCostLabel } from '../utils/costLabel'
 import GroupSummary from './GroupSummary'
 import PriceSummary from './PriceSummary'
@@ -32,9 +35,28 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
     const visitDate = dayDate ?? null
     const [refInput, setRefInput] = useState('')
     const [amountInput, setAmountInput] = useState('')
-    const [currency, setCurrency] = useState('EUR')
+    // QA: валюта брони — только валюта поездки (одна на поездку, бэк иначе
+    // отвечает booking_currency_mismatch). Раньше селект по умолчанию стоял
+    // на EUR, и подтверждение брони в рублёвой поездке падало «ошибкой»
+    const currency = trip?.currency ?? 'EUR'
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [confirmDelete, setConfirmDelete] = useState(false)
+
+    // QA: общая обёртка действий панели — раньше половина кнопок была голым
+    // await: ошибка = необработанный промис, клик «молча не работает»
+    const safely = async (fn: () => Promise<unknown>, fallback?: string) => {
+        if (busy) return
+        setBusy(true)
+        setError(null)
+        try {
+            await fn()
+        } catch (e) {
+            setError(apiErrorMessage(e, t, fallback))
+        } finally {
+            setBusy(false)
+        }
+    }
 
     // подхватываем существующую бронь этой остановки
     useEffect(() => {
@@ -50,34 +72,41 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
 
     const [costInput, setCostInput] = useState(stop.estimated_cost ?? '')
 
-    // панель не размонтируется при выборе другого стопа — синхронизируем поле
-    useEffect(() => {
+    // сумма поменялась снаружи (сохранили, «вернуть авто») — подхватываем в
+    // рендере; новый стоп — новый инстанс панели (key в TripPlanner)
+    const [seenCost, setSeenCost] = useState(stop.estimated_cost)
+    if (seenCost !== stop.estimated_cost) {
+        setSeenCost(stop.estimated_cost)
         setCostInput(stop.estimated_cost ?? '')
-    }, [stop.id, stop.estimated_cost])
+    }
+
 
     // S15: моя отметка «посещено» + оценка/комментарий (глобальная, юзер↔место)
     const queryClient = useQueryClient()
     const { data: visitedList } = useQuery({ queryKey: ['visited'], queryFn: getVisitedPlaces })
     const visited = visitedList?.find(v => v.place_id === stop.place_id) ?? null
-    const [rating, setRating] = useState(0)
-    const [comment, setComment] = useState('')
+    const [rating, setRating] = useState(visited?.rating ?? 0)
+    const [comment, setComment] = useState(visited?.comment ?? '')
     const [ratingSaved, setRatingSaved] = useState(false)
-    useEffect(() => {
+    // отметка «посещено» догружается асинхронно — подхватываем её в рендере
+    const visitedKey = `${stop.place_id}|${visited?.rating ?? ''}|${visited?.comment ?? ''}`
+    const [seenVisited, setSeenVisited] = useState(visitedKey)
+    if (seenVisited !== visitedKey) {
+        setSeenVisited(visitedKey)
         setRating(visited?.rating ?? 0)
         setComment(visited?.comment ?? '')
         setRatingSaved(false)
-        // visited подтягивается асинхронно — синхронизируемся и по нему
-    }, [stop.place_id, visited?.rating, visited?.comment])
+    }
 
     const invalidateVisited = () => queryClient.invalidateQueries({ queryKey: ['visited'] })
 
-    const toggleVisited = async () => {
+    const toggleVisited = () => safely(async () => {
         if (visited) await unmarkVisited(stop.place_id)
         else await markVisited(stop.place_id)
         invalidateVisited()
-    }
+    })
 
-    const saveRating = async () => {
+    const saveRating = () => safely(async () => {
         // оценка сама помечает место посещённым (создаёт строку)
         await markVisited(stop.place_id, {
             rating: rating || null,
@@ -85,21 +114,39 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
         })
         setRatingSaved(true)
         invalidateVisited()
-    }
+    })
 
     const saveCost = async () => {
-        // S9 WP-A/ТЗ-E: ручной ввод суммы -> cost_source=manual, движок её не трогает
-        if ((costInput || null) === stop.estimated_cost) return
-        await updateStop(stop.trip_id, stop.id, { estimated_cost: costInput || null })
-        onChanged()
+        // S9 WP-A/ТЗ-E: ручной ввод суммы -> cost_source=manual, движок её не трогает.
+        // QA: «12,5» (запятая), «abc», «-5» раньше улетали на бэк и падали 422
+        // необработанным промисом — поле молча «не сохранялось»
+        const raw = String(costInput).trim().replace(',', '.')
+        if ((raw || null) === stop.estimated_cost) return
+        if (raw && (!MONEY_RE.test(raw) || Number(raw) > MAX_MONEY)) {
+            setError(t('budget.invalidAmount'))
+            return
+        }
+        await safely(async () => {
+            await updateStop(stop.trip_id, stop.id, { estimated_cost: raw || null })
+            onChanged()
+        })
     }
 
-    const resetCostToAuto = async () => {
+    const resetCostToAuto = () => safely(async () => {
         // ТЗ-E: «вернуть авто» — сброс ручной суммы + пересчёт из цен места
         await updateStop(stop.trip_id, stop.id, { cost_source: 'auto' })
         setCostInput('')
         onChanged()
-    }
+    })
+
+    // QA: удалить место из маршрута было НЕЛЬЗЯ — ручка DELETE есть, кнопки
+    // не было нигде в UI (только через план Meili). Два клика: «Удалить» →
+    // «Точно удалить?»
+    const deleteStop = () => safely(async () => {
+        await apiFetch(`/trips/${stop.trip_id}/stops/${stop.id}`, { method: 'DELETE' })
+        onClose()
+        onChanged()
+    })
 
     // ТЗ-E/ТЗ-Meili: примерная стоимость в валюте поездки — общие правила
     // в utils/costLabel; null (нет данных/чужая валюта) → «цена не указана»
@@ -108,50 +155,38 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
     const approx = label?.approx ?? false
     const costLabel = label?.text ?? t('budget.noPrice')
 
-    const handleBook = async (provider: string) => {
-        setBusy(true)
-        setError(null)
-        try {
-            const b = await createBooking(stop.id, provider, visitDate ?? undefined)
-            setBooking(b)
-            if (b.deep_link) window.open(b.deep_link, '_blank', 'noopener')
-        } catch {
-            setError(t('booking.createError'))
-        } finally {
-            setBusy(false)
-        }
-    }
+    const handleBook = (provider: string) => safely(async () => {
+        const b = await createBooking(stop.id, provider, visitDate ?? undefined)
+        setBooking(b)
+        if (b.deep_link) window.open(b.deep_link, '_blank', 'noopener')
+    }, t('booking.createError'))
 
-    const handleConfirm = async () => {
+    const handleConfirm = () => {
         if (!booking) return
-        setBusy(true)
-        setError(null)
-        try {
+        const amount = amountInput.trim().replace(',', '.')
+        if (amount && (!MONEY_RE.test(amount) || Number(amount) > MAX_MONEY)) {
+            setError(t('budget.invalidAmount'))
+            return
+        }
+        return safely(async () => {
             const b = await confirmBooking(booking.id, {
-                external_id: refInput || undefined,
-                amount: amountInput || undefined,
-                currency: amountInput ? currency : undefined,
+                external_id: refInput.trim() || undefined,
+                amount: amount || undefined,
+                currency: amount ? currency : undefined,
             })
             setBooking(b)
             onChanged()
-        } catch {
-            setError(t('booking.confirmError'))
-        } finally {
-            setBusy(false)
-        }
+        }, t('booking.confirmError'))
     }
 
-    const handleCancel = async () => {
+    const handleCancel = () => {
         if (!booking) return
-        setBusy(true)
-        try {
+        return safely(async () => {
             await cancelBooking(booking.id)
             setBooking(null)
             setRefInput('')
             onChanged()
-        } finally {
-            setBusy(false)
-        }
+        })
     }
 
     return (
@@ -196,7 +231,8 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
                 </span>
                 <input placeholder={t('budget.estimatedCost')} value={costInput} inputMode="decimal"
                     onChange={e => setCostInput(e.target.value)} onBlur={saveCost}
-                    style={{ width: 90, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, marginLeft: 'auto' }} />
+                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                    style={{ width: 130, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, marginLeft: 'auto' }} />
                 {!isAuto && (
                     <button onClick={resetCostToAuto} title={t('budget.approxHint')}
                         style={{
@@ -254,7 +290,7 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
                         {t('booking.confirmHint')}
                     </div>
-                    <input placeholder={t('booking.refPlaceholder')} value={refInput}
+                    <input placeholder={t('booking.refPlaceholder')} value={refInput} maxLength={128}
                         onChange={e => setRefInput(e.target.value)}
                         style={{
                             width: '100%', padding: 6, marginBottom: 6, boxSizing: 'border-box',
@@ -267,13 +303,9 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
                                 flex: 1, padding: 6, boxSizing: 'border-box',
                                 border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
                             }} />
-                        <select value={currency} onChange={e => setCurrency(e.target.value)}
-                            style={{
-                                padding: 6, border: '1px solid var(--border)',
-                                borderRadius: 6, fontSize: 13, background: 'var(--surface-raised)',
-                            }}>
-                            {['EUR', 'USD', 'RUB'].map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <span style={{ padding: 6, fontSize: 13, color: 'var(--text-muted)', alignSelf: 'center' }}>
+                            {currency}
+                        </span>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={handleConfirm} disabled={busy} style={{
@@ -313,7 +345,7 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
                 <RatingStars value={rating} onChange={v => { setRating(v); setRatingSaved(false) }} />
                 <textarea placeholder={t('visited.commentPlaceholder')} value={comment}
                     onChange={e => { setComment(e.target.value); setRatingSaved(false) }}
-                    rows={2}
+                    rows={2} maxLength={2000}
                     style={{
                         width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 6,
                         border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
@@ -329,6 +361,34 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
                     }}>
                     {ratingSaved ? `✓ ${t('common.save')}` : t('common.save')}
                 </button>
+            </div>
+
+            {/* удалить из маршрута — подтверждение вторым кликом */}
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                {!confirmDelete ? (
+                    <button onClick={() => setConfirmDelete(true)} disabled={busy} style={{
+                        padding: '5px 12px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
+                        background: 'none', color: 'var(--accent)', border: '1px solid var(--accent)',
+                    }}>
+                        {t('stop.delete')}
+                    </button>
+                ) : (
+                    <>
+                        <span style={{ fontSize: 13 }}>{t('stop.deleteConfirm')}</span>
+                        <button onClick={deleteStop} disabled={busy} style={{
+                            padding: '5px 12px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
+                            background: 'var(--accent)', color: 'var(--surface)', border: 'none',
+                        }}>
+                            {t('common.delete')}
+                        </button>
+                        <button onClick={() => setConfirmDelete(false)} disabled={busy} style={{
+                            padding: '5px 12px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
+                            background: 'none', color: 'var(--text-muted)', border: '1px solid var(--border)',
+                        }}>
+                            {t('common.cancel')}
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     )

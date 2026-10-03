@@ -2,7 +2,12 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
 import {getTrip, updateTrip} from "../api/trips"
-import { apiFetch } from "../api/client";
+import { apiFetch, ApiError } from "../api/client";
+import { apiErrorMessage } from "../utils/apiError";
+import { MAX_GROUP } from "../utils/limits";
+import IntInput from "../components/IntInput";
+
+const MAX_TRIP_DAYS = 60
 
 
 export default function TripSettings() {
@@ -24,20 +29,32 @@ export default function TripSettings() {
     const [isSaving, setIsSaving] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
+    const [deleting, setDeleting] = useState(false)
+    // QA: ошибка загрузки (чужая/удалённая поездка, сеть) раньше оставляла
+    // вечное «Загрузка...» и необработанный промис
+    const [loadError, setLoadError] = useState<unknown>(null)
     useEffect(() => {
         const load = async () => {
             if(!tripId) return
-            const trip = await getTrip(tripId)
-            setTitle(trip.title || '')
-            setCity(trip.city || '')
-            setCountry(trip.country || '')
-            setAdultsCount(trip.adults_count || 1)
-            setChildrenCount(trip.children_count || 0)
-            setChildrenAges(trip.children_ages || [])
-            setIsPublic(trip.is_public || false)
-            setStartDate(trip.start_date || '')
-            setEndDate(trip.end_date || '')
-            setIsLoading(false)
+            try {
+                const trip = await getTrip(tripId)
+                setTitle(trip.title || '')
+                setCity(trip.city || '')
+                setCountry(trip.country || '')
+                setAdultsCount(trip.adults_count || 1)
+                setChildrenCount(trip.children_count || 0)
+                // длина возрастов = число детей (старые поездки могли
+                // хранить рассинхрон — бэк теперь его отвергает)
+                const ages = (trip.children_ages || []).slice(0, trip.children_count || 0)
+                while (ages.length < (trip.children_count || 0)) ages.push(0)
+                setChildrenAges(ages)
+                setIsPublic(trip.is_public || false)
+                setStartDate(trip.start_date || '')
+                setEndDate(trip.end_date || '')
+                setIsLoading(false)
+            } catch (e) {
+                setLoadError(e)
+            }
         }
         load()
     }, [tripId])
@@ -50,13 +67,25 @@ export default function TripSettings() {
             return prev.slice(0,count)
         })
     }
+    const validate = (): string | null => {
+        if (!title.trim()) return t('trip.wizard.errTitle')
+        if (!startDate || !endDate) return t('trip.wizard.errDates')
+        if (endDate < startDate) return t('trip.wizard.errRange')
+        const span = Math.round((new Date(endDate + 'T00:00:00').getTime()
+            - new Date(startDate + 'T00:00:00').getTime()) / 86_400_000) + 1
+        if (span > MAX_TRIP_DAYS) return t('trip.wizard.errTooLong', { max: MAX_TRIP_DAYS })
+        return null
+    }
+
     const save = async () => {
-        if(!tripId) return
+        if(!tripId || isSaving) return
+        const err = validate()
+        if (err) { setDatesError(err); return }
         setIsSaving(true)
         setDatesError(null)
         try {
             await updateTrip(tripId, {
-                title, city, country, adults_count: adultsCount,
+                title: title.trim(), city, country, adults_count: adultsCount,
                 children_count: childrenCount, children_ages: childrenAges,
                 is_public: isPublic,
                 start_date: startDate || null,
@@ -64,20 +93,40 @@ export default function TripSettings() {
             })
             navigate(`/trips/${tripId}`)
         } catch (e: unknown) {
-            // 409: в удаляемом дне остались стопы
-            const detail = (e as {body?: {detail?: string}})?.body?.detail
-            setDatesError(detail ? t(`errors.${detail}`, detail) : t('trip.saveError'))
+            // 409: в удаляемом дне остались стопы — машинный код локализуется
+            setDatesError(apiErrorMessage(e, t, t('trip.saveError')))
         } finally {
             setIsSaving(false)
         }
     }
 
     const deleteTrip = async () => {
-        await apiFetch(`/trips/${tripId}`, {
-            method: 'DELETE',
-        })
-        navigate('/discover')
+        if (deleting) return
+        setDeleting(true)
+        try {
+            await apiFetch(`/trips/${tripId}`, {
+                method: 'DELETE',
+            })
+            navigate('/discover')
+        } catch (e) {
+            // уже удалена (второй клик/другая вкладка) — цель достигнута
+            if (e instanceof ApiError && e.status === 404) { navigate('/discover'); return }
+            setShowDeleteModal(false)
+            setDatesError(apiErrorMessage(e, t))
+        } finally {
+            setDeleting(false)
+        }
     }
+    if (loadError != null) return (
+        <div style={{padding: 32, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start'}}>
+            <p style={{color: 'var(--accent)', margin: 0}}>
+                {loadError instanceof ApiError && (loadError.status === 404 || loadError.status === 422)
+                    ? t('trip.notFound') : apiErrorMessage(loadError, t, t('trip.loadError'))}
+            </p>
+            <button onClick={() => navigate('/discover')} style={{padding: '8px 16px', background: 'var(--accent)',
+                color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: 'pointer'}}>{t('nav.myTrips')}</button>
+        </div>
+    )
     if (isLoading) return <div style={{padding:32}}>{t('common.loading')}</div>
 
     return (
@@ -92,17 +141,17 @@ export default function TripSettings() {
                 {/*MAIN */}
                 <div>
                     <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.titleLabel')}</label>
-                    <input value={title} onChange={e => setTitle(e.target.value)}
+                    <input value={title} onChange={e => setTitle(e.target.value)} maxLength={200}
                     style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                 </div>
                 <div style={{display: 'flex', gap:12}}>
                     <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: '6b7280'}}>{t('trip.city')}</label>
+                        <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.city')}</label>
                         <input value={city} onChange={e => setCity(e.target.value)}
                         style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
                     <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: '6b7280'}}>{t('trip.country')}</label>
+                        <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.country')}</label>
                         <input value={country} onChange={e => setCountry(e.target.value)}
                         style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
                     </div>
@@ -130,7 +179,7 @@ export default function TripSettings() {
                         <button onClick={() => setAdultsCount(Math.max(1, adultsCount - 1))}
                         style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>-</button>
                         <span style={{fontSize: 16, minWidth:20, textAlign: 'center'}}>{adultsCount}</span>
-                        <button onClick={()=> setAdultsCount(adultsCount + 1)}
+                        <button onClick={()=> setAdultsCount(Math.min(MAX_GROUP, adultsCount + 1))}
                         style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>+</button>
                     </div>
                 
@@ -140,7 +189,7 @@ export default function TripSettings() {
                         <button onClick={() => handleChildrenCount(Math.max(0, childrenCount - 1))}
                         style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>-</button>
                         <span style={{fontSize: 16, minWidth: 20, textAlign: 'center'}}>{childrenCount}</span>
-                        <button onClick={() => handleChildrenCount(childrenCount + 1)}
+                        <button onClick={() => handleChildrenCount(Math.min(MAX_GROUP, childrenCount + 1))}
                             style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>+</button>
                     </div>
                 
@@ -150,11 +199,9 @@ export default function TripSettings() {
                     <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.childrenAges')}</label>
                     <div style={{display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap'}}>
                         {childrenAges.map((age, i) => (
-                            <input key={i} type="number" min={0} max={17} value={age}
-                            onChange={e => {const newAges = [...childrenAges]
-                                 newAges[i]= parseInt(e.target.value) || 0
-                                setChildrenAges(newAges)}}
-                                style={{width: 56, padding: '6px, 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize:15, textAlign: 'center'}} />
+                            <IntInput key={i} value={age} min={0} max={17}
+                                onChange={v => setChildrenAges(prev => prev.map((a, j) => j === i ? v : a))}
+                                style={{width: 56, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize:15, textAlign: 'center'}} />
                         ))}
                     </div>
                 
@@ -197,7 +244,7 @@ export default function TripSettings() {
                         padding: '8px 16px', background: 'none', color: 'var(--text-primary)', border: '1px solid var(--border)',
                         borderRadius: 6, cursor: 'pointer'
                     }}>{t('common.cancel')}</button>
-                <button onClick={deleteTrip} style={{
+                <button onClick={deleteTrip} disabled={deleting} style={{
                     padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
                     border: 'none', borderRadius: 6, cursor: 'pointer'
                 }}>{t('common.delete')}</button>

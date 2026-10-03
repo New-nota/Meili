@@ -39,6 +39,25 @@ describe('meiliStore', () => {
         expect(store().streaming).toBe(false)
     })
 
+    it('failTurn убирает недодиктованный ответ, а не только пустой', () => {
+        // ход упал посреди стрима: огрызок не должен остаться рядом с ошибкой
+        store().startTurn('q')
+        store().appendToken('**Зе')
+        store().failTurn('всё сломалось')
+        const msgs = store().messages
+        expect(msgs.map(m => m.content)).toEqual(['q', '⚠ всё сломалось'])
+    })
+
+    it('failTurn не трогает историю, пришедшую с сервера', () => {
+        store().setConversation('conv-1', [
+            { id: 'srv-1', role: 'assistant', content: 'старый ответ', created_at: '' },
+        ], null)
+        store().startTurn('q')
+        store().failTurn('сбой')
+        expect(store().messages.map(m => m.content))
+            .toEqual(['старый ответ', 'q', '⚠ сбой'])
+    })
+
     it('reset очищает привязку к поездке и план', () => {
         store().setConversation('conv-1', [], 'trip-A')
         store().setPlan({ plan_id: 'p1', plan_json: { actions: [], summary: 's' } })

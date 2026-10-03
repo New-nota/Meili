@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TripDraft } from '../api/meili'
 import { apiFetch } from '../api/client'
 import type { Trip } from '../types/index'
+import { apiErrorMessage } from '../utils/apiError'
+import IntInput from './IntInput'
+import { MAX_GROUP, MAX_MONEY, MONEY_RE } from '../utils/limits'
+import { geocodeOblast, isAbort } from '../utils/geocode'
 
 // S11: мастер создания поездки — одна модалка, один сабмит POST /trips/.
 // Город — автокомплит по геокодеру, ограниченный bbox Калининградской области
 // (единственное покрытие Valhalla). Вне bbox ничего не находится — честная граница.
 
-// bbox области: minLon, maxLat, maxLon, minLat (формат Nominatim viewbox)
-const OBLAST_VIEWBOX = '19.6,55.3,22.9,54.3'
 const MAX_TRIP_DAYS = 60
 
 // валюта по умолчанию — от языка интерфейса; ¥ CNY только ручным выбором
@@ -45,23 +48,16 @@ interface CityHit {
     lon: number
 }
 
-interface NominatimHit {
-    display_name: string
-    name?: string
-    lat: string
-    lon: string
-    class?: string
-    addresstype?: string
-}
-
 const PLACE_TYPES = new Set(['city', 'town', 'village', 'hamlet', 'municipality'])
 
 interface Props {
     onClose: () => void
     onCreated: (trip: Trip) => void
     // S17: включён тумблер «посоветоваться с Meili» — вместо создания поездки
-    // открываем чат, передав туда черновик из заполненных полей
-    onPlanWithMeili?: (draft: string) => void
+    // открываем чат, передав туда черновик из заполненных полей.
+    // Ревью: текст — только заготовка реплики пользователя; факты уходят
+    // вторым аргументом структурно, иначе модель их теряет
+    onPlanWithMeili?: (text: string, draft: TripDraft) => void
 }
 
 export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }: Props) {
@@ -73,6 +69,9 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
     const [city, setCity] = useState<CityHit | null>(null)
     const [cityHits, setCityHits] = useState<CityHit[]>([])
     const [cityOpen, setCityOpen] = useState(false)
+    // QA: раньше «ничего не нашлось» и «геокодер лёг» выглядели одинаково —
+    // пустотой под полем, и юзер не понимал, почему не создаётся поездка
+    const [cityStatus, setCityStatus] = useState<'idle' | 'loading' | 'empty' | 'error'>('idle')
 
     const [adults, setAdults] = useState(1)
     const [children, setChildren] = useState(0)
@@ -88,39 +87,57 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
     const [withMeili, setWithMeili] = useState(false)   // S17: тумблер
     const today = useMemo(() => todayStr(), [])
 
-    // синхронизируем длину массива возрастов с числом детей
-    useEffect(() => {
+    // длина массива возрастов = число детей: меняем вместе, в обработчике
+    // (без setState в эффекте и лишнего кадра с рассинхроном)
+    const changeChildren = (n: number) => {
+        setChildren(n)
         setAges(prev => {
-            const next = prev.slice(0, children)
-            while (next.length < children) next.push(0)
+            const next = prev.slice(0, n)
+            while (next.length < n) next.push(0)
             return next
         })
-    }, [children])
+    }
 
     // дебаунс-поиск города по геокодеру (bbox области, только населённые пункты)
     const debounceRef = useRef<number | undefined>(undefined)
     useEffect(() => {
         if (city && cityQuery === city.name) return // выбор уже сделан
-        if (cityQuery.trim().length < 2) { setCityHits([]); return }
+        if (cityQuery.trim().length < 2) return  // короткий запрос — см. cityActive
         window.clearTimeout(debounceRef.current)
+        // QA: ответы геокодера приходят в любом порядке — без отмены ответ на
+        // «Ка» мог прилететь после ответа на «Калининград» и затереть его
+        const ctrl = new AbortController()
         debounceRef.current = window.setTimeout(async () => {
+            setCityStatus('loading')
             try {
-                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cityQuery)}`
-                    + `&format=json&addressdetails=1&limit=6&viewbox=${OBLAST_VIEWBOX}&bounded=1`
-                    + `&accept-language=${i18n.language}`
-                const res = await fetch(url)
-                const data: NominatimHit[] = await res.json()
+                const data = await geocodeOblast(cityQuery, {
+                    lang: i18n.language, limit: 6, signal: ctrl.signal, addressDetails: true,
+                })
                 const hits = data
                     .filter(r => r.class === 'place' || PLACE_TYPES.has(r.addresstype ?? ''))
                     .map(r => ({ name: r.name || r.display_name.split(',')[0], lat: +r.lat, lon: +r.lon }))
                 setCityHits(hits)
                 setCityOpen(true)
-            } catch {
+                setCityStatus(hits.length ? 'idle' : 'empty')
+            } catch (e) {
+                if (isAbort(e)) return
                 setCityHits([])
+                setCityStatus('error')
             }
         }, 300)
-        return () => window.clearTimeout(debounceRef.current)
+        return () => { window.clearTimeout(debounceRef.current); ctrl.abort() }
     }, [cityQuery, city, i18n.language])
+
+    // Escape закрывает мастер (как и клик по подложке)
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [onClose])
+
+    const cityActive = cityQuery.trim().length >= 2
+    const visibleHits = cityActive ? cityHits : []
+    const visibleStatus = cityActive ? cityStatus : 'idle'
 
     const pickCity = (hit: CityHit) => {
         setCity(hit)
@@ -128,16 +145,36 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
         setCityOpen(false)
     }
 
+    // QA: набрал «Калининград» целиком, но не кликнул по подсказке — раньше
+    // это «выберите город», хотя совпадение вот оно. Точное совпадение имени
+    // (без регистра) или единственная подсказка засчитываются как выбор.
+    const resolvedCity = (): CityHit | null => {
+        if (city) return city
+        const q = cityQuery.trim().toLocaleLowerCase()
+        if (!q) return null
+        const exact = visibleHits.find(h => h.name.toLocaleLowerCase() === q)
+        return exact ?? (visibleHits.length === 1 ? visibleHits[0] : null)
+    }
+
+    const budgetError = (): string | null => {
+        if (!budget.trim()) return null
+        const n = Number(budget)
+        if (!Number.isFinite(n) || n < 0 || n > MAX_MONEY || !MONEY_RE.test(budget.trim())) {
+            return t('trip.wizard.errBudget')
+        }
+        return null
+    }
+
     const validate = (): string | null => {
         if (!title.trim()) return t('trip.wizard.errTitle')
-        if (!city) return t('trip.wizard.errCity')
+        if (!resolvedCity()) return t('trip.wizard.errCity')
         if (adults < 1) return t('trip.wizard.errAdults')
         if (children > 0 && ages.some(a => a < 0 || a > 17)) return t('trip.wizard.errAges')
         if (!startDate || !endDate) return t('trip.wizard.errDates')
         if (startDate < today) return t('trip.wizard.errPast')
         if (endDate < startDate) return t('trip.wizard.errRange')
         if (spanDays(startDate, endDate) > MAX_TRIP_DAYS) return t('trip.wizard.errTooLong', { max: MAX_TRIP_DAYS })
-        return null
+        return budgetError()
     }
 
     /** S17: черновик поездки словами — заготовка первого сообщения Meili.
@@ -158,15 +195,30 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
         return parts.length ? `${head} — ${parts.join(', ')}` : head
     }
 
+    /** S17: те же поля, что уйдут в POST /trips/, но фактами — для диалога. */
+    const meiliDraftFields = (): TripDraft => ({
+        ...(title.trim() ? { title: title.trim() } : {}),
+        ...(city ? { city: city.name, city_lat: city.lat, city_lon: city.lon, country: 'Россия' } : {}),
+        ...(startDate && endDate ? { start_date: startDate, end_date: endDate } : {}),
+        adults_count: adults,
+        children_count: children,
+        ...(children > 0 ? { children_ages: ages } : {}),
+        ...(budget.trim() ? { budget_total: budget.trim() } : {}),
+        currency,
+    })
+
     const submit = async () => {
         // S17: с тумблером поездку не создаём — идём обсуждать её с Meili,
         // поездку потом создаст сам план через «Применить»
         if (withMeili) {
-            onPlanWithMeili?.(meiliDraft())
+            onPlanWithMeili?.(meiliDraft(), meiliDraftFields())
             return
         }
+        if (busy) return
         const err = validate()
         if (err) { setError(err); return }
+        const picked = resolvedCity()!
+        if (!city) pickCity(picked)
         setBusy(true)
         setError(null)
         try {
@@ -174,9 +226,9 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                 method: 'POST',
                 body: JSON.stringify({
                     title: title.trim(),
-                    city: city!.name,
-                    city_lat: city!.lat,
-                    city_lon: city!.lon,
+                    city: picked.name,
+                    city_lat: picked.lat,
+                    city_lon: picked.lon,
                     country: 'Россия',
                     adults_count: adults,
                     children_count: children,
@@ -184,12 +236,12 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                     start_date: startDate,
                     end_date: endDate,
                     currency,
-                    ...(budget.trim() ? { budget_total: budget.trim() } : {}),
+                    ...(budget.trim() ? { budget_total: budget.trim().replace(',', '.') } : {}),
                 }),
             })
             onCreated(trip)
-        } catch {
-            setError(t('trip.saveError'))
+        } catch (e) {
+            setError(apiErrorMessage(e, t, t('trip.saveError')))
             setBusy(false)
         }
     }
@@ -216,7 +268,7 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                 {/* название */}
                 <div>
                     <label style={label}>{t('trip.wizard.name')}</label>
-                    <input value={title} onChange={e => setTitle(e.target.value)}
+                    <input value={title} onChange={e => setTitle(e.target.value)} maxLength={200}
                         placeholder={t('trip.titlePlaceholder')} style={input} autoFocus />
                 </div>
 
@@ -225,22 +277,25 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                     <label style={label}>{t('trip.wizard.city')}</label>
                     <input value={cityQuery}
                         onChange={e => { setCityQuery(e.target.value); setCity(null) }}
-                        onFocus={() => cityHits.length && setCityOpen(true)}
+                        onFocus={() => visibleHits.length && setCityOpen(true)}
                         placeholder={t('trip.wizard.cityPlaceholder')} style={input} />
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                        {t('trip.wizard.region')}
+                    <div style={{ fontSize: 11, color: visibleStatus === 'empty' || visibleStatus === 'error' ? 'var(--accent)' : 'var(--text-muted)', marginTop: 2 }}>
+                        {visibleStatus === 'loading' ? t('common.loading')
+                            : visibleStatus === 'empty' ? t('trip.wizard.cityNotFound')
+                            : visibleStatus === 'error' ? t('trip.wizard.cityLookupFailed')
+                            : t('trip.wizard.region')}
                     </div>
-                    {cityOpen && cityHits.length > 0 && (
+                    {cityOpen && visibleHits.length > 0 && (
                         <div style={{
                             position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 5,
                             background: 'var(--surface-raised)', border: '1px solid var(--border)',
                             borderRadius: 6, marginTop: 2, boxShadow: '0 4px 16px color-mix(in srgb, var(--text-primary) 18%, transparent)',
                             maxHeight: 200, overflowY: 'auto',
                         }}>
-                            {cityHits.map((hit, i) => (
+                            {visibleHits.map((hit, i) => (
                                 <div key={i} onClick={() => pickCity(hit)} style={{
                                     padding: '8px 10px', cursor: 'pointer', fontSize: 14,
-                                    borderBottom: i < cityHits.length - 1 ? '1px solid var(--border)' : 'none',
+                                    borderBottom: i < visibleHits.length - 1 ? '1px solid var(--border)' : 'none',
                                 }}
                                     onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
                                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -255,13 +310,11 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                 <div style={{ display: 'flex', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                         <label style={label}>{t('trip.wizard.adults')}</label>
-                        <input type="number" min={1} value={adults}
-                            onChange={e => setAdults(Math.max(1, parseInt(e.target.value) || 1))} style={input} />
+                        <IntInput value={adults} min={1} max={MAX_GROUP} onChange={setAdults} style={input} />
                     </div>
                     <div style={{ flex: 1 }}>
                         <label style={label}>{t('trip.wizard.children')}</label>
-                        <input type="number" min={0} value={children}
-                            onChange={e => setChildren(Math.max(0, parseInt(e.target.value) || 0))} style={input} />
+                        <IntInput value={children} min={0} max={MAX_GROUP} onChange={changeChildren} style={input} />
                     </div>
                 </div>
 
@@ -271,10 +324,9 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                         <label style={label}>{t('trip.wizard.ages')}</label>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {ages.map((age, i) => (
-                                <input key={i} type="number" min={0} max={17} value={age}
+                                <IntInput key={i} value={age} min={0} max={17}
                                     title={t('trip.wizard.childN', { n: i + 1 })}
-                                    onChange={e => setAges(prev => prev.map((a, j) =>
-                                        j === i ? Math.min(17, Math.max(0, parseInt(e.target.value) || 0)) : a))}
+                                    onChange={v => setAges(prev => prev.map((a, j) => j === i ? v : a))}
                                     style={{ ...input, width: 64 }} />
                             ))}
                         </div>
@@ -307,7 +359,7 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                     </div>
                     <div style={{ flex: 1 }}>
                         <label style={label}>{t('trip.wizard.budget')}</label>
-                        <input type="number" min={0} value={budget}
+                        <input type="number" min={0} max={MAX_MONEY} step="0.01" value={budget}
                             onChange={e => setBudget(e.target.value)}
                             placeholder={`${currencySymbol} —`} style={input} />
                     </div>

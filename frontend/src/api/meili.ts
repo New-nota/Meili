@@ -1,4 +1,4 @@
-import { apiFetch, API_URL, getAccessToken } from './client'
+import { apiFetch, API_URL, getAccessToken, tryRefresh } from './client'
 
 // AI-ассистент Meili (ТЗ-Meili M1.6): диалоги + SSE-стриминг
 
@@ -62,10 +62,28 @@ export const refreezePlan = (planId: string, plan: ProposedPlan) =>
 export const applyPlan = (planId: string) =>
     apiFetch<ApplyResult>(`/api/meili/plans/${planId}/apply`, { method: 'POST' })
 
-export const createConversation = (tripId?: string | null) =>
+// S17: черновик мастера создания. Уходит на сервер структурно — раньше эти
+// поля пересказывались модели текстом первого сообщения, и она их теряла
+// (созданные ассистентом поездки выходили без города и с чужой валютой).
+export interface TripDraft {
+    title?: string
+    city?: string
+    country?: string
+    city_lat?: number
+    city_lon?: number
+    start_date?: string
+    end_date?: string
+    adults_count?: number
+    children_count?: number
+    children_ages?: number[]
+    budget_total?: string
+    currency?: string
+}
+
+export const createConversation = (tripId?: string | null, draft?: TripDraft | null) =>
     apiFetch<Conversation>(
         `/api/meili/conversations${tripId ? `?trip_id=${tripId}` : ''}`,
-        { method: 'POST' },
+        { method: 'POST', ...(draft ? { body: JSON.stringify(draft) } : {}) },
     )
 
 export const getMeiliMessages = (conversationId: string) =>
@@ -83,17 +101,27 @@ export interface StreamHandlers {
 export async function streamMessage(
     conversationId: string, content: string, handlers: StreamHandlers,
 ): Promise<void> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const token = getAccessToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const res = await fetch(`${API_URL}/api/meili/conversations/${conversationId}/messages`, {
-        method: 'POST', headers, credentials: 'include',
-        body: JSON.stringify({
-            content,
-            client_tz: Intl.DateTimeFormat().resolvedOptions().timeZone, // M2.2
-        }),
+    const body = JSON.stringify({
+        content,
+        client_tz: Intl.DateTimeFormat().resolvedOptions().timeZone, // M2.2
     })
+    const send = () => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        const token = getAccessToken()
+        if (token) headers['Authorization'] = `Bearer ${token}`
+        return fetch(`${API_URL}/api/meili/conversations/${conversationId}/messages`, {
+            method: 'POST', headers, credentials: 'include', body,
+        })
+    }
+
+    let res = await send()
+    // Ревью: SSE идёт сырым fetch'ем мимо apiFetch, поэтому молчаливого
+    // рефреша тут не было — через 15 минут (жизнь access-токена) чат отвечал
+    // «http_401» на каждое сообщение, пока страницу не дёрнут другой ручкой.
+    // Повторяем ту же одну попытку рефреша, что и apiFetch.
+    if (res.status === 401 && await tryRefresh()) {
+        res = await send()
+    }
     if (!res.ok || !res.body) {
         handlers.onError(`http_${res.status}`)
         return

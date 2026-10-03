@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import Logo from '../Logo'
 import MeiliChat from './MeiliChat'
+import type { TripDraft } from '../../api/meili'
 
 // S17: чат с Meili поверх страницы — планирование поездки с нуля (Discover,
 // мастер создания). Диалог без trip_id: поездку создаст сам план через
@@ -9,10 +11,18 @@ interface Props {
     onClose: () => void
     onTripCreated: (tripId: string) => void
     initialInput?: string
+    draft?: TripDraft | null
 }
 
-export default function MeiliChatModal({ onClose, onTripCreated, initialInput }: Props) {
+export default function MeiliChatModal({ onClose, onTripCreated, initialInput, draft }: Props) {
     const { t } = useTranslation()
+
+    // Escape закрывает чат, как и остальные модалки (мастер, удаление)
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [onClose])
 
     return (
         <div onClick={onClose} style={{
@@ -40,6 +50,7 @@ export default function MeiliChatModal({ onClose, onTripCreated, initialInput }:
                     <MeiliChat
                         tripId={null}
                         initialInput={initialInput}
+                        draft={draft}
                         onApplied={tripId => { if (tripId) onTripCreated(tripId) }} />
                 </div>
             </div>

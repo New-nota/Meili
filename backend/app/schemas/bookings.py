@@ -4,18 +4,20 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import Money
+
 
 class BookingCreate(BaseModel):
     trip_stop_id: uuid.UUID
-    provider: str
+    provider: str = Field(min_length=1, max_length=50)
     # намерение пользователя (какой день хочет посетить) — уходит в booking_details
     visit_date: date | None = None
 
 
 class BookingConfirm(BaseModel):
     """Пользователь вернулся с сайта партнёра и подтверждает бронь."""
-    external_id: str | None = None  # номер брони у провайдера
-    amount: Decimal | None = None
+    external_id: str | None = Field(None, max_length=128)  # номер брони у провайдера
+    amount: Money | None = None
     currency: str | None = Field(None, min_length=3, max_length=3)
 
 

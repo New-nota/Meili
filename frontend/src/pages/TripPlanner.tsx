@@ -10,6 +10,7 @@ import DayCard from '../components/DayCard'
 import BudgetPanel from '../components/BudgetPanel'
 import PreviewBudget from '../components/PreviewBudget'
 import { formatPlaceLabel, type ClickedPoint, type NominatimReverseResult } from '../utils/mapPoint'
+import { markerPopupContent } from '../utils/mapPopup'
 import { applyPaperStyle, DAY_HEX } from '../utils/mapStyle'
 import HermodLogo from '../components/HermodLogo'
 import DayPill from '../components/DayPill'
@@ -19,7 +20,9 @@ import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
 import StopDetailPanel from '../components/StopDetailPanel'
 import MeiliChat from '../components/meili/MeiliChat'
-import { apiFetch } from '../api/client'
+import { apiFetch, ApiError } from '../api/client'
+import { apiErrorMessage } from '../utils/apiError'
+import { inRegion } from '../utils/geocode'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getVisitedPlaces } from '../api/visited'
 import type { Place } from '../types/index'
@@ -42,6 +45,12 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     const markersRef = useRef<maplibregl.Marker[]>([])
     const [stops, setStops] = useState<Stop[]>([])
     const [error, setError] = useState<string | null>(null)
+    // ошибки загрузки — объектом, перевод при рендере (см. Discover)
+    const [loadError, setLoadError] = useState<{ e: unknown, fallback: string } | null>(null)
+    // QA: чужая/удалённая/кривая поездка — раньше пустой планировщик и
+    // необработанный промис; теперь честный экран «не найдена»
+    const [notFoundId, setNotFoundId] = useState<string | null>(null)
+    const notFound = notFoundId !== null && notFoundId === tripId
     // S12: реордер дней — активация после 5px, чтобы клик по грипу не путался
     // с toggle аккордеона; сам drag висит на грипе в шапке DayCard
     const daySensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -55,12 +64,16 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     // S9 WP-E: карточка точки на карте (toggle, Esc, «сделать точкой старта»)
     const [clickedPoint, setClickedPoint] = useState<ClickedPoint | null>(null)
     const clickedPointRef = useRef<ClickedPoint | null>(null)
-    clickedPointRef.current = clickedPoint
     // S13: readOnly в замыканиях эффектов карты (клик, отрисовка депо) читаем через ref
     const readOnlyRef = useRef(readOnly)
-    readOnlyRef.current = readOnly
     const i18nRef = useRef(i18n)
-    i18nRef.current = i18n
+    // свежие значения для обработчиков карты — синхронизируем после рендера
+    // (запись в ref во время рендера запрещена правилами React)
+    useEffect(() => {
+        clickedPointRef.current = clickedPoint
+        readOnlyRef.current = readOnly
+        i18nRef.current = i18n
+    })
     const pinRef = useRef<maplibregl.Marker | null>(null)
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -137,8 +150,12 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         }
     }
     const copyTrip = async () => {
-        const nt = await cloneTrip(tripId!)
-        navigate(`/trips/${nt.id}`)
+        try {
+            const nt = await cloneTrip(tripId!)
+            navigate(`/trips/${nt.id}`)
+        } catch (e) {
+            setError(apiErrorMessage(e, t))
+        }
     }
 
     const reloadDays = async () => {
@@ -151,13 +168,30 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     }
 
     useEffect(() => {
-        reloadDays().catch(() => {})
+        // QA: при переходе между поездками ответ ПРЕДЫДУЩЕЙ мог прийти позже и
+        // показать её дни в новой — устаревший ответ отбрасываем
+        let cancelled = false
+        Promise.all([getDays(tripId!), getLocations(tripId!)]).then(([d, l]) => {
+            if (cancelled) return
+            setDays(d)
+            setLocations(l)
+            setExpandedDayId(prev => prev ?? (d[0]?.id ?? null))
+        }).catch(() => {})
+        return () => { cancelled = true }
     }, [tripId])
 
     useEffect(()=> {
         const load = async () => {
-            const res = await getTrip(tripId!)
-            if (res) setTrip(res)
+            try {
+                const res = await getTrip(tripId!)
+                if (res) setTrip(res)
+            } catch (e) {
+                if (e instanceof ApiError && (e.status === 404 || e.status === 422 || e.status === 403)) {
+                    setNotFoundId(tripId ?? null)
+                } else {
+                    setLoadError({ e, fallback: 'trip.loadError' })
+                }
+            }
         }
     load()
     // tripId в deps: при переходе между поездками роутер переиспользует компонент
@@ -173,6 +207,36 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         })
         map.addControl( new maplibregl.NavigationControl())
         mapRef.current = map
+        // QA: клик — сразу, а не по 'load': пока внешний сервер тайлов грузит
+        // стиль (секунды, а то и «никогда»), клик по карте молча не работал
+        map.on('click', async (e) => {
+            // S13: в превью карта не редактируется — клик ничего не добавляет
+            if (readOnlyRef.current) return
+            // S9 WP-E Fix 1: toggle как в Google Maps — при открытой карточке
+            // клик по пустой карте закрывает её, новый пин не ставится
+            if (clickedPointRef.current !== null) {
+                setClickedPoint(null)
+                return
+            }
+            const {lng, lat} = e.lngLat
+            // Fix 3: addressdetails+namedetails для формата «улица дом» / POI.
+            // QA: геокодер лёг/429 — раньше необработанный промис и клик «в
+            // пустоту»; теперь карточка всё равно открывается с координатами
+            let data: NominatimReverseResult = {}
+            try {
+                const res = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&namedetails=1`,
+                    {headers: {'Accept-Language': i18nRef.current.language}}
+                )
+                if (res.ok) data = await res.json()
+            } catch { /* остаёмся с координатами */ }
+            const label = formatPlaceLabel(data, lat, lng)
+            setClickedPoint({
+                lat, lng, label,
+                address: data.display_name ?? null,
+                osmId: data.osm_type && data.osm_id ? `${data.osm_type}/${data.osm_id}` : null,
+            })
+        })
         map.on('load',() => {
         // S10: приглушённая «бумага» — насыщенным остаётся только маршрут
         applyPaperStyle(map)
@@ -185,29 +249,6 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 id: `route-day-line-${i}`, type: 'line', source: `route-day-${i}`,
                 layout: {'line-join': 'round', 'line-cap': 'round'},
                 paint: {'line-color': hex, 'line-width': 3, 'line-opacity': 0.75},
-            })
-        })
-        map.on('click', async (e) => {
-            // S13: в превью карта не редактируется — клик ничего не добавляет
-            if (readOnlyRef.current) return
-            // S9 WP-E Fix 1: toggle как в Google Maps — при открытой карточке
-            // клик по пустой карте закрывает её, новый пин не ставится
-            if (clickedPointRef.current !== null) {
-                setClickedPoint(null)
-                return
-            }
-            const {lng, lat} = e.lngLat
-            // Fix 3: addressdetails+namedetails для формата «улица дом» / POI
-            const res = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&namedetails=1`,
-                {headers: {'Accept-Language': i18nRef.current.language}}
-            )
-            const data: NominatimReverseResult = await res.json()
-            const label = formatPlaceLabel(data, lat, lng)
-            setClickedPoint({
-                lat, lng, label,
-                address: data.display_name ?? null,
-                osmId: data.osm_type && data.osm_id ? `${data.osm_type}/${data.osm_id}` : null,
             })
         })
         map.addLayer({
@@ -244,8 +285,8 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         const load = async () => {
             try {
                 setStops(await getStops(tripId!))
-            } catch {
-                setError(t('trip.stopsLoadError'))
+            } catch (e) {
+                setLoadError({ e, fallback: 'trip.stopsLoadError' })
             }
         }
         load()
@@ -257,7 +298,14 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
 
     useEffect(() => {
     const map = mapRef.current
-    if (!map || (routeStops.length === 0 && !activeDay)) return
+    // QA: раньше при пустом маршруте эффект выходил сразу — удалил последний
+    // стоп в режиме «все дни», а его маркер и линия так и висели на карте.
+    // Теперь пустой маршрут тоже рисуется (= очищается).
+    if (!map) return
+    // QA: отрисовка асинхронная (маршрут каждого дня — отдельный запрос). Без
+    // отмены прогон по устаревшему состоянию доезжал ПОСЛЕ свежего и
+    // дорисовывал свои маркеры поверх — дубли и «призраки» удалённых стопов
+    let cancelled = false
     const drawRoute = async () => {
         const emptyLine = {type: 'Feature' as const, geometry: {type: 'LineString' as const, coordinates: [] as number[][]}, properties: {}}
         const clearDayLayers = () => DAY_HEX.forEach((_, i) => {
@@ -267,6 +315,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         // S10: режим «Все дни» — маршруты приглушёнными тонами --day-1…6
         if (!activeDay && days.length > 0) {
             const paintOverview = async () => {
+                if (cancelled) return
                 markersRef.current.forEach(m => m.remove())
                 markersRef.current = []
                 ;(map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine)
@@ -279,6 +328,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                         ? await getDayRoute(tripId!, day.id)
                             .then(r => legsToCoordinates(r.legs)).catch(() => [])
                         : []
+                    if (cancelled) return
                     ;(map.getSource(`route-day-${i % DAY_HEX.length}`) as maplibregl.GeoJSONSource | undefined)
                         ?.setData({type: 'Feature', geometry: {type: 'LineString', coordinates: coords}, properties: {}})
                     // номерные бейджи цвета дня
@@ -312,8 +362,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             ? await getDayRoute(tripId!, activeDay.id)
                 .then(r => legsToCoordinates(r.legs)).catch(() => [])
             : []
+        if (cancelled) return
         // ждем карту
         const updateMap = () => {
+            if (cancelled) return
             markersRef.current.forEach(m => m.remove())
             markersRef.current = []
             clearDayLayers()
@@ -351,13 +403,14 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 `
                 el.textContent = String(index + 1)
 
-                // появится при клике на маркер
-                const popup = new maplibregl.Popup({offset: 20}).setHTML(`
-                    <div style="padding: 8px">
-                    <strong>${stop.place_name || t('common.untitled')}</strong>
-                    ${stop.duration_minutes ? `<p style="margin: 4px 0 0">${t('place.durationMin', {count: stop.duration_minutes})}</p>`: ''}
-                    </div>
-                    `)
+                // появится при клике на маркер (setDOMContent, не setHTML —
+                // имя места это пользовательский ввод, см. utils/mapPopup)
+                const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
+                    markerPopupContent(
+                        stop.place_name || t('common.untitled'),
+                        stop.duration_minutes ? t('place.durationMin', {count: stop.duration_minutes}) : null,
+                        'margin: 4px 0 0',
+                    ))
                 
                 const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(marker)
@@ -374,11 +427,12 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     opacity: 0.65; box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 20%, transparent);
                 `
                 el.textContent = '✕'
-                const popup = new maplibregl.Popup({offset: 20}).setHTML(`
-                    <div style="padding: 8px">
-                    <strong>${stop.place_name || t('common.untitled')}</strong>
-                    <p style="margin: 4px 0 0; font-size: 12px; color: var(--text-muted)">${t('place.notFitLabel')}</p>
-                    </div>`)
+                const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
+                    markerPopupContent(
+                        stop.place_name || t('common.untitled'),
+                        t('place.notFitLabel'),
+                        'margin: 4px 0 0; font-size: 12px; color: var(--text-muted)',
+                    ))
                 const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(marker)
             })
@@ -391,8 +445,8 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     font-size: 16px; box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
                 `
                 el.textContent = '🏁'
-                const popup = new maplibregl.Popup({offset: 20}).setHTML(
-                    `<div style="padding: 8px"><strong>${label}</strong><p style="font-size: 12px; color: var(--text-muted)">${loc.name || ''}</p></div>`)
+                const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
+                    markerPopupContent(label, loc.name, 'font-size: 12px; color: var(--text-muted)'))
                 const m = new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map)
                 markersRef.current.push(m)
             }
@@ -407,8 +461,12 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     font-size: 16px; box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
                 `
                 el.textContent = '🏠'
-                const popup = new maplibregl.Popup({offset: 20}).setHTML(`<div style="padding: 8px"><strong>${t('place.home')}</strong><p style="font-size: 12px; color: var(--text-muted)">${trip.start_address || ''}</p></div>`)
-                new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map)
+                const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
+                    markerPopupContent(t('place.home'), trip.start_address, 'font-size: 12px; color: var(--text-muted)'))
+                // QA: маркер «дом» не попадал в markersRef и не снимался —
+                // каждая перерисовка добавляла ещё один поверх
+                markersRef.current.push(
+                    new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map))
             }
             // выравниваем по узлам дня (депо + стопы), чтобы всё было видно
                 const lons = routeStops.filter(s => s.place_lon).map(s => s.place_lon!)
@@ -434,8 +492,11 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             }
         }
         drawRoute()
+        return () => { cancelled = true }
 
-    }, [stops, trip, days, expandedDayId])
+    // activeDay/routeStops — производные от days/expandedDayId/stops со
+    // стабильными ссылками; t — подписи попапов при смене языка
+    }, [stops, trip, days, expandedDayId, activeDay, routeStops, tripId, t])
     
     // S16 §1.5: реордер дней — новый порядок id; сервер переставляет содержимое
     // по фиксированному пулу дат и возвращает дни уже в новом порядке
@@ -446,9 +507,17 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         const newIndex = days.findIndex(d => d.id === over.id)
         if (oldIndex < 0 || newIndex < 0) return
         const newOrder = arrayMove(days, oldIndex, newIndex)
-        const updated = await reorderDays(tripId!, newOrder.map(d => d.id))
-        setDays(updated)
-        await reloadStops()
+        // оптимистично: день переезжает сразу, сервер подтверждает/откатываем
+        const before = days
+        setDays(newOrder)
+        try {
+            const updated = await reorderDays(tripId!, newOrder.map(d => d.id))
+            setDays(updated)
+            await reloadStops()
+        } catch (e) {
+            setDays(before)
+            setError(apiErrorMessage(e, t))
+        }
     }
      const reloadStops = async () => {
         const fresh = await getStops(tripId!)
@@ -465,10 +534,14 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         setDays(prev => prev.map(d => d.id === dayId ? { ...d, title } : d))
 
     // S9 WP-E: действия карточки точки
+    // QA: «добавить в маршрут» при свёрнутых днях слало day_id: null → 422
+    // и безликое «не удалось». Нет раскрытого дня — кладём в первый.
+    const targetDayId = expandedDayId ?? days[0]?.id ?? null
     const addClickedToRoute = async () => {
         if (!clickedPoint) return
+        if (!targetDayId) { setError(t('trip.setDatesHint')); return }
         try {
-            const place = await apiFetch<Place>('/places', {
+            const place = await apiFetch<Place>('/places/', {
                 method: 'POST',
                 body: JSON.stringify({
                     name: clickedPoint.label,
@@ -480,31 +553,45 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             })
             await apiFetch(`/trips/${tripId}/stops`, {
                 method: 'POST',
-                body: JSON.stringify({ place_id: place.id, day_id: expandedDayId }),
+                body: JSON.stringify({ place_id: place.id, day_id: targetDayId }),
             })
             setClickedPoint(null)
+            if (!expandedDayId) setExpandedDayId(targetDayId)
             reloadStops()
-        } catch {
-            setError(t('trip.addPlaceError'))
+        } catch (e) {
+            setError(apiErrorMessage(e, t, t('trip.addPlaceError')))
         }
     }
 
     const makeClickedStart = async () => {
         // Fix 2: создать локацию из точки и сделать её стартом активного дня
         if (!clickedPoint || !activeDay) return
-        const loc = await addLocation(tripId!, {
-            name: clickedPoint.label,
-            address: clickedPoint.address ?? undefined,
-            lat: clickedPoint.lat,
-            lon: clickedPoint.lng,
-            kind: 'custom',
-        })
-        await updateDay(tripId!, activeDay.id, { start_location_id: loc.id })
-        setClickedPoint(null)
-        await reloadDays()
+        try {
+            const loc = await addLocation(tripId!, {
+                name: clickedPoint.label,
+                address: clickedPoint.address ?? undefined,
+                lat: clickedPoint.lat,
+                lon: clickedPoint.lng,
+                kind: 'custom',
+            })
+            await updateDay(tripId!, activeDay.id, { start_location_id: loc.id })
+            setClickedPoint(null)
+            await reloadDays()
+        } catch (e) {
+            setError(apiErrorMessage(e, t))
+        }
     }
 
-    if (!tripId) return <div>{t('trip.notFound')}</div>
+    if (!tripId || notFound) return (
+        <div style={{padding: 48, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center'}}>
+            <HermodLogo size={40} withWordmark vertical />
+            <p style={{color: 'var(--text-muted)', margin: 0}}>{t('trip.notFound')}</p>
+            <button onClick={() => navigate('/discover')} style={{padding: '8px 16px', background: 'var(--accent)',
+                color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: 'pointer'}}>
+                {t('nav.myTrips')}
+            </button>
+        </div>
+    )
     return (
         <div className="planner-layout"
             style={{
@@ -587,6 +674,15 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     </button>
                 </span>
                 </div>
+                {/* QA: в своей поездке названия не было нигде на экране — только
+                    в превью чужой. Одна строка с многоточием, клик — настройки */}
+                {trip?.title && (
+                    <div onClick={() => navigate(`/trips/${tripId}/settings`)} title={trip.title}
+                        style={{fontSize: 15, fontWeight: 600, cursor: 'pointer', marginTop: -4,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                        {trip.title}
+                    </div>
+                )}
                 </div>
                 )}
                 {panelTab === 'meili' ? (
@@ -604,7 +700,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 ) : selectedStop && !readOnly ? (
                     /* Детали остановки + бронирование (Sprint 6) */
                     <div style={{flex: 1, overflowY: 'auto'}}>
+                        {/* key: новый стоп — свежее состояние панели (подтверждение
+                            удаления, ошибки, поля брони), без ручных сбросов */}
                         <StopDetailPanel
+                            key={selectedStop.id}
                             stop={selectedStop}
                             trip={trip}
                             // S16: дата визита приходит от дня стопа
@@ -617,9 +716,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 <>
                 {/* S13: в превью старт-точка и поиск мест недоступны */}
                 {!readOnly && days.length === 0 && <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>}
-                {!readOnly && <PlaceSearch tripId={tripId} dayId={expandedDayId} onPlaceAdded={reloadStops}/>}
+                {!readOnly && <PlaceSearch tripId={tripId} dayId={targetDayId} onPlaceAdded={reloadStops}/>}
                 {/*Сприсок остановок скролится  */}
                 <div style={{flex: 1, overflowY: 'auto', padding: 16}}>
+                {loadError && <p style={{color: 'var(--accent)', fontSize:13}}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>}
                 {error && <p style={{color: 'var(--accent)', fontSize:13}}>{error}</p>}
                 {/* S16: стоп всегда живёт в дне — веток «без дня» больше нет */}
                 {days.length > 0 ? (
@@ -647,7 +747,9 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     </DndContext>
                 ) : (
                     <p style={{fontSize: 12, color: 'var(--text-muted)'}}>
-                        {t('trip.setDatesHint')}
+                        {/* QA: зрителю чужой поездки подсказка «задай даты в
+                            настройках ⚙» бессмысленна — настроек у него нет */}
+                        {readOnly ? t('preview.noDays') : t('trip.setDatesHint')}
                     </p>
                 )}
                 </div>
@@ -682,9 +784,16 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                                 </p>
                             )}
                             <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
-                                <button onClick={addClickedToRoute} style={{
-                                    padding: '6px 12px', background: 'var(--accent)', color: 'var(--surface)',
-                                    border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13}}>
+                                {/* QA: точка вне области ломала маршрут всего дня —
+                                    бэк её теперь не примет, предупреждаем заранее */}
+                                {!inRegion(clickedPoint.lat, clickedPoint.lng) && (
+                                    <span style={{fontSize: 12, color: 'var(--accent)'}}>{t('errors.place_out_of_coverage')}</span>
+                                )}
+                                <button onClick={addClickedToRoute}
+                                    disabled={!inRegion(clickedPoint.lat, clickedPoint.lng)} style={{
+                                    padding: '6px 12px', background: inRegion(clickedPoint.lat, clickedPoint.lng) ? 'var(--accent)' : 'var(--text-muted)',
+                                    color: 'var(--surface)',
+                                    border: 'none', borderRadius: 6, cursor: inRegion(clickedPoint.lat, clickedPoint.lng) ? 'pointer' : 'not-allowed', fontSize: 13}}>
                                     {t('place.addToRoute')}
                                 </button>
                                 <button onClick={makeClickedStart} disabled={!activeDay}

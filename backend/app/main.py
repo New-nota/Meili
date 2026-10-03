@@ -1,11 +1,16 @@
 import time
+from math import isfinite
 from uuid import uuid4
 
+import httpx
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.sessions import SessionMiddleware
+from sqlalchemy.exc import DBAPIError
 from starlette.responses import JSONResponse
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
@@ -60,6 +65,78 @@ async def request_context(request: Request, call_next):
         return response
     finally:
         structlog.contextvars.clear_contextvars()
+
+
+def _json_safe(value):
+    """Заменить не-JSON-совместимые float'ы (NaN/inf) их текстом.
+
+    Ревью: JSON-парсер Python принимает литералы NaN/Infinity, а json.dumps их
+    отдать наружу не может. Валидация тело с NaN отвергала правильно, но
+    ДЕФОЛТНЫЙ обработчик FastAPI кладёт исходное значение в тело 422 — и падал
+    на сериализации сам. Итог: любой запрос с NaN в любом float-поле давал 500
+    вместо 422, на любой ручке. Санитайзим то, что уходит в ответ об ошибке.
+    """
+    if isinstance(value, float) and not isfinite(value):
+        return repr(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # форма тела как у дефолтного обработчика FastAPI — клиенты не ломаются
+        content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
+    )
+
+
+def _sqlstate(exc: DBAPIError) -> str | None:
+    """SQLSTATE исходной ошибки драйвера (asyncpg прячет её за адаптером)."""
+    for err in (exc.orig, getattr(exc.orig, "__cause__", None)):
+        code = getattr(err, "sqlstate", None) or getattr(err, "pgcode", None)
+        if code:
+            return code
+    return None
+
+
+@app.exception_handler(DBAPIError)
+async def db_error_handler(request: Request, exc: DBAPIError):
+    """QA: данные, которые БД отказалась хранить, — ошибка клиента, а не 500.
+
+    Фаззинг всех ручек нашёл один и тот же класс падений в десятке мест:
+    NUL-байт в любой строке (Postgres text его не принимает), сумма больше
+    Numeric(10,2), null в NOT NULL-поле через PATCH, id несуществующего/чужого
+    объекта в FK. Валидацию на входе чиним точечно в схемах, а это — страховка
+    на всё, что туда не дошло: SQLSTATE → честный 4xx с машинным кодом.
+    """
+    state = _sqlstate(exc) or ""
+    driver_data_error = "DataError" in type(exc.orig).__name__  # asyncpg: аргумент не лезет в тип
+    if state.startswith("22") or driver_data_error:
+        code, detail = 422, "invalid_value"
+    elif state == "23502":
+        code, detail = 422, "missing_value"
+    elif state == "23503":
+        code, detail = 422, "invalid_reference"
+    elif state in ("23505", "23P01"):
+        code, detail = 409, "conflict"
+    elif state == "23514":
+        code, detail = 422, "invalid_value"
+    else:
+        return await unhandled_exception_handler(request, exc)
+    logger.warning("db_rejected", sqlstate=state, detail=detail, error=str(exc.orig)[:300])
+    return JSONResponse(status_code=code, content={"detail": detail})
+
+
+@app.exception_handler(httpx.HTTPError)
+async def upstream_error_handler(request: Request, exc: httpx.HTTPError):
+    """QA: внешний сервис (Overpass/Valhalla/Nominatim) лёг или ответил
+    429/504 — это 502 «попробуйте позже», а не 500 «у нас баг»."""
+    logger.warning("upstream_failed", error=f"{type(exc).__name__}: {exc}"[:300])
+    return JSONResponse(status_code=502, content={"detail": "upstream_unavailable"})
 
 
 @app.exception_handler(Exception)

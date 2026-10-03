@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createConversation, getMeiliMessages, streamMessage } from '../../api/meili'
+import { createConversation, getMeiliMessages, streamMessage, type TripDraft } from '../../api/meili'
 import { useMeiliStore } from '../../store/meiliStore'
+import { renderChatText } from '../../utils/chatText'
 import Logo from '../Logo'
 import PlanPreview from './PlanPreview'
 import PlanEditor from './PlanEditor'
@@ -13,9 +14,11 @@ interface Props {
     // M4: план применён; S17: id созданной поездки — чтобы открыть её сразу
     onApplied?: (appliedTripId: string | null) => void
     initialInput?: string   // S17: заготовка первого сообщения (не отправляется)
+    // S17: черновик мастера — уходит в диалог фактами, а не пересказом
+    draft?: TripDraft | null
 }
 
-export default function MeiliChat({ tripId, onApplied, initialInput }: Props) {
+export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Props) {
     const { t } = useTranslation()
     const {
         conversationId, tripId: boundTripId, messages, streaming, stepLabel, plan,
@@ -39,7 +42,7 @@ export default function MeiliChat({ tripId, onApplied, initialInput }: Props) {
         }
         if (pending.current?.key === key) return pending.current.promise  // уже создаём
         if (state.conversationId) reset()
-        const promise = createConversation(target)
+        const promise = createConversation(target, draft)
             .then(async c => {
                 setConversation(c.id, await getMeiliMessages(c.id), target)
                 return c.id
@@ -73,9 +76,19 @@ export default function MeiliChat({ tripId, onApplied, initialInput }: Props) {
                 onStep: label => setStep(label),
                 onPlan: plan => setPlan(plan),
                 onDone: finishTurn,
-                onError: detail => failTurn(
-                    detail === 'http_501' ? t('meili.notConfigured') : t('meili.error'),
-                ),
+                // ревью: сбои провайдера отличимы — «подождите минуту»
+                // полезнее, чем безликое «ассистент недоступен»
+                onError: detail => failTurn(t(({
+                    http_501: 'meili.notConfigured',
+                    rate_limited: 'meili.rateLimited',
+                    provider_error: 'meili.providerError',
+                    provider_auth: 'meili.providerAuth',
+                    // QA: новые отказы ручки — понятным текстом
+                    http_409: 'meili.turnInProgress',
+                    http_429: 'meili.rateLimited',
+                    http_422: 'meili.messageInvalid',
+                    timeout: 'meili.timeout',
+                } as Record<string, string>)[detail] ?? 'meili.error')),
             })
         } catch {
             failTurn(t('meili.error'))
@@ -109,7 +122,11 @@ export default function MeiliChat({ tripId, onApplied, initialInput }: Props) {
                             borderRadius: 10, padding: '8px 10px', fontSize: 13,
                             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                         }}>
-                            {m.content || (streaming ? '…' : '')}
+                            {/* ревью: модель отвечает markdown'ом — разбираем
+                                ** и заголовки узлами, не печатаем звёздочками */}
+                            {m.content
+                                ? (m.role === 'assistant' ? renderChatText(m.content) : m.content)
+                                : (streaming ? '…' : '')}
                         </div>
                     </div>
                 ))}
@@ -144,6 +161,7 @@ export default function MeiliChat({ tripId, onApplied, initialInput }: Props) {
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                 <input
                     value={input}
+                    maxLength={4000}
                     placeholder={t('meili.placeholder')}
                     disabled={streaming}
                     onChange={e => setInput(e.target.value)}

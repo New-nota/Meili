@@ -53,6 +53,8 @@ def parse_overpass_response(data:dict) -> list[dict]:
             "lat": lat,
             "lon": lon,
             "address": tags.get("addr:street", ""),
+            # ревью: город из OSM приоритетнее нашего справочника координат
+            "city": tags.get("addr:city") or None,
             "opening_hours": tags.get("opening_hours"),
             "website": tags.get("website"),
         })

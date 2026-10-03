@@ -33,11 +33,15 @@ def test_booking_confirmation_body_minimal():
 
 
 async def test_send_email_dev_mode_logs_and_succeeds(caplog):
-    # SMTP_HOST не задан (dev) -> письмо в лог, результат True
+    # SMTP_HOST не задан (dev) -> письмо в лог, результат True.
+    # Явно гасим SMTP_HOST: в backend/.env он может быть задан, а тест про dev-ветку
     import logging
 
-    with caplog.at_level(logging.INFO, logger="meili.email"):
-        ok = await send_email("user@wanderown.dev", "Тест", "Привет")
+    from app.services import email as email_module
+
+    with patch.object(email_module.settings, "SMTP_HOST", ""):
+        with caplog.at_level(logging.INFO, logger="meili.email"):
+            ok = await send_email("user@wanderown.dev", "Тест", "Привет")
     assert ok is True
     assert "user@wanderown.dev" in caplog.text
 

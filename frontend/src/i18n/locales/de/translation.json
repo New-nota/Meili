@@ -16,7 +16,8 @@
     "search": "Searching...",
     "error": "Something went wrong",
     "km": "km",
-    "hoursShort": "Std"
+    "hoursShort": "Std",
+    "retry": "Erneut versuchen"
   },
   "nav": {
     "myTrips": "My trips",
@@ -29,7 +30,20 @@
     "email": "Email",
     "password": "Password",
     "invalidCredentials": "Invalid email or password",
-    "googleSignIn": "Sign in with Google"
+    "googleSignIn": "Sign in with Google",
+    "signUp": "Registrieren",
+    "nameOptional": "Name (optional)",
+    "passwordMin": "Passwort mindestens 8 Zeichen",
+    "noAccount": "Kein Konto? Registrieren",
+    "haveAccount": "Schon ein Konto? Anmelden",
+    "verifyTitle": "E-Mail bestätigen",
+    "codeSentTo": "Wir haben einen 6-stelligen Code an {{email}} gesendet",
+    "codeSixDigits": "Gib die 6 Ziffern aus der E-Mail ein",
+    "confirm": "Bestätigen",
+    "resend": "Code erneut senden",
+    "resendIn": "Erneut senden in {{s}} s",
+    "fillAll": "E-Mail und Passwort eingeben",
+    "invalidEmail": "Ungültige E-Mail"
   },
   "trip": {
     "route": "Route",
@@ -65,7 +79,36 @@
     "clone": "Clone",
     "cloning": "Cloning...",
     "recommendationsTitle": "Empfehlungen",
-    "recommendationsEmpty": "Noch nichts zu empfehlen — schau später vorbei"
+    "recommendationsEmpty": "Noch nichts zu empfehlen — schau später vorbei",
+    "peopleCount_one": "{{count}} Person",
+    "peopleCount_other": "{{count}} Personen",
+    "resizePanel": "Ziehen, um die Leiste zu verbreitern",
+    "wizard": {
+      "title": "Neue Reise",
+      "name": "Titel",
+      "city": "Stadt",
+      "cityPlaceholder": "Stadt eingeben…",
+      "region": "Oblast Kaliningrad",
+      "adults": "Erwachsene",
+      "children": "Kinder",
+      "ages": "Alter der Kinder",
+      "childN": "Kind {{n}}",
+      "start": "Beginn",
+      "end": "Ende",
+      "currency": "Währung",
+      "budget": "Budget (optional)",
+      "errTitle": "Gib einen Reisetitel ein",
+      "errCity": "Wähle eine Stadt aus der Liste",
+      "errAdults": "Mindestens ein Erwachsener ist nötig",
+      "errAges": "Alter eines Kindes: 0–17",
+      "errDates": "Lege die Reisedaten fest",
+      "errPast": "Das Startdatum darf nicht in der Vergangenheit liegen",
+      "errRange": "Das Enddatum liegt vor dem Beginn",
+      "errTooLong": "Die Reise ist länger als {{max}} Tage",
+      "errBudget": "Budget: Zahl von 0 bis 99 999 999,99, höchstens zwei Nachkommastellen",
+      "cityNotFound": "In der Region Kaliningrad nichts gefunden",
+      "cityLookupFailed": "Stadtsuche nicht verfügbar — erneut versuchen"
+    }
   },
   "day": {
     "title": "Day {{num}}",
@@ -87,7 +130,13 @@
     "endOfDay": "Day finish",
     "outOfCoverage": "This day goes beyond map coverage: split it into two days or keep the transfer without intermediate stops",
     "mustVisitOverBudget": "Must-visit places don't fit the day budget — increase time or remove the must-visit mark",
-    "optimizeError": "Optimization failed"
+    "optimizeError": "Optimization failed",
+    "stopsCount_one": "{{count}} Stopp",
+    "stopsCount_other": "{{count}} Stopps",
+    "dragDay": "Ziehen, um Tage umzusortieren",
+    "allDays": "Alle Tage",
+    "budgetRequired": "Lege ein Zeitbudget über null fest",
+    "dragStop": "Ort verschieben"
   },
   "place": {
     "searchPlaceholder": "Find a place...",
@@ -99,7 +148,10 @@
     "durationMin": "⏱ {{count}} min",
     "addLocation": "Add location",
     "locationPlaceholder": "Hotel or station address...",
-    "notFitLabel": "Didn't fit the day"
+    "notFitLabel": "Didn't fit the day",
+    "searchNothing": "In der Region Kaliningrad nichts gefunden",
+    "searchFailed": "Ortssuche nicht verfügbar — erneut versuchen",
+    "pickDayFirst": "Lege zuerst die Reisedaten fest — Orte werden Tagen hinzugefügt"
   },
   "map": {
     "makeStart": "Make day start",
@@ -153,7 +205,16 @@
     "category_lodging": "Lodging",
     "category_transport": "Transport",
     "category_food": "Food",
-    "category_other": "Other"
+    "category_other": "Other",
+    "activities": "Aktivitäten",
+    "free": "Kostenlos",
+    "noPrice": "kein Preis bekannt",
+    "approxHint": "ungefähr, aus den Preisen des Ortes",
+    "manualHint": "manuell eingegeben",
+    "backToAuto": "zurück zu automatisch",
+    "refreshEstimates": "Schätzungen aktualisieren",
+    "invalidAmount": "Betrag: Zahl von 0 bis 99 999 999,99, höchstens 2 Nachkommastellen",
+    "fillExpense": "Titel und Betrag der Position ausfüllen"
   },
   "profile": {
     "title": "Profile",
@@ -217,7 +278,8 @@
       "likedBy_one": "{{count}} Reisendem gefällt das",
       "likedBy_other": "{{count}} Reisenden gefällt das",
       "stops": "Stopps"
-    }
+    },
+    "oldPasswordRequired": "Gib dein aktuelles Passwort ein"
   },
   "export": {
     "pdf": "Download PDF",
@@ -236,7 +298,48 @@
     "day_locations_missing": "Day start/finish locations are not set",
     "day_no_stops": "The day has no stops",
     "day_has_stops": "Move stops out of the day being removed first",
-    "location_in_use": "Location is used by a trip day"
+    "location_in_use": "Location is used by a trip day",
+    "email_taken": "Diese E-Mail ist bereits registriert",
+    "invalid_code": "Falscher Code",
+    "code_expired": "Code abgelaufen — fordere einen neuen an",
+    "too_many_attempts": "Zu viele Versuche — fordere einen neuen Code an",
+    "no_pending_registration": "Registrierung nicht gefunden — fang neu an",
+    "resend_cooldown": "Warte eine Minute vor dem erneuten Senden",
+    "network": "Server nicht erreichbar — prüfe die Verbindung und versuche es erneut",
+    "validation": "Bitte prüfen: {{fields}}",
+    "too_many_requests": "Zu viele Versuche — bitte kurz warten",
+    "too_many_registrations": "Zu viele Registrierungen für diese Adresse — in einer Stunde erneut versuchen",
+    "forbidden": "Kein Zugriff",
+    "not_found": "Nicht gefunden — möglicherweise gelöscht",
+    "server": "Serverfehler — bitte später erneut versuchen",
+    "children_ages_mismatch": "Anzahl der Altersangaben passt nicht zur Anzahl der Kinder",
+    "dates_required": "Lege beide Reisedaten fest",
+    "invalid_value": "Eines der Felder enthält einen ungültigen Wert",
+    "missing_value": "Ein Pflichtfeld darf nicht leer sein",
+    "invalid_reference": "Verknüpftes Objekt nicht gefunden — Seite neu laden",
+    "conflict": "Datenkonflikt — Seite neu laden und erneut versuchen",
+    "upstream_unavailable": "Externer Dienst (Karten/Ortssuche) antwortet nicht — später versuchen",
+    "unknown_category": "Unbekannte Ortskategorie",
+    "invalid_date_range": "Das Enddatum liegt vor dem Startdatum",
+    "trip_too_long": "Die Reise ist länger als 60 Tage",
+    "booking_currency_mismatch": "Buchungswährung stimmt nicht mit der Reisewährung überein",
+    "currency_mismatch": "Währung stimmt nicht mit der Reisewährung überein",
+    "plan_discarded": "Dieser Plan wurde verworfen — bitte Meili um einen neuen",
+    "plan_already_applied": "Plan bereits angewendet",
+    "trip_already_exists": "Für dieses Gespräch gibt es bereits eine Reise",
+    "no_trip_in_conversation": "Erstelle zuerst die Reise",
+    "place_not_found": "Ort nicht gefunden",
+    "day_not_found": "Tag nicht gefunden",
+    "stop_not_found": "Stopp nicht gefunden",
+    "apply_failed": "Plan konnte nicht angewendet werden",
+    "place_not_yours": "Dieser Ort kann nicht bearbeitet werden",
+    "place_out_of_coverage": "Der Ort liegt außerhalb der Region Kaliningrad — dort werden keine Routen berechnet",
+    "too_many_login_attempts": "Zu viele fehlgeschlagene Anmeldeversuche — in 15 Minuten erneut versuchen",
+    "crashTitle": "Auf dieser Seite ist etwas kaputtgegangen",
+    "crashText": "Deine Daten sind sicher auf dem Server. Lade die Seite neu oder geh zurück zu deinen Reisen.",
+    "reload": "Neu laden",
+    "turn_in_progress": "Meili antwortet noch auf die vorherige Nachricht",
+    "oauth_failed": "Anmeldung mit Google nicht abgeschlossen — bitte erneut versuchen"
   },
   "planner": {
     "day": {
@@ -247,7 +350,8 @@
     "leg": {
       "walking": "zu Fuß",
       "driving": "mit dem Auto",
-      "transit": "mit den Öffis"
+      "transit": "mit den Öffis",
+      "unavailable": "Die Tagesroute kann gerade nicht berechnet werden"
     },
     "stop": {
       "onSite": "{{duration}} vor Ort",
@@ -262,6 +366,84 @@
   "meili": {
     "planWith": "Mit Meili planen",
     "consult": "Meili um Rat fragen",
-    "draftPrefix": "Ich möchte eine Reise planen:"
+    "draftPrefix": "Ich möchte eine Reise planen:",
+    "title": "Meili",
+    "intro": "Hallo! Ich bin Meili und helfe dir, eine Reise zu planen. Erzähl mir, wohin und mit wem du fährst.",
+    "placeholder": "Frag Meili…",
+    "send": "Senden",
+    "error": "Assistent nicht verfügbar, bitte erneut versuchen",
+    "notConfigured": "Assistent ist nicht eingerichtet (kein LLM-Schlüssel)",
+    "connectError": "Gespräch konnte nicht geöffnet werden",
+    "actionCreateTrip": "Reise „{{title}}“ erstellen",
+    "actionAddStop": "Ort hinzufügen: {{name}}",
+    "actionRemoveStop": "Stopp entfernen",
+    "actionSetBudget": "Budget: {{amount}} {{currency}}",
+    "actionSetStopCost": "Kosten des Stopps",
+    "actionOptimize": "Route optimieren",
+    "actionType_create_trip": "Reise erstellen",
+    "actionType_add_stop": "Ort hinzufügen",
+    "actionType_remove_stop": "Stopp entfernen",
+    "actionType_set_budget": "Budget",
+    "actionType_set_stop_cost": "Kosten des Stopps",
+    "actionType_optimize": "Route optimieren",
+    "closeBtn": "schließen",
+    "editBtn": "bearbeiten",
+    "applyBtn": "Anwenden",
+    "applyError": "Plan konnte nicht angewendet werden",
+    "editorTitle": "Plan bearbeiten",
+    "editorEmpty": "Alle Aktionen entfernt — der Plan ist leer",
+    "editError": "Änderungen konnten nicht gespeichert werden",
+    "dayLabel": "Tag",
+    "planTotal": "Summe des Plans",
+    "containsEstimates": "enthält Schätzungen",
+    "rateLimited": "Zu viele Anfragen an das Modell — eine Minute warten und erneut versuchen",
+    "providerError": "Das Modell ist vorübergehend nicht verfügbar, bitte erneut versuchen",
+    "timeout": "Das Modell braucht zu lange — versuche eine kürzere Frage",
+    "providerAuth": "Assistent nicht verfügbar: Der KI-Anbieter hat den Zugriff auf das Modell abgelehnt (Schlüssel oder Tarif). Erneute Versuche helfen erst nach einer Neukonfiguration",
+    "turnInProgress": "Meili antwortet noch auf die vorherige Nachricht — bitte warten",
+    "messageInvalid": "Die Nachricht ist leer oder zu lang (bis 4000 Zeichen)"
+  },
+  "visited": {
+    "rateTitle": "Bewertung",
+    "markVisited": "Als besucht markieren",
+    "visited": "Besucht",
+    "commentPlaceholder": "Kommentar (optional)",
+    "surveyTitle": "Wie war dein Tag?",
+    "surveyLeft": "noch {{count}}",
+    "skip": "Überspringen",
+    "swipeHint": "Nach links wischen, um ohne Bewertung zu überspringen",
+    "notToday": "Nicht heute — Umfrage schließen"
+  },
+  "preview": {
+    "like": "Gefällt mir",
+    "copy": "In meine Reisen kopieren",
+    "budgetHint": "Ungefähre Aktivitätskosten dieser Route",
+    "noBudget": "Aktivitätskosten nicht angegeben",
+    "noDays": "Der Autor hat diese Reise noch nicht nach Tagen geplant"
+  },
+  "fields": {
+    "email": "E-Mail",
+    "password": "Passwort",
+    "new_password": "neues Passwort",
+    "name": "Name",
+    "code": "Code",
+    "title": "Titel",
+    "city": "Stadt",
+    "country": "Land",
+    "start_date": "Startdatum",
+    "end_date": "Enddatum",
+    "budget_total": "Budget",
+    "currency": "Währung",
+    "adults": "Erwachsene",
+    "children": "Kinder",
+    "amount": "Betrag",
+    "duration_minutes": "Aufenthaltsdauer",
+    "estimated_cost": "Kosten",
+    "home_city": "Heimatstadt",
+    "content": "Nachricht"
+  },
+  "stop": {
+    "delete": "Aus der Route entfernen",
+    "deleteConfirm": "Diesen Ort aus der Route entfernen?"
   }
 }

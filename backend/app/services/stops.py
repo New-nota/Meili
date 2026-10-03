@@ -5,6 +5,7 @@
 """
 from datetime import time
 
+from geoalchemy2.shape import to_shape
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,9 +13,14 @@ from app.models.enums import DEFAULT_TRANSPORT
 from app.models.place import Place
 from app.models.trip import Trip, TripDay, TripStop
 from app.services.budget_estimate import estimate_stop_cost
+from app.services.places.geo import in_region
 
 # S16: длительность визита, если её нет ни в запросе, ни у места
 DEFAULT_DURATION_MINUTES = 60
+
+
+class StopError(Exception):
+    """Доменная ошибка стопа (машинный код) — вызывающий конвертирует в 4xx."""
 
 
 async def add_stop(
@@ -33,6 +39,18 @@ async def add_stop(
     подставляется из места, а нет у места — 60 мин; duration_is_custom=false,
     пока юзер не задал время руками.
     """
+    # QA: место вне зоны тайлов ломает весь день — маршрут не строится,
+    # оптимизация отвечает «вне покрытия». Отсекаем при добавлении (общая
+    # точка для ручки стопов и Meili-executor'а), а не на полпути.
+    if place.location is not None:
+        point = to_shape(place.location)
+        if not in_region(point.y, point.x):
+            raise StopError("place_out_of_coverage")
+
+    # QA: два параллельных добавления в один день (двойной клик, Meili +
+    # ручное добавление) читали один и тот же max и получали дубль позиции.
+    # Блокировка строки дня сериализует «хвост дня» до конца транзакции.
+    await db.execute(select(TripDay.id).where(TripDay.id == day.id).with_for_update())
     max_position = (await db.execute(
         select(func.max(TripStop.position)).where(TripStop.day_id == day.id)
     )).scalar() or 0

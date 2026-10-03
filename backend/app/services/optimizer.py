@@ -240,23 +240,53 @@ async def optimize_day_stops(
     mode="full" — посетить все стопы; mode="selective" — максимум стопов
     в бюджет времени (не влезшие возвращаются во втором списке).
     Возвращает (ordered_stop_ids, dropped_stop_ids).
+
+    QA: старт/финиш дня необязательны. Раньше без них ручка отвечала
+    day_locations_missing — юзер накидал места, жмёт «Оптимизировать» и
+    упирается в отказ. Нет депо — на его месте виртуальный узел с нулевым
+    временем до всех точек: solver сам выбирает, с какого места начать
+    (или каким закончить) — обычный открытый путь.
     """
-    locations = [{"lat": day.start_location.lat, "lon": day.start_location.lon}]
-    locations += [_stop_coords(s) for s in stops]
-    locations.append({"lat": day.end_location.lat, "lon": day.end_location.lon})
+    start, end = day.start_location, day.end_location
+    real = []  # реальные точки для матрицы Valhalla
+    if start is not None:
+        real.append({"lat": start.lat, "lon": start.lon})
+    real += [_stop_coords(s) for s in stops]
+    if end is not None:
+        real.append({"lat": end.lat, "lon": end.lon})
 
     # S16: costing берётся из единственного маппинга (services/valhalla)
     costing = costing_for(transport)
     try:
-        matrix = await get_time_matrix(locations, costing=costing)
+        sub = await get_time_matrix(real, costing=costing) if len(real) > 1 else [[0]]
     except httpx.HTTPStatusError as e:
         # Valhalla отвечает 4xx, когда точки вне зоны тайлов
         raise OutOfCoverageError(str(e))
 
-    n = len(matrix)
+    # узел -> индекс в sub (None = виртуальное депо)
+    n = len(stops) + 2
+    offset = 1 if start is not None else 0
+    to_real = (
+        [0 if start is not None else None]
+        + [offset + i for i in range(len(stops))]
+        + [offset + len(stops) if end is not None else None]
+    )
+    matrix = [
+        [
+            0 if to_real[i] is None or to_real[j] is None else sub[to_real[i]][to_real[j]]
+            for j in range(n)
+        ]
+        for i in range(n)
+    ]
+
     # старт не достигает ни одного узла — день вне покрытия
-    if all(matrix[0][j] >= UNREACHABLE_TIME for j in range(1, n)):
+    if start is not None and all(matrix[0][j] >= UNREACHABLE_TIME for j in range(1, n)):
         raise OutOfCoverageError("start location cannot reach any node")
+    # без старта проверяем первый стоп: точки вне тайлов недостижимы ни для кого
+    if start is None and len(stops) > 1 and all(
+        matrix[1][j] >= UNREACHABLE_TIME for j in range(2, n - 1)
+    ) and all(matrix[i][1] >= UNREACHABLE_TIME for i in range(2, n - 1)):
+        raise OutOfCoverageError("stops cannot reach each other")
 
     # окна: [старт] + окна стопов (от start_time дня) + [финиш]
     stop_windows = parse_time_windows(stops, day, has_depot=False)
@@ -306,10 +336,11 @@ async def apply_day_optimization(
         day, stops, transport, mode=mode, time_budget_minutes=time_budget_minutes,
     )
     by_id = {str(s.id): s for s in stops}
-    for new_pos, stop_id in enumerate(ordered_ids):
+    # QA: позиции 1-based — как у add_stop/remove_stop/reorder
+    for new_pos, stop_id in enumerate(ordered_ids, start=1):
         by_id[str(stop_id)].position = new_pos
         by_id[str(stop_id)].included_in_route = True
-    for offset, stop_id in enumerate(dropped_ids):
+    for offset, stop_id in enumerate(dropped_ids, start=1):
         by_id[str(stop_id)].position = len(ordered_ids) + offset
         by_id[str(stop_id)].included_in_route = False
     return ordered_ids, dropped_ids
