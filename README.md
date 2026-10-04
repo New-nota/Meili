@@ -157,6 +157,11 @@ npm run test:e2e       # Playwright, ~26 сценариев; нужен подн
 npm run lint && npx tsc -b
 ```
 
+**CI** (GitHub Actions, `.github/workflows/ci.yml`) на каждый пуш и PR в `main`:
+бэкенд — ruff и весь pytest на настоящих Postgres+PostGIS и Redis (включая
+миграции с нуля), фронт — линт, типы, vitest, сборка; отдельно — `pip-audit` и
+`npm audit`. E2E в CI не гоняются (нужен стек с тайлами Valhalla).
+
 E2E идут против живого стека (бэкенд, Valhalla), геокодер мокается. Спеки
 написаны по русским строкам интерфейса. Запуск из git-воркдерева:
 `E2E_STACK_DIR=/путь/к/основной/копии npm run test:e2e`.

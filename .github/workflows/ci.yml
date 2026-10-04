@@ -1,0 +1,111 @@
+# CI Hermod: бэкенд (pytest на настоящих Postgres+PostGIS и Redis, ruff),
+# фронт (линт, типы, vitest, сборка), аудит зависимостей.
+# E2E (Playwright) здесь не гоняем: им нужен весь стек с тайлами Valhalla —
+# запускаются локально, см. README → «Тесты».
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+# новый пуш в ту же ветку отменяет устаревший прогон (минуты приватного репо)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgis/postgis:15-3.3-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: wanderown_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U ci -d wanderown_db"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/wanderown_db
+      REDIS_URL: redis://localhost:6379
+      # Valhalla в CI нет: тесты её подменяют, а где не подменяют —
+      # недоступность штатно превращается в «маршрут не строится»
+      VALHALLA_URL: http://localhost:8002
+      SECRET_KEY: ci-only-not-a-secret
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Системные библиотеки WeasyPrint (PDF) и шрифты с кириллицей
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libcairo2 \
+            libffi-dev shared-mime-info fonts-dejavu-core
+      - name: Зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff==0.6.9
+      - name: Ruff
+        run: ruff check app scripts
+      - name: Pytest (юнит + интеграционные + миграции с нуля)
+        run: python -m pytest -p no:warnings
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript
+        run: npx tsc -b
+      - name: Vitest
+        run: npm run test:unit
+      - name: Сборка
+        run: npm run build
+
+  # Аудит отдельно: новая CVE в зависимости — сигнал, но не повод считать
+  # сломанными тесты
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt
+      - name: npm audit
+        working-directory: frontend
+        run: npm audit --audit-level=high
