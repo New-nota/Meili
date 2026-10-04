@@ -185,8 +185,15 @@ export default function DayPlan({
     const includedStops = day.stops.filter(s => s.included_in_route)
     const droppedStops = day.stops.filter(s => !s.included_in_route)
 
-    // S16 §4: маршрут грузим только для открытого дня
-    const routeQueryKey = ['dayRoute', tripId, day.id]
+    // S16 §4: маршрут грузим только для открытого дня.
+    // Ревью (e2e): ключ — от состава дня. Был только (поездка, день): первый
+    // стоп кэшировал маршрут без перегонов, и после второго панель держала
+    // «—» и 0,0 км, хотя карта (свой запрос) уже рисовала новый маршрут
+    const routeSignature = [
+        day.start_location?.id, day.end_location?.id,
+        ...includedStops.map(s => `${s.id}:${s.position}:${s.transport_to_next}`),
+    ].join('|')
+    const routeQueryKey = ['dayRoute', tripId, day.id, routeSignature]
     const { data: route, isFetching: routeLoading, error: routeError } = useQuery({
         queryKey: routeQueryKey,
         queryFn: () => getDayRoute(tripId, day.id),

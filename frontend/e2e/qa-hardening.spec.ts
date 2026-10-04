@@ -1,27 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
-import { execSync } from 'node:child_process'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { addFromSearch, backendUp, compose, futureDate, login as loginAs, registerUser } from './helpers'
 
 // QA-прогон: сценарии, которые ломались «на полпути» и были починены общим
 // правилом. Требует запущенный docker-стек (:8000, Valhalla с тайлами области).
-const API = 'http://localhost:8000'
 const EMAIL = `e2e_qa_${Date.now()}@wanderown.dev`
-const PASSWORD = 'e2e-secret-123'
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-
-function readPendingCode(email: string): string {
-  const raw = execSync(
-    `docker compose exec -T redis redis-cli GET "pending_reg:${email.toLowerCase()}"`,
-    { cwd: REPO_ROOT, encoding: 'utf-8' },
-  ).trim()
-  return JSON.parse(raw).code
-}
-
-function futureDate(daysFromNow: number): string {
-  const d = new Date(Date.now() + daysFromNow * 86_400_000)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 // геокодер: город для мастера и два места в Калининграде для поиска
 const PLACES = [
@@ -43,21 +25,7 @@ async function mockNominatim(page: Page) {
   })
 }
 
-// кнопка «Добавить» именно в строке нужного результата поиска (редизайн «Лес»:
-// строка = иконка | название + адрес | кнопка)
-async function addFromSearch(page: Page, name: string) {
-  await page.locator('div').filter({ has: page.getByText(name, { exact: true }) })
-    .filter({ has: page.getByRole('button', { name: 'Добавить', exact: true }) })
-    .last().getByRole('button', { name: 'Добавить', exact: true }).click()
-}
-
-async function login(page: Page, email = EMAIL) {
-  await page.goto('/auth')
-  await page.getByPlaceholder('Email').fill(email)
-  await page.getByPlaceholder('Пароль').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Войти', exact: true }).click()
-  await expect(page).toHaveURL(/\/discover/)
-}
+const login = (page: Page, email = EMAIL) => loginAs(page, email)
 
 async function createTrip(page: Page, title: string) {
   await page.getByRole('button', { name: 'Запланировать поездку' }).click()
@@ -76,16 +44,8 @@ async function createTrip(page: Page, title: string) {
 }
 
 test.beforeAll(async ({ request }) => {
-  const health = await request.get(`${API}/health`).catch(() => null)
-  test.skip(!health || !health.ok(), 'Бэкенд не запущен — пропускаем e2e')
-  const res = await request.post(`${API}/auth/register`, {
-    data: { email: EMAIL, password: PASSWORD, name: 'E2E QA' },
-  })
-  expect(res.ok()).toBeTruthy()
-  const verify = await request.post(`${API}/auth/verify`, {
-    data: { email: EMAIL, code: readPendingCode(EMAIL) },
-  })
-  expect(verify.ok()).toBeTruthy()
+  test.skip(!(await backendUp(request)), 'Бэкенд не запущен — пропускаем e2e')
+  await registerUser(request, EMAIL, 'E2E QA')
 })
 
 test('email регистронезависим: логин другим регистром и с пробелами', async ({ page }) => {
@@ -210,7 +170,7 @@ function freezePlan(tripId: string): string {
     '        print(json.dumps({"plan_id": str(frozen.id), "plan_json": frozen.plan_json, "place": place.name}))',
     'asyncio.run(main())',
   ].join('\n')
-  return execSync('docker compose exec -T backend python -', { cwd: REPO_ROOT, input: py, encoding: 'utf-8' }).trim()
+  return compose('exec -T backend python -', py)
 }
 
 test('Meili: карточка плана → «Применить» пишет в поездку через executor', async ({ page }) => {

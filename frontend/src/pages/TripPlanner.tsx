@@ -160,8 +160,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         if (!map || trip?.city_lat == null || trip?.city_lon == null) return
         const hasPoints = stops.length > 0 || days.some(d => d.stops.length > 0)
         if (hasPoints) return
-        const center: [number, number] = [trip.city_lon, trip.city_lat]
-        whenMapReady(map, () => map.jumpTo({ center, zoom: CITY_ZOOM }))
+        // камера не ждёт 'load': стиль с внешнего сервера тайлов грузится
+        // секундами, и всё это время карта показывала весь мир — клик по ней
+        // ставил точку в Африке («вне зоны карт»). jumpTo работает и без стиля
+        map.jumpTo({ center: [trip.city_lon, trip.city_lat], zoom: CITY_ZOOM })
     }, [trip, stops, days])
 
     // S13: превью — лайк (оптимистично) и копирование в свою редактируемую поездку
