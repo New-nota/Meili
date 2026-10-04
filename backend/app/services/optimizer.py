@@ -5,7 +5,7 @@ import httpx
 from typing import List, Dict
 from shapely import wkb
 
-from app.services.valhalla import cached_post, costing_for
+from app.services.valhalla import cached_post, costing_for, slim_matrix
 
 # буфер на пробки: Valhalla считает по статическим скоростям (см. PROGRESS, С3)
 AUTO_TRAFFIC_FACTOR = 1.4
@@ -33,7 +33,7 @@ async def get_time_matrix(
         "costing": costing
     }
     # кэш в Redis: повторная оптимизация того же дня не ходит в Valhalla
-    data = await cached_post("sources_to_targets", body)
+    data = await cached_post("sources_to_targets", body, slim=slim_matrix)
     n = len(locations)
     matrix = [[0] * n for _ in range(n)]
 

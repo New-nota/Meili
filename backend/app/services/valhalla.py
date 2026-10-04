@@ -47,10 +47,14 @@ logger = logging.getLogger("meili.valhalla")
 CACHE_TTL_SECONDS = 6 * 3600
 
 
-async def cached_post(action: str, body: dict) -> dict:
+async def cached_post(action: str, body: dict, slim=None) -> dict:
     """POST в Valhalla с кэшем в Redis (best effort: Redis лёг — просто идём в Valhalla).
 
-    Неуспешный ответ не кэшируется: бросаем httpx.HTTPStatusError.
+    slim(data) → только нужные поля: их и кладём в кэш, и отдаём (одинаково
+    с кэшем и без). Ревью: ответ /route целиком — ~200 КБ (манёвры, тексты
+    инструкций); Redis общий с сессиями и очередью Celery и вытесняет по LRU —
+    раздутый кэш выбрасывал бы refresh-токены. Неуспешный ответ не кэшируется:
+    бросаем httpx.HTTPStatusError.
     """
     from app.core.redis import redis_client  # поздний импорт: модуль нужен и без Redis
 
@@ -66,11 +70,29 @@ async def cached_post(action: str, body: dict) -> dict:
         response = await client.post(f"{settings.VALHALLA_URL}/{action}", json=body)
         response.raise_for_status()
         data = response.json()
+    if slim is not None:
+        data = slim(data)
     try:
         await redis_client.setex(key, CACHE_TTL_SECONDS, json.dumps(data))
     except Exception:  # noqa: BLE001
         pass
     return data
+
+
+def _slim_route(data: dict) -> dict:
+    """Из ответа /route — только то, что читает route_legs (время, длина, линия)."""
+    return {"trip": {"legs": [
+        {"summary": {k: leg.get("summary", {}).get(k) for k in ("time", "length")},
+         "shape": leg.get("shape", "")}
+        for leg in data.get("trip", {}).get("legs", [])
+    ]}}
+
+
+def slim_matrix(data: dict) -> dict:
+    """Из ответа /sources_to_targets — только времена (оптимизатору больше не нужно)."""
+    return {"sources_to_targets": [
+        [{"time": cell.get("time")} for cell in row] for row in data.get("sources_to_targets", [])
+    ]}
 
 
 async def _route_call(points: list[dict], costing: str) -> list[dict]:
@@ -81,7 +103,7 @@ async def _route_call(points: list[dict], costing: str) -> list[dict]:
         "directions_options": {"units": "kilometers"},
     }
     try:
-        data = await cached_post("route", body)
+        data = await cached_post("route", body, slim=_slim_route)
     except httpx.HTTPStatusError as e:
         raise RouteError(f"valhalla {e.response.status_code}") from e
     return data.get("trip", {}).get("legs", [])
