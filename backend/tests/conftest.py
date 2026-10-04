@@ -68,3 +68,14 @@ def kaliningrad_coverage(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "ROUTING_COVERAGE", [(54.30, 19.60, 55.35, 23.05)])
+
+
+@pytest.fixture(autouse=True)
+def _no_real_llm(monkeypatch):
+    """Тесты не зависят от LLM_API_KEY в .env разработчика и не ходят в
+    настоящую (платную) модель. Ревью «с нуля»: на чистом клоне без ключа
+    test_rate_limit_is_reported_distinctly падал 501 — он молча опирался на
+    ключ из .env. Нужен «настроенный» ассистент — задай ключ в тесте явно."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "LLM_API_KEY", None)

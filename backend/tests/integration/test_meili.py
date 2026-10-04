@@ -1171,6 +1171,7 @@ async def test_rate_limit_is_reported_distinctly(client, auth_headers, monkeypat
             yield  # pragma: no cover — делает функцию генератором
 
     monkeypatch.setattr("app.services.meili.loop.get_client", lambda: RateLimited())
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test-key")
     conv_id = await _conversation(client, auth_headers)
     events = await _stream_events(client, auth_headers, conv_id)
 

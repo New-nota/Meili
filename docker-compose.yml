@@ -16,10 +16,12 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    # ревью «с нуля»: без healthy-зависимостей backend стартовал раньше, чем
+    # Postgres свежего volume заканчивал init, и первый alembic падал
     depends_on:
-      - postgres
-      - redis
-      - valhalla
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      valhalla: {condition: service_started}
     env_file:
       - ./.env
 
@@ -37,8 +39,8 @@ services:
     volumes:
       - ./backend:/app
     depends_on:
-      - postgres
-      - redis
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     env_file:
       - ./.env
 
@@ -53,12 +55,24 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+    # -h 127.0.0.1: init-фаза образа поднимает временный сервер только на
+    # unix-сокете — проверка по сокету отвечала «готов» до перезапуска
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
       - "6379:6379"
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   valhalla:
     # версия зафиксирована: latest застрял на 3.7.0, где пешеходные маршруты
     # по Москве падали 500 «GetTags: offset exceeds size of text list»
