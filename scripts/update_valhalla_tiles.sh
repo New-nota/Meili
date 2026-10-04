@@ -79,6 +79,30 @@ docker run --rm -v "$SRC_DIR:/src:ro" -v "$STAGE:/out" "$OSMIUM_IMAGE" sh -c "
 rm -rf "$STAGE/regions"
 
 # --- 3. сборка ------------------------------------------------------------
+# Свежий клон: valhalla_data ещё пуст — конфиг, базу таймзон и скорости по
+# умолчанию делаем сами тем же образом (раньше их создавал первый старт
+# контейнера, и скрипт на чистой машине падал на cp). Контейнер при старте
+# всё равно допишет в конфиг свои пути и число потоков.
+if [ ! -f "$DATA_DIR/valhalla.json" ]; then
+    log "Создаю valhalla.json"
+    docker run --rm -v "$DATA_DIR:/custom_files" --entrypoint sh "$VALHALLA_IMAGE" -c '
+        valhalla_build_config \
+            --mjolnir-tile-dir /custom_files/valhalla_tiles \
+            --mjolnir-tile-extract /custom_files/valhalla_tiles.tar \
+            --mjolnir-admin /custom_files/admins.sqlite \
+            --mjolnir-timezone /custom_files/timezones.sqlite > /tmp/c.json &&
+        jq ".mjolnir.default_speeds_config = \"/custom_files/default_speeds.json\"" /tmp/c.json \
+            > /custom_files/valhalla.json'
+fi
+if [ ! -f "$DATA_DIR/timezones.sqlite" ]; then
+    log "Строю базу таймзон (качает границы поясов, ~1–2 мин)"
+    docker run --rm -v "$DATA_DIR:/custom_files" --entrypoint sh "$VALHALLA_IMAGE" -c \
+        'valhalla_build_timezones > /custom_files/timezones.sqlite'
+fi
+if [ ! -f "$DATA_DIR/default_speeds.json" ]; then
+    curl -fsSL --retry 3 -o "$DATA_DIR/default_speeds.json" \
+        https://raw.githubusercontent.com/OpenStreetMapSpeeds/schema/master/default_speeds.json
+fi
 cp "$DATA_DIR/valhalla.json" "$DATA_DIR/timezones.sqlite" "$DATA_DIR/default_speeds.json" "$STAGE/"
 log "Собираю тайлы ($VALHALLA_IMAGE)"
 docker run --rm -v "$STAGE:/custom_files" --entrypoint sh "$VALHALLA_IMAGE" -c '
