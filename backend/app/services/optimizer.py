@@ -5,8 +5,7 @@ import httpx
 from typing import List, Dict
 from shapely import wkb
 
-from app.core.config import settings
-from app.services.valhalla import costing_for
+from app.services.valhalla import cached_post, costing_for
 
 # буфер на пробки: Valhalla считает по статическим скоростям (см. PROGRESS, С3)
 AUTO_TRAFFIC_FACTOR = 1.4
@@ -28,13 +27,8 @@ async def get_time_matrix(
         "targets": [{"lon": loc["lon"], "lat": loc["lat"]} for loc in locations],
         "costing": costing
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            f"{settings.VALHALLA_URL}/sources_to_targets",
-            json=body
-        )
-        response.raise_for_status()
-        data = response.json()
+    # кэш в Redis: повторная оптимизация того же дня не ходит в Valhalla
+    data = await cached_post("sources_to_targets", body)
     n = len(locations)
     matrix = [[0] * n for _ in range(n)]
 

@@ -5,6 +5,10 @@ S16 §1.6: маппинг TransportMode -> costing живёт здесь и ни
 (из transport_to_next точки-источника), поэтому соседние перегоны с одинаковым
 costing склеиваются в один запрос к Valhalla, а разные — идут отдельными.
 """
+import hashlib
+import json
+import logging
+
 import httpx
 
 from app.core.config import settings
@@ -33,6 +37,42 @@ def costing_for(value: str | None) -> str:
     return VALHALLA_COSTING[to_mode(value)]
 
 
+logger = logging.getLogger("meili.valhalla")
+
+# Ревью (нагрузка): Valhalla — потолок всего API (~70 маршрутов/с на 10
+# потоках), а маршрут дня — самый повторяемый запрос: его заново считали на
+# каждое открытие планировщика (и дважды — карта и панель дня). Одинаковые
+# точки → одинаковый ответ: кэш по хешу тела запроса. 6 ч — тайлы
+# обновляются раз в месяц, пробки мы не учитываем.
+CACHE_TTL_SECONDS = 6 * 3600
+
+
+async def cached_post(action: str, body: dict) -> dict:
+    """POST в Valhalla с кэшем в Redis (best effort: Redis лёг — просто идём в Valhalla).
+
+    Неуспешный ответ не кэшируется: бросаем httpx.HTTPStatusError.
+    """
+    from app.core.redis import redis_client  # поздний импорт: модуль нужен и без Redis
+
+    digest = hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()
+    key = f"valhalla:{action}:{digest}"
+    try:
+        cached = await redis_client.get(key)
+        if cached:
+            return json.loads(cached)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("кэш Valhalla недоступен: %s", e)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(f"{settings.VALHALLA_URL}/{action}", json=body)
+        response.raise_for_status()
+        data = response.json()
+    try:
+        await redis_client.setex(key, CACHE_TTL_SECONDS, json.dumps(data))
+    except Exception:  # noqa: BLE001
+        pass
+    return data
+
+
 async def _route_call(points: list[dict], costing: str) -> list[dict]:
     """Один запрос к Valhalla; возвращает legs ответа (их len(points)-1)."""
     body = {
@@ -40,11 +80,10 @@ async def _route_call(points: list[dict], costing: str) -> list[dict]:
         "costing": costing,
         "directions_options": {"units": "kilometers"},
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(f"{settings.VALHALLA_URL}/route", json=body)
-        if not response.is_success:
-            raise RouteError(f"valhalla {response.status_code}")
-        data = response.json()
+    try:
+        data = await cached_post("route", body)
+    except httpx.HTTPStatusError as e:
+        raise RouteError(f"valhalla {e.response.status_code}") from e
     return data.get("trip", {}).get("legs", [])
 
 

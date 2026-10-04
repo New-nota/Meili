@@ -159,3 +159,46 @@ def test_seed_feature_to_poi():
     assert feature_to_poi(far, moscow) is None
     nameless = {**museum, "properties": {"tourism": "museum"}}
     assert feature_to_poi(nameless, moscow) is None
+
+
+async def test_valhalla_cache_serves_repeat_and_survives_redis_outage(monkeypatch):
+    """Ревью (нагрузка): одинаковый маршрут — из кэша; Redis лёг — идём в Valhalla."""
+    from app.services import valhalla
+
+    calls = []
+    real = httpx.AsyncClient
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"trip": {"legs": [{"summary": {"time": 60, "length": 1}}]}})
+
+    monkeypatch.setattr(valhalla.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+
+    class DictRedis:
+        def __init__(self):
+            self.d = {}
+
+        async def get(self, k):
+            return self.d.get(k)
+
+        async def setex(self, k, ttl, v):
+            self.d[k] = v
+
+    import app.core.redis as redis_mod
+    monkeypatch.setattr(redis_mod, "redis_client", DictRedis())
+    pts = [{"lat": 55.75, "lon": 37.61}, {"lat": 55.76, "lon": 37.62}]
+    a = await valhalla._route_call(pts, "pedestrian")
+    b = await valhalla._route_call(pts, "pedestrian")
+    assert a == b and len(calls) == 1  # второй — из кэша
+
+    class DeadRedis:
+        async def get(self, k):
+            raise ConnectionError("redis down")
+
+        async def setex(self, k, ttl, v):
+            raise ConnectionError("redis down")
+
+    monkeypatch.setattr(redis_mod, "redis_client", DeadRedis())
+    assert await valhalla._route_call(pts, "auto")  # без кэша, но работает
+    assert len(calls) == 2
