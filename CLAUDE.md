@@ -21,8 +21,12 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 - Миграции: `docker compose exec backend alembic upgrade head`.
   **Правило проекта: не применять миграцию, не прочитав её.** Миграции пишутся
   читаемо руками (заготовка через `alembic revision -m "..."` в контейнере).
-- Сид POI Калининградской области: `docker compose exec backend python -m scripts.seed_places`
-  (идемпотентен). Другие города сид не нужен — Meili сам подтягивает места из OSM.
+- Места (POI) региона с картами — из того же pbf, что тайлы, без Overpass:
+  `./scripts/seed_region_pois.sh moscow` (bbox из `scripts/valhalla_regions.txt`,
+  osmium → `scripts/seed_pois.py`, идемпотентен; Москва — ~16,8 тыс. мест за
+  ~15 с). Города без карт Meili заполняет сам через Overpass (по категории
+  за запрос — общий запрос по мегаполису публичный Overpass отбивает 504).
+  Старый сид Калининграда через Overpass: `python -m scripts.seed_places`.
 - Секреты в `.env` (корень — креды Postgres для compose) и `backend/.env`
   (DATABASE_URL, SECRET_KEY, опции: Google OAuth, R2, SMTP, LLM_API_KEY —
   без них соответствующие фичи отвечают 501).
