@@ -1,3 +1,4 @@
+import asyncio
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import httpx
@@ -304,14 +305,16 @@ async def optimize_day_stops(
             )
             budget_seconds = max(day_len, 0)
         priorities = [0] + [getattr(s, "priority", 0) for s in stops] + [0]
-        order, dropped = solve_selective_path(
-            matrix, time_windows, service_times, priorities, budget_seconds
+        # ревью (нагрузка): OR-Tools — синхронный CPU; в async-обработчике он
+        # останавливал event loop для ВСЕХ запросов, пока решался один день
+        order, dropped = await asyncio.to_thread(
+            solve_selective_path, matrix, time_windows, service_times, priorities, budget_seconds
         )
         ordered_ids = [str(stops[i - 1].id) for i in order if 0 < i < n - 1]
         dropped_ids = [str(stops[i - 1].id) for i in dropped]
         return ordered_ids, dropped_ids
 
-    order = solve_tsp_path(matrix, time_windows, service_times)
+    order = await asyncio.to_thread(solve_tsp_path, matrix, time_windows, service_times)
     if order is None:
         # при мягких окнах решение есть почти всегда; фолбэк — исходный порядок
         return [str(s.id) for s in stops], []

@@ -64,3 +64,41 @@ async def test_places_list_is_paginated(client, auth_headers):
     assert not {p["id"] for p in page} & {p["id"] for p in rest}  # страницы не перекрываются
     r = await client.get("/places/?limit=100000", headers=auth_headers)
     assert r.status_code == 422  # потолок, а не «весь каталог»
+
+
+async def test_meili_does_not_hold_db_connection_while_model_thinks(client, auth_headers, monkeypatch):
+    """Ход Meili держал соединение из пула всё время генерации модели —
+    десятки секунд; пятнадцать параллельных чатов выбирали пул целиком, и
+    вставало всё API. Пока модель «думает», соединений у хода быть не должно."""
+    from sqlalchemy import event as sa_event
+    from sqlalchemy.pool import Pool
+
+    from app.services.llm.base import LLMEvent
+    from tests.integration.test_meili import _conversation, _stream_events, install_fake
+
+    checked_out = {"n": 0}
+
+    def _out(*a):
+        checked_out["n"] += 1
+
+    def _in(*a):
+        checked_out["n"] -= 1
+
+    seen_during_llm: list[int] = []
+    fake = install_fake(monkeypatch, [])
+
+    async def stream(messages, tools, model):
+        seen_during_llm.append(checked_out["n"])
+        for e in (LLMEvent(type="token", text="ок"), LLMEvent(type="end")):
+            yield e
+
+    fake.stream = stream
+    conv_id = await _conversation(client, auth_headers)
+    sa_event.listen(Pool, "checkout", _out)
+    sa_event.listen(Pool, "checkin", _in)
+    try:
+        await _stream_events(client, auth_headers, conv_id)
+    finally:
+        sa_event.remove(Pool, "checkout", _out)
+        sa_event.remove(Pool, "checkin", _in)
+    assert seen_during_llm and all(n <= 0 for n in seen_during_llm), seen_during_llm

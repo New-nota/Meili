@@ -246,6 +246,10 @@ async def get_day_route(
         points.append({"lat": day.end_location.lat, "lon": day.end_location.lon, "mode": None})
         ids.append(None)
 
+    # ревью (нагрузка): чтение закончено — отдаём соединение в пул ДО Valhalla.
+    # Иначе запрос держал его (idle in transaction) ~1,5 с ожидания маршрута,
+    # и под нагрузкой пул выбирали маршруты: всё API замедлялось вдвое
+    await db.commit()
     try:
         raw_legs = await route_legs(points)
     except RouteError:

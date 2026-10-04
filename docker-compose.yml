@@ -2,6 +2,9 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # dev: код смонтирован, перезапуск на правках (образ по умолчанию — боевой,
+    # несколько воркеров без reload, см. backend/Dockerfile)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       # единый .env в корне (см. .env.example): ${…} подставляет compose,
       # остальное отдаёт env_file. Адреса сервисов — здесь, внутри сети compose

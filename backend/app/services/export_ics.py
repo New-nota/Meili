@@ -71,6 +71,7 @@ async def render_trip_ics(db: AsyncSession, trip: Trip, lang: Lang = DEFAULT_LAN
     # ревью (профиль): дороги считались по дню за раз — 10 дней = 10
     # последовательных походов в Valhalla, .ics отдавался ~4 с. Дни независимы —
     # считаем параллельно (семафор, чтобы не завалить Valhalla 60-дневной поездкой)
+    await db.commit()  # данные собраны — соединение в пул до походов в Valhalla
     gate = asyncio.Semaphore(6)
 
     async def travel(day_block):

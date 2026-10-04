@@ -2,6 +2,7 @@
 
 Только стопы с included_in_route=true (S8 WP-4), в порядке position.
 """
+import asyncio
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -111,8 +112,13 @@ async def render_itinerary_pdf(db: AsyncSession, trip: Trip, lang: Lang = DEFAUL
 
     data = await collect_itinerary(db, trip, lang)
     budget = await compute_budget(db, trip)
+    await db.commit()  # данные собраны — соединение обратно в пул до рендера
     html = _env.get_template("itinerary.html").render(
         trip=trip, days=data["days"], budget=budget,
         lang=lang, t=lambda key, **kw: t(lang, key, **kw),
     )
-    return HTML(string=html, url_fetcher=offline_fetcher()).write_pdf()
+    # ревью (нагрузка): WeasyPrint — синхронный CPU (~0,25 с на 10 дней);
+    # в event loop он стопорил все остальные запросы на время рендера
+    return await asyncio.to_thread(
+        lambda: HTML(string=html, url_fetcher=offline_fetcher()).write_pdf()
+    )
