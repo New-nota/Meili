@@ -1,0 +1,7 @@
+# Ревью: без этого файла COPY . . запекал backend/.env с секретами прямо в
+# образ (/app/.env). Секреты отдаёт compose (env_file: ./.env), не образ.
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/

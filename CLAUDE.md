@@ -27,9 +27,14 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   ~15 с). Города без карт Meili заполняет сам через Overpass (по категории
   за запрос — общий запрос по мегаполису публичный Overpass отбивает 504).
   Старый сид Калининграда через Overpass: `python -m scripts.seed_places`.
-- Секреты в `.env` (корень — креды Postgres для compose) и `backend/.env`
-  (DATABASE_URL, SECRET_KEY, опции: Google OAuth, R2, SMTP, LLM_API_KEY —
-  без них соответствующие фичи отвечают 501).
+- **Один `.env` в корне** на весь проект (`cp .env.example .env`, впиши
+  пустые строки — это личные секреты). Его читают compose (`${…}` + `env_file`
+  у backend/worker), pydantic (`config.ROOT_ENV`, `extra="ignore"`,
+  `env_ignore_empty` — «KEY=» значит «не задано») и Vite (`envDir: '..'`,
+  наружу только `VITE_*`). Адреса сервисов и `ROUTING_COVERAGE` — в
+  docker-compose.yml, не в .env. Без SECRET_KEY бэкенд не стартует; без
+  Google/R2/SMTP/LLM — соответствующие фичи отвечают 501. `backend/.dockerignore`
+  не пускает .env в образ.
 
 ## Тесты
 
@@ -315,11 +320,11 @@ plan | done | error`. Контекст хода: системный промпт
   — кто реально ответил (`scripts.llm_probe` печатает). Large вернётся через
   `LLM_HTTP_PROXY` (socks5/http, например ssh -D на сервер в КЗ) или
   `LLM_BASE_URL` (обратный прокси) — см. `.env.example`.
-- Ассистент: живой прогон только с `LLM_API_KEY` (Mistral) в `backend/.env` —
+- Ассистент: живой прогон только с `LLM_API_KEY` (Mistral) в `.env` —
   тесты гоняются на фейковом клиенте; e2e-сценариев чата нет; PlanEditor
   правит только числа/день/удаление action.
 - Деплой не решён; бронирование — deep-link, не API.
-- В `backend/.env` пустые `R2_ACCESS_KEY`/`R2_SECRET_KEY` — загрузка аватара
+- Пустые `R2_ACCESS_KEY`/`R2_SECRET_KEY` в `.env` — загрузка аватара
   выключена (`avatar_upload_enabled=false` в профиле, кнопка неактивна).
 - `valhalla_data/` — тяжёлые OSM-данные (не трогать без нужды). Регионы тайлов —
   `scripts/valhalla_regions.txt` (имя, источник, bbox, `cut` = вырезать

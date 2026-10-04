@@ -34,7 +34,7 @@ def test_booking_confirmation_body_minimal():
 
 async def test_send_email_dev_mode_logs_and_succeeds(caplog):
     # SMTP_HOST не задан (dev) -> письмо в лог, результат True.
-    # Явно гасим SMTP_HOST: в backend/.env он может быть задан, а тест про dev-ветку
+    # Явно гасим SMTP_HOST: в .env он может быть задан, а тест про dev-ветку
     import logging
 
     from app.services import email as email_module

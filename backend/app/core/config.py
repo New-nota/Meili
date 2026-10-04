@@ -1,4 +1,13 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Единый .env в корне репо (раньше их было три: корень, backend/, frontend/).
+# В docker его отдаёт compose (env_file) переменными окружения — они главнее
+# файла; путь ниже нужен для запуска с хоста (скрипты, отладка). В контейнере
+# /app — это backend/, корня репо там нет, и отсутствующий файл просто
+# пропускается.
+ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -79,7 +88,13 @@ class Settings(BaseSettings):
     # публичный Nominatim требует User-Agent и ≤1 запроса/с — всё кэшируем
     NOMINATIM_URL: str = "https://nominatim.openstreetmap.org"
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(
+        env_file=ROOT_ENV,
+        # в общем .env есть ключи compose (POSTGRES_*) и Vite (VITE_*) — не наши
+        extra="ignore",
+        # «KEY=» в .env = не задано: иначе LLM_MODEL_LOOP="" стал бы пустым
+        # ID модели, а SMTP_PORT="" ронял бы старт
+        env_ignore_empty=True,
+    )
 
 settings = Settings()

@@ -1,6 +1,6 @@
 """Проба живого LLM-провайдера (ТЗ-Meili M1.3 DoD).
 
-Запуск (нужен LLM_API_KEY в backend/.env):
+Запуск (нужен LLM_API_KEY в .env в корне):
     docker compose exec backend python -m scripts.llm_probe
 Смена движка без правок кода: LLM_PROVIDER=deepseek в env.
 """

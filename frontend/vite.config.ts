@@ -4,6 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // единый .env в корне репо (не frontend/.env); в бандл попадают только VITE_*
+  envDir: '..',
   plugins: [
     react(),
     // PWA (S7): оффлайн-кэш статики через service worker (Workbox).

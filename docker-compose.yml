@@ -3,7 +3,8 @@ services:
     build: ./backend
     restart: unless-stopped
     environment:
-      # креды берутся из .env в корне проекта (см. .env.example)
+      # единый .env в корне (см. .env.example): ${…} подставляет compose,
+      # остальное отдаёт env_file. Адреса сервисов — здесь, внутри сети compose
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VALHALLA_URL=http://valhalla:8002
@@ -20,7 +21,7 @@ services:
       - redis
       - valhalla
     env_file:
-      - ./backend/.env
+      - ./.env
 
   # ТЗ-Meili M5.3: фоновая работа ассистента (суммаризация истории).
   # Интерактивный диалог живёт в backend (SSE в запросе), фон — здесь.
@@ -39,7 +40,7 @@ services:
       - postgres
       - redis
     env_file:
-      - ./backend/.env
+      - ./.env
 
   postgres:
     image: postgis/postgis:15-3.3-alpine
