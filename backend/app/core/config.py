@@ -47,8 +47,25 @@ class Settings(BaseSettings):
     LLM_MODEL_LOOP: str | None = None      # override pinned-ID агент-цикла
     LLM_MODEL_SUMMARY: str | None = None   # override pinned-ID суммаризации
     LLM_API_KEY: str | None = None         # без ключа /api/meili/... отвечает 501
-    LLM_MAX_STEPS: int = 5
-    LLM_STEP_TIMEOUT_S: int = 30           # молчание стрима, не общая длина шага
+    # QA: запасные модели через запятую (None — цепочка провайдера, "" — без
+    # запасных). Клиент сам уходит на следующую, если модель недоступна тарифу/
+    # региону (403 tier_not_allowed, 429 c лимитом 0, 404).
+    LLM_MODEL_FALLBACKS: str | None = None
+    # QA: доступ к провайдеру через другой регион. LLM_BASE_URL — свой
+    # обратный прокси вместо https://api.mistral.ai/v1; LLM_HTTP_PROXY —
+    # http(s)://… или socks5://… прокси ТОЛЬКО для LLM-запросов (например,
+    # ssh -D 1080 на сервер → socks5://host.docker.internal:1080)
+    LLM_BASE_URL: str | None = None
+    LLM_HTTP_PROXY: str | None = None
+    # Ревью: было 5 и этого не хватало. Модель тратит по шагу на каждый поиск
+    # (парки, рестораны, музеи, пляжи — уже четыре), упиралась в кап и
+    # пересказывала маршрут текстом, так и не вызвав propose_plan.
+    LLM_MAX_STEPS: int = 8
+    # молчание стрима, не общая длина шага. Ревью: 30 с не хватало —
+    # large-модель с набором инструментов и снапшотом поездки регулярно
+    # думает дольше до ПЕРВОГО токена, и ход падал «ассистент недоступен»
+    # на живом, работающем провайдере (llm_probe при этом отвечает мгновенно)
+    LLM_STEP_TIMEOUT_S: int = 60
     # M5.3: токен-бюджет окна истории; превышение триггерит фоновую
     # суммаризацию (Celery) и обрезает окно при сборке контекста
     MEILI_WINDOW_TOKENS: int = 2000

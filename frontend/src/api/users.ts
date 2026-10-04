@@ -1,4 +1,4 @@
-import { apiFetch, API_URL, getAccessToken } from "./client"
+import { apiFetch, API_URL, ApiError, getAccessToken, tryRefresh } from "./client"
 import type { Trip } from "../types"
 
 // Профиль (S9 WP-D)
@@ -19,12 +19,14 @@ export interface UserProfile {
     created_at: string
     stats: ProfileStats
     has_password: boolean
+    avatar_upload_enabled?: boolean
 }
 
 export const getMe = () => apiFetch<UserProfile>('/users/me')
 
+// null = стереть поле (undefined — не трогать)
 export const updateMe = (data: {
-    name?: string; home_city?: string; travel_style?: string[]
+    name?: string | null; home_city?: string | null; travel_style?: string[]
 }) => apiFetch<UserProfile>('/users/me', {
     method: 'PATCH',
     body: JSON.stringify(data),
@@ -41,20 +43,27 @@ export const getLikedTrips = () => apiFetch<Trip[]>('/users/me/liked-trips')
 
 // multipart: без Content-Type application/json — отдельный fetch
 export async function uploadAvatar(file: File): Promise<string> {
-    const form = new FormData()
-    form.append('file', file)
-    const headers: Record<string, string> = {}
-    const token = getAccessToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${API_URL}/users/me/avatar`, {
-        method: 'POST',
-        body: form,
-        headers,
-        credentials: 'include',
-    })
+    const send = () => {
+        const form = new FormData()
+        form.append('file', file)
+        const headers: Record<string, string> = {}
+        const token = getAccessToken()
+        if (token) headers['Authorization'] = `Bearer ${token}`
+        return fetch(`${API_URL}/users/me/avatar`, {
+            method: 'POST',
+            body: form,
+            headers,
+            credentials: 'include',
+        })
+    }
+    let res = await send()
+    // QA: этот fetch обходит apiFetch и не умел молчаливый refresh — с
+    // протухшим access (15 мин) загрузка аватара просто падала
+    if (res.status === 401 && await tryRefresh()) res = await send()
     if (!res.ok) {
         const body = await res.json().catch(() => null)
-        throw new Error((body as { detail?: string })?.detail ?? 'upload_failed')
+        // ApiError — чтобы apiErrorMessage локализовал машинный код (avatar_too_large…)
+        throw new ApiError(res.status, body ?? { detail: 'upload_failed' })
     }
     return (await res.json()).avatar_url
 }

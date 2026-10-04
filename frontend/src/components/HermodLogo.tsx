@@ -12,19 +12,19 @@ function Mark({ size = 48 }: { size?: number }) {
     const dots = size < 48
     return (
         <svg viewBox="0 0 100 100" width={size} height={size} xmlns="http://www.w3.org/2000/svg">
-            <line x1="28" y1="22" x2="28" y2="78" stroke="var(--accent)" strokeWidth="5"/>
-            <line x1="72" y1="22" x2="72" y2="78" stroke="var(--accent)" strokeWidth="5"/>
+            <line x1="28" y1="22" x2="28" y2="78" stroke="var(--moss)" strokeWidth="5"/>
+            <line x1="72" y1="22" x2="72" y2="78" stroke="var(--moss)" strokeWidth="5"/>
             <polyline points="28,48 50,58 72,48" fill="none"
-                stroke="var(--accent)" strokeWidth="5" strokeLinejoin="miter"
+                stroke="var(--moss)" strokeWidth="5" strokeLinejoin="miter"
                 strokeLinecap="butt" strokeMiterlimit="9"/>
             {[[28, 22], [72, 22], [28, 78], [72, 78]].map(([cx, cy]) => (
                 dots
-                    ? <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="6" fill="var(--accent)"/>
+                    ? <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="6" fill="var(--moss)"/>
                     : <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="6"
-                        fill="var(--surface)" stroke="var(--accent)" strokeWidth="3"/>
+                        fill="var(--surface)" stroke="var(--moss)" strokeWidth="3"/>
             ))}
             {/* замковый камень */}
-            <circle cx="50" cy="58" r="3.6" fill="var(--accent)"/>
+            <circle cx="50" cy="58" r="3.6" fill="var(--moss)"/>
         </svg>
     )
 }

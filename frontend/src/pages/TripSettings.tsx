@@ -2,7 +2,14 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router-dom";
 import {getTrip, updateTrip} from "../api/trips"
-import { apiFetch } from "../api/client";
+import { apiFetch, ApiError } from "../api/client";
+import { apiErrorMessage } from "../utils/apiError";
+import { MAX_GROUP } from "../utils/limits";
+import IntInput from "../components/IntInput";
+import Stepper from "../components/ui/Stepper";
+import { ArrowLeft, Globe, Trash2, Users } from "lucide-react";
+
+const MAX_TRIP_DAYS = 60
 
 
 export default function TripSettings() {
@@ -24,20 +31,32 @@ export default function TripSettings() {
     const [isSaving, setIsSaving] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
+    const [deleting, setDeleting] = useState(false)
+    // QA: ошибка загрузки (чужая/удалённая поездка, сеть) раньше оставляла
+    // вечное «Загрузка...» и необработанный промис
+    const [loadError, setLoadError] = useState<unknown>(null)
     useEffect(() => {
         const load = async () => {
             if(!tripId) return
-            const trip = await getTrip(tripId)
-            setTitle(trip.title || '')
-            setCity(trip.city || '')
-            setCountry(trip.country || '')
-            setAdultsCount(trip.adults_count || 1)
-            setChildrenCount(trip.children_count || 0)
-            setChildrenAges(trip.children_ages || [])
-            setIsPublic(trip.is_public || false)
-            setStartDate(trip.start_date || '')
-            setEndDate(trip.end_date || '')
-            setIsLoading(false)
+            try {
+                const trip = await getTrip(tripId)
+                setTitle(trip.title || '')
+                setCity(trip.city || '')
+                setCountry(trip.country || '')
+                setAdultsCount(trip.adults_count || 1)
+                setChildrenCount(trip.children_count || 0)
+                // длина возрастов = число детей (старые поездки могли
+                // хранить рассинхрон — бэк теперь его отвергает)
+                const ages = (trip.children_ages || []).slice(0, trip.children_count || 0)
+                while (ages.length < (trip.children_count || 0)) ages.push(0)
+                setChildrenAges(ages)
+                setIsPublic(trip.is_public || false)
+                setStartDate(trip.start_date || '')
+                setEndDate(trip.end_date || '')
+                setIsLoading(false)
+            } catch (e) {
+                setLoadError(e)
+            }
         }
         load()
     }, [tripId])
@@ -50,13 +69,25 @@ export default function TripSettings() {
             return prev.slice(0,count)
         })
     }
+    const validate = (): string | null => {
+        if (!title.trim()) return t('trip.wizard.errTitle')
+        if (!startDate || !endDate) return t('trip.wizard.errDates')
+        if (endDate < startDate) return t('trip.wizard.errRange')
+        const span = Math.round((new Date(endDate + 'T00:00:00').getTime()
+            - new Date(startDate + 'T00:00:00').getTime()) / 86_400_000) + 1
+        if (span > MAX_TRIP_DAYS) return t('trip.wizard.errTooLong', { max: MAX_TRIP_DAYS })
+        return null
+    }
+
     const save = async () => {
-        if(!tripId) return
+        if(!tripId || isSaving) return
+        const err = validate()
+        if (err) { setDatesError(err); return }
         setIsSaving(true)
         setDatesError(null)
         try {
             await updateTrip(tripId, {
-                title, city, country, adults_count: adultsCount,
+                title: title.trim(), city, country, adults_count: adultsCount,
                 children_count: childrenCount, children_ages: childrenAges,
                 is_public: isPublic,
                 start_date: startDate || null,
@@ -64,146 +95,147 @@ export default function TripSettings() {
             })
             navigate(`/trips/${tripId}`)
         } catch (e: unknown) {
-            // 409: в удаляемом дне остались стопы
-            const detail = (e as {body?: {detail?: string}})?.body?.detail
-            setDatesError(detail ? t(`errors.${detail}`, detail) : t('trip.saveError'))
+            // 409: в удаляемом дне остались стопы — машинный код локализуется
+            setDatesError(apiErrorMessage(e, t, t('trip.saveError')))
         } finally {
             setIsSaving(false)
         }
     }
 
     const deleteTrip = async () => {
-        await apiFetch(`/trips/${tripId}`, {
-            method: 'DELETE',
-        })
-        navigate('/discover')
+        if (deleting) return
+        setDeleting(true)
+        try {
+            await apiFetch(`/trips/${tripId}`, {
+                method: 'DELETE',
+            })
+            navigate('/discover')
+        } catch (e) {
+            // уже удалена (второй клик/другая вкладка) — цель достигнута
+            if (e instanceof ApiError && e.status === 404) { navigate('/discover'); return }
+            setShowDeleteModal(false)
+            setDatesError(apiErrorMessage(e, t))
+        } finally {
+            setDeleting(false)
+        }
     }
-    if (isLoading) return <div style={{padding:32}}>{t('common.loading')}</div>
+    if (loadError != null) return (
+        <div className="page" style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+            <p className="error-text" role="alert" style={{ fontSize: 15 }}>
+                {loadError instanceof ApiError && (loadError.status === 404 || loadError.status === 422)
+                    ? t('trip.notFound') : apiErrorMessage(loadError, t, t('trip.loadError'))}
+            </p>
+            <button type="button" onClick={() => navigate('/discover')} className="btn btn-primary">{t('nav.myTrips')}</button>
+        </div>
+    )
+    if (isLoading) return <div className="page" style={{ color: 'var(--ink-3)' }}>{t('common.loading')}</div>
+
+    const block: React.CSSProperties = { padding: '16px 18px', background: 'var(--surface)', borderRadius: 'var(--radius-xl)' }
 
     return (
-        <div style={{padding: 32, maxWidth: 600, margin: '0 auto'}}>
-            <div style={{display: 'flex', alignItems: 'center', gap:12, marginBottom: 24}}>
-                <button onClick={() => navigate(`/trips/${tripId}`)} style={{
-                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)'}}>&#8592;</button>
-                    <h2 style={{margin: 0}}>{t('trip.settingsTitle')}</h2>
-            </div>
+        <div className="page" style={{ maxWidth: 640 }}>
+            <header className="page-head">
+                <button type="button" onClick={() => navigate(`/trips/${tripId}`)} className="icon-btn filled"
+                    aria-label={t('common.back')} title={t('common.back')}>
+                    <ArrowLeft />
+                </button>
+                <h1>{t('trip.settingsTitle')}</h1>
+            </header>
 
-            <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
-                {/*MAIN */}
-                <div>
-                    <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.titleLabel')}</label>
-                    <input value={title} onChange={e => setTitle(e.target.value)}
-                    style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
-                </div>
-                <div style={{display: 'flex', gap:12}}>
-                    <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: '6b7280'}}>{t('trip.city')}</label>
-                        <input value={city} onChange={e => setCity(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
-                    </div>
-                    <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: '6b7280'}}>{t('trip.country')}</label>
-                        <input value={country} onChange={e => setCountry(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
-                    </div>
+            <div style={{ display: 'grid', gap: 16 }}>
+                <label className="field">
+                    <span className="field-label">{t('trip.titleLabel')}</span>
+                    <input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} className="input" />
+                </label>
+                <div className="grid-2">
+                    <label className="field">
+                        <span className="field-label">{t('trip.city')}</span>
+                        <input value={city} onChange={e => setCity(e.target.value)} className="input" />
+                    </label>
+                    <label className="field">
+                        <span className="field-label">{t('trip.country')}</span>
+                        <input value={country} onChange={e => setCountry(e.target.value)} className="input" />
+                    </label>
                 </div>
                 {/* Даты поездки (S8 WP-3): диапазон генерирует дни */}
-                <div style={{display: 'flex', gap:12}}>
-                    <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.startDate')}</label>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
-                    </div>
-                    <div style={{flex: 1}}>
-                        <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.endDate')}</label>
-                        <input type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)}
-                        style={{display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 14, boxSizing: 'border-box'}} />
-                    </div>
+                <div className="grid-2">
+                    <label className="field">
+                        <span className="field-label">{t('trip.startDate')}</span>
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input" />
+                    </label>
+                    <label className="field">
+                        <span className="field-label">{t('trip.endDate')}</span>
+                        <input type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)} className="input" />
+                    </label>
                 </div>
-                {datesError && <p style={{color: 'var(--accent)', fontSize: 13, margin: 0}}>{datesError}</p>}
-                {/*Группа */}
-                <div style={{padding: 16, border: '1px solid var(--border)', borderRadius: 8}}>
-                    <div style={{fontSize: 14, fontWeight: 500, marginBottom: 12}}>👥 {t('trip.group')} 
+                {datesError && <p className="error-text" role="alert">{datesError}</p>}
 
+                {/* Группа */}
+                <div className="on-surface" style={{ ...block, display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 700 }}>
+                        <Users size={18} style={{ color: 'var(--moss)' }} />{t('trip.group')}
                     </div>
-                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginTop: 4}}>
-                        <button onClick={() => setAdultsCount(Math.max(1, adultsCount - 1))}
-                        style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>-</button>
-                        <span style={{fontSize: 16, minWidth:20, textAlign: 'center'}}>{adultsCount}</span>
-                        <button onClick={()=> setAdultsCount(adultsCount + 1)}
-                        style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>+</button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>{t('trip.adults')}</span>
+                        <Stepper label={t('trip.adults')} value={adultsCount} min={1} max={MAX_GROUP} onChange={setAdultsCount} />
                     </div>
-                
-                <div>
-                    <label style={{ fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.children')}</label>
-                    <div style={{display: 'flex', alignItems: 'center', gap: 8, marginTop: 4}}>
-                        <button onClick={() => handleChildrenCount(Math.max(0, childrenCount - 1))}
-                        style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>-</button>
-                        <span style={{fontSize: 16, minWidth: 20, textAlign: 'center'}}>{childrenCount}</span>
-                        <button onClick={() => handleChildrenCount(childrenCount + 1)}
-                            style={{width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer'}}>+</button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span>{t('trip.children')}</span>
+                        <Stepper label={t('trip.children')} value={childrenCount} min={0} max={MAX_GROUP} onChange={handleChildrenCount} />
                     </div>
-                
-            {/*Возраст детей */}
-            {childrenCount > 0 && (
-                <div >
-                    <label style={{fontSize: 13, color: 'var(--text-muted)'}}>{t('trip.childrenAges')}</label>
-                    <div style={{display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap'}}>
-                        {childrenAges.map((age, i) => (
-                            <input key={i} type="number" min={0} max={17} value={age}
-                            onChange={e => {const newAges = [...childrenAges]
-                                 newAges[i]= parseInt(e.target.value) || 0
-                                setChildrenAges(newAges)}}
-                                style={{width: 56, padding: '6px, 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize:15, textAlign: 'center'}} />
-                        ))}
+                    {/* Возраст детей */}
+                    {childrenCount > 0 && (
+                        <div className="field">
+                            <span className="field-label">{t('trip.childrenAges')}</span>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {childrenAges.map((age, i) => (
+                                    <IntInput key={i} value={age} min={0} max={17} className="input input-sm"
+                                        aria-label={t('trip.wizard.childN', { n: i + 1 })}
+                                        onChange={v => setChildrenAges(prev => prev.map((a, j) => j === i ? v : a))}
+                                        style={{ width: 64, textAlign: 'center' }} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Публикация */}
+                <label style={{ ...block, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, cursor: 'pointer' }}>
+                    <span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 700 }}>
+                            <Globe size={18} style={{ color: 'var(--moss)' }} />{t('trip.publicTitle')}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 14, color: 'var(--ink-2)', marginTop: 2 }}>{t('trip.publicHint')}</span>
+                    </span>
+                    <input type="checkbox" role="switch" className="switch" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} />
+                </label>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+                    <button type="button" onClick={save} disabled={isSaving} className="btn btn-primary btn-lg" style={{ flex: 1 }}>
+                        {isSaving ? t('common.saving') : t('common.save')}
+                    </button>
+                    <button type="button" onClick={() => setShowDeleteModal(true)} className="btn btn-lg btn-danger">
+                        <Trash2 />{t('trip.deleteTrip')}
+                    </button>
+                </div>
+            </div>
+
+            {/* Подтверждение */}
+            {showDeleteModal && (
+                <div className="modal-scrim" onClick={() => setShowDeleteModal(false)}>
+                    <div className="modal-sheet" role="alertdialog" aria-modal="true" aria-labelledby="del-title"
+                        onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <h2 id="del-title" style={{ fontSize: 21, marginBottom: 6 }}>{t('trip.deleteTitle')}</h2>
+                        <p style={{ color: 'var(--ink-2)', fontSize: 15, marginBottom: 22 }}>{t('trip.deleteWarning')}</p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button type="button" onClick={() => setShowDeleteModal(false)} className="btn btn-ghost">{t('common.cancel')}</button>
+                            <button type="button" onClick={deleteTrip} disabled={deleting} className="btn btn-danger-solid">
+                                <Trash2 />{t('common.delete')}
+                            </button>
+                        </div>
                     </div>
-                
                 </div>
             )}
-            </div>
-        </div>
-        </div>
-        {/*Публикация */}
-        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, border: '1px solid var(--border)', borderRadius: 8}}>
-            <div>
-                <div style={{fontSize: 14, fontWeight: 500}}>🌍 {t('trip.publicTitle')}</div>
-                <div style={{fontSize: 13, color: 'var(--text-muted)', marginTop: 2}}>{t('trip.publicHint')}</div>
-            </div>
-            <input type="checkbox" checked={isPublic} onChange={e=> setIsPublic(e.target.checked)}
-            style={{width:18, height: 18, cursor: 'pointer'}} />
-        </div>
-        <button onClick={save} disabled={isSaving} style={{
-            padding: '10px 24px', background: isSaving ? 'var(--text-muted)': 'var(--accent)',
-            color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: isSaving ? 'not-allowed':'pointer', fontSize: 14}}>
-        {isSaving ? t('common.saving') : t('common.save')}</button>
-        {/*Удалить*/}
-        <button onClick={() => setShowDeleteModal(true)} style={{
-            padding: '10px 24px', background: 'none', color: 'var(--accent)',
-            border: '1px solid var(--accent)', borderRadius: 6, cursor: 'pointer', fontSize: 14
-        }}> {t('trip.deleteTrip')}</button>
-        {/*Подтверждение */}
-        {showDeleteModal && (
-            <div style={{
-                position: 'fixed', inset: 0, background: 'color-mix(in srgb, var(--text-primary) 50%, transparent)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-            }}>
-                <div style={{background: 'var(--surface-raised)', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%'}}>
-                    <h3 style={{margin: '0 0 8px'}}>{t('trip.deleteTitle')}</h3>
-                    <p style={{color: 'var(--text-muted)', fontSize: 14, margin: ' 0 0 20px'}}>
-                        {t('trip.deleteWarning')}
-                    </p>
-                <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
-                    <button onClick={() => setShowDeleteModal(false)} style={{
-                        padding: '8px 16px', background: 'none', color: 'var(--text-primary)', border: '1px solid var(--border)',
-                        borderRadius: 6, cursor: 'pointer'
-                    }}>{t('common.cancel')}</button>
-                <button onClick={deleteTrip} style={{
-                    padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
-                    border: 'none', borderRadius: 6, cursor: 'pointer'
-                }}>{t('common.delete')}</button>
-                </div>
-                </div>
-            </div>)}
         </div>
     )
 }

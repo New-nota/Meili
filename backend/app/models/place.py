@@ -35,8 +35,16 @@ class Place(Base):
     # ТЗ-E: цены для авто-оценки бюджета. Enum хранится строкой (стиль проекта:
     # trip_expenses.category, trip_locations.kind), значения валидирует Pydantic.
     # per_person -> осмыслен avg_check; ticketed -> ticket_adult (+ опц. ticket_child);
-    # free -> цены игнорируются. Нет данных -> NULL, цену не выдумываем.
-    pricing_model: Mapped[str] = mapped_column(String(20), nullable=False, default="free", server_default="free")
+    # free -> вход действительно свободный; unknown -> цены НЕТ ДАННЫХ.
+    #
+    # Ревью: дефолтом было 'free', и 2701 сидовое место из 2704 утверждало,
+    # что оно бесплатное — включая рестораны. Meili показывал «ресторан —
+    # бесплатно», а бюджет считал все активности по 0.00, хотя правило проекта
+    # прямо запрещает выдумывать ноль вместо «не знаем». Дефолт — 'unknown';
+    # 'free' теперь означает ровно то, что написано, и ставится осознанно.
+    pricing_model: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="unknown", server_default="unknown"
+    )
     avg_check: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     ticket_adult: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     ticket_child: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)

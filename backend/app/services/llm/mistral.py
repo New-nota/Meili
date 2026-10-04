@@ -8,6 +8,10 @@ from app.services.llm.base import OpenAICompatibleClient
 
 MODEL_LOOP = "mistral-large-2512"
 MODEL_SUMMARY = "mistral-small-2603"
+# QA: запасная цепочка, если тариф/регион не пускает к основным моделям
+# (живой разбор 2026-10-02: large — 403 tier_not_allowed, small — лимит 0,
+# ministral-14b/8b с tool calling отвечают). Порядок — от умной к быстрой.
+MODEL_FALLBACKS = ("ministral-14b-2512", "ministral-8b-2512")
 
 
 class MistralClient(OpenAICompatibleClient):

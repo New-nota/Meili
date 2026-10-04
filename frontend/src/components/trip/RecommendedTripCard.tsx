@@ -3,11 +3,12 @@ import { Heart } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
 import { likeTrip, unlikeTrip } from '../../api/trips'
-import { tripDaysCount } from './TripRow'
+import { tripDaysCount } from './tripRowUtils'
 
 // S16 §2.4: карточка рекомендованной поездки — одна и та же в блоке
 // «Похожие выбирают» и в Discover (двух реализаций больше нет).
-// Превью карты не рендерится: вместо него — число остановок крупно.
+// Превью карты не рендерится; редизайн «Лес»: без «большой цифры» —
+// название первым, остановки/дни/лайки одной строкой меты.
 // Единственное место профиля, где сердце это ПЕРЕКЛЮЧАТЕЛЬ.
 
 interface Props {
@@ -36,55 +37,26 @@ export default function RecommendedTripCard({ trip, onOpen }: Props) {
     }
 
     const days = tripDaysCount(trip)
-    const subtitle = [
+    const meta = [
         days > 0 ? t('profile.meta.days', { count: days }) : null,
-        trip.description || trip.city,
+        t('profile.meta.stops', { count: trip.stops_count }),
+        likes > 0 ? t('profile.similar.likedBy', { count: likes }) : null,
     ].filter(Boolean).join(' · ')
+    const about = trip.description || trip.city
 
     return (
-        <div onClick={() => onOpen(trip.id)}
-            style={{
-                position: 'relative', borderRadius: 12, overflow: 'hidden',
-                background: 'var(--surface-raised)', border: '1px solid var(--border)',
-                cursor: 'pointer', display: 'flex', flexDirection: 'column',
-            }}>
-            {/* верхняя зона вместо превью карты */}
-            <div style={{
-                height: 88, background: 'var(--surface)',
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-            }}>
-                <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1 }}>
-                    {trip.stops_count}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    {t('profile.similar.stops')}
-                </span>
-            </div>
-
-            <button onClick={toggleLike}
-                aria-label={t('profile.liked.title')}
-                aria-pressed={liked}
-                style={{
-                    position: 'absolute', top: 8, right: 8, width: 30, height: 30,
-                    borderRadius: '50%', border: 'none', cursor: 'pointer',
-                    background: 'var(--surface-raised)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 1px 4px color-mix(in srgb, var(--text-primary) 20%, transparent)',
-                    color: liked ? 'var(--accent)' : 'var(--text-muted)',
-                }}>
-                <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
+        <div className="trip-tile">
+            <button type="button" className="trip-tile-open" onClick={() => onOpen(trip.id)} style={{ minHeight: 0 }}>
+                <strong style={{ fontSize: 17, lineHeight: 1.25, paddingRight: 36 }}>{trip.title}</strong>
+                {about && <span style={{ fontSize: 14, color: 'var(--ink-2)' }}>{about}</span>}
+                <span style={{ fontSize: 13.5, color: 'var(--ink-3)', paddingTop: 4 }}>{meta}</span>
             </button>
-
-            <div style={{ padding: 12 }}>
-                <strong style={{ fontSize: 14, display: 'block' }}>{trip.title}</strong>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                    {subtitle}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                    {t('profile.similar.likedBy', { count: likes })}
-                </div>
-            </div>
+            <button type="button" onClick={toggleLike} className="icon-btn sm"
+                aria-label={t('profile.liked.title')} aria-pressed={liked}
+                style={{ position: 'absolute', top: 10, right: 10, background: 'var(--raised)', boxShadow: 'var(--shadow-1)',
+                    color: liked ? 'var(--danger)' : 'var(--ink-3)' }}>
+                <Heart fill={liked ? 'currentColor' : 'none'} />
+            </button>
         </div>
     )
 }

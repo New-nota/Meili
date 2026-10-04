@@ -19,6 +19,9 @@ async def main() -> None:
         if event.type == "token":
             print(event.text, end="", flush=True)
     print()
+    # QA: с цепочкой запасных моделей важно видеть, кто реально ответил
+    print(f"answered_by={client.last_model}")
+    await client.aclose()
 
 
 if __name__ == "__main__":

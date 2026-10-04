@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.stops import get_trip_or_404, get_trip_readable, stop_to_dict
+from app.api.stops import booked_amounts, get_trip_or_404, get_trip_readable, stop_to_dict
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.place import Place
@@ -33,7 +33,11 @@ async def list_locations(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await get_trip_readable(trip_id, current_user.id, db)  # S13: и для превью
+    trip = await get_trip_readable(trip_id, current_user.id, db)  # S13: и для превью
+    # QA: отели/адреса автора — не для зрителя превью (пустой список, а не
+    # 404: превью грузит дни и локации одним Promise.all)
+    if trip.user_id != current_user.id:
+        return []
     result = await db.execute(
         select(TripLocation)
         .where(TripLocation.trip_id == trip_id)
@@ -120,22 +124,29 @@ async def _day_or_404(db: AsyncSession, trip_id: UUID, day_id: UUID) -> TripDay:
     return day
 
 
-async def day_to_response(db: AsyncSession, day: TripDay) -> dict:
-    """День со стопами внутри (S16). Публичный: им же собирает GET /trips/{id}."""
+async def day_to_response(db: AsyncSession, day: TripDay, owner: bool = True) -> dict:
+    """День со стопами внутри (S16). Публичный: им же собирает GET /trips/{id}.
+
+    QA: owner=False — превью чужой публичной поездки. Старт/финиш дня (отель,
+    дом) и факт броней — личное: UI превью их и так не рисует (S13 Q9), но
+    API отдавал любому залогиненному.
+    """
     stops_result = await db.execute(
         select(TripStop, Place)
         .join(Place, TripStop.place_id == Place.id)
         .where(TripStop.day_id == day.id)
         .order_by(TripStop.position)
     )
-    stops = [stop_to_dict(s, p) for s, p in stops_result.all()]
+    rows = stops_result.all()
+    booked = await booked_amounts(db, [s.id for s, _ in rows]) if owner else {}
+    stops = [stop_to_dict(s, p, booked.get(s.id)) for s, p in rows]
     return {
         "id": day.id,
         "date": day.date,
         "position": day.position,   # S16: 1-based
         "title": day.title,         # S16: None -> фронт рисует «День N»
-        "start_location": day.start_location,
-        "end_location": day.end_location,
+        "start_location": day.start_location if owner else None,
+        "end_location": day.end_location if owner else None,
         "start_time": day.start_time,
         "end_time": day.end_time,
         "stops": stops,
@@ -149,7 +160,7 @@ async def list_days(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await get_trip_readable(trip_id, current_user.id, db)  # S13: и для превью
+    trip = await get_trip_readable(trip_id, current_user.id, db)  # S13: и для превью
     result = await db.execute(
         select(TripDay)
         .where(TripDay.trip_id == trip_id)
@@ -159,7 +170,8 @@ async def list_days(
             selectinload(TripDay.end_location),
         )
     )
-    return [await day_to_response(db, d) for d in result.scalars().all()]
+    owner = trip.user_id == current_user.id
+    return [await day_to_response(db, d, owner) for d in result.scalars().all()]
 
 
 @router.post("/{trip_id}/days/reorder", response_model=list[TripDayResponse])

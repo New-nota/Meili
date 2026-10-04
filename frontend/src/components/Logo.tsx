@@ -12,13 +12,13 @@ function Mark({ size = 48 }: { size?: number }) {
     return (
         <svg viewBox="0 0 100 100" width={size} height={size} xmlns="http://www.w3.org/2000/svg">
             <polyline points="18,78 32,24 50,54 68,24 82,78" fill="none"
-                stroke="var(--accent)" strokeWidth="5" strokeLinejoin="miter"
+                stroke="var(--moss)" strokeWidth="5" strokeLinejoin="miter"
                 strokeLinecap="butt" strokeMiterlimit="9"/>
-            <circle cx="18" cy="78" r="6" fill="var(--surface)" stroke="var(--accent)" strokeWidth="3"/>
-            <circle cx="32" cy="24" r="6" fill="var(--surface)" stroke="var(--accent)" strokeWidth="3"/>
-            <circle cx="50" cy="54" r="6" fill="var(--surface)" stroke="var(--accent)" strokeWidth="3"/>
-            <circle cx="68" cy="24" r="6" fill="var(--surface)" stroke="var(--accent)" strokeWidth="3"/>
-            <circle cx="82" cy="78" r="6" fill="var(--surface)" stroke="var(--accent)" strokeWidth="3"/>
+            <circle cx="18" cy="78" r="6" fill="var(--surface)" stroke="var(--moss)" strokeWidth="3"/>
+            <circle cx="32" cy="24" r="6" fill="var(--surface)" stroke="var(--moss)" strokeWidth="3"/>
+            <circle cx="50" cy="54" r="6" fill="var(--surface)" stroke="var(--moss)" strokeWidth="3"/>
+            <circle cx="68" cy="24" r="6" fill="var(--surface)" stroke="var(--moss)" strokeWidth="3"/>
+            <circle cx="82" cy="78" r="6" fill="var(--surface)" stroke="var(--moss)" strokeWidth="3"/>
         </svg>
     )
 }

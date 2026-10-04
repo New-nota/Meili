@@ -46,8 +46,11 @@ async def get_my_trips(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # QA: без order_by Postgres отдавал строки как придётся — после правки
+    # поездка «прыгала» по сетке Discover. Свежие — первыми, как в профиле
     result = await db.execute(
         select(Trip).where(Trip.user_id == current_user.id)
+        .order_by(Trip.created_at.desc())
     )
     # S16: строки профиля/Discover обогащает общий сервис
     return await decorate_trip_rows(db, list(result.scalars().all()))
@@ -99,13 +102,22 @@ async def get_trip(
             selectinload(TripDay.end_location),
         )
     )).scalars().all()
-    days = [await day_to_response(db, d) for d in day_rows]
+    owner = trip.user_id == current_user.id
+    days = [await day_to_response(db, d, owner) for d in day_rows]
     trip.stops_count = sum(d["stops_count"] for d in days)
     _mark_draft(trip)
     trip.planned_total = (await compute_budget(db, trip)).planned_total
-    return TripDetailResponse(
-        **TripResponse.model_validate(trip).model_dump(), days=days
-    )
+    data = TripResponse.model_validate(trip).model_dump()
+    if not owner:
+        # QA: «дом»/точка старта автора — личное (превью её не рисует, Q9)
+        data.update(start_address=None, start_lat=None, start_lon=None)
+    return TripDetailResponse(**data, days=days)
+
+async def _has_days(db: AsyncSession, trip_id: UUID) -> bool:
+    return (await db.execute(
+        select(TripDay.id).where(TripDay.trip_id == trip_id).limit(1)
+    )).scalar_one_or_none() is not None
+
 
 @router.put("/{trip_id}", response_model=TripResponse)
 @router.patch("/{trip_id}", response_model=TripResponse)
@@ -125,6 +137,21 @@ async def update_trip(
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(trip, field, value)
+
+    # QA: группа проверяется по ИТОГОВОМУ состоянию. Схема видит только
+    # присланные поля, и PATCH одного children_count оставлял возраста от
+    # старого состава («3 ребёнка, возраст: 7») — авто-оценка билетов врала.
+    if trip.children_ages is not None and len(trip.children_ages) != trip.children_count:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="children_ages_mismatch")
+    # QA: даты у поездки с днями стереть нельзя — дни (и стопы в них)
+    # остались бы с датами, а поездка стала бы «черновиком без дат»
+    if ("start_date" in updates or "end_date" in updates) and (
+        (trip.start_date is None) != (trip.end_date is None)
+        or (trip.start_date is None and await _has_days(db, trip.id))
+    ):
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="dates_required")
 
     # изменение диапазона дат -> пересинхронизация дней (S8 WP-3)
     if "start_date" in updates or "end_date" in updates:
@@ -193,7 +220,10 @@ async def get_day_route(
     # цепочка точек: у каждой — режим перемещения К СЛЕДУЮЩЕЙ точке
     points: list[dict] = []
     ids: list[UUID | None] = []
-    if day.start_location is not None:
+    # QA: зрителю превью — маршрут только по стопам: перегоны от отеля/дома
+    # автора раскрывали бы его координаты через геометрию линии
+    owner = trip.user_id == current_user.id
+    if owner and day.start_location is not None:
         points.append({
             "lat": day.start_location.lat, "lon": day.start_location.lon,
             # от старта дня едем режимом первого стопа (или дефолтом поездки)
@@ -206,7 +236,7 @@ async def get_day_route(
             continue
         points.append({**coords, "mode": stop.transport_to_next or trip.transport_default})
         ids.append(stop.id)
-    if day.end_location is not None:
+    if owner and day.end_location is not None:
         points.append({"lat": day.end_location.lat, "lon": day.end_location.lon, "mode": None})
         ids.append(None)
 
@@ -234,6 +264,10 @@ async def like_trip(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Ревью: лайк ставился вообще без проверки поездки — IntegrityError на
+    # несуществующем id молча превращался в 204, а чужой ПРИВАТНЫЙ маршрут
+    # (который лайкер даже прочитать не может) копил likes_count.
+    await get_trip_readable(trip_id, current_user.id, db)
     like = TripLike(user_id=current_user.id, trip_id=trip_id)
     db.add(like)
     try:
@@ -254,9 +288,11 @@ async def unlike_trip(
         raise HTTPException(status_code=404, detail="Like not found")
     
 @router.post("/{trip_id}/clone", response_model=TripResponse)
-async def clone_trip(trip_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ):
+async def clone_trip(trip_id: UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ):
+    # Ревью: trip_id был `str` + ручной UUID(...) в теле — на кривом пути
+    # ValueError улетал в 500 вместо 422. Тип пути делает это FastAPI.
     source = (
-        await db.execute(select(Trip).where(Trip.id == UUID(trip_id)))
+        await db.execute(select(Trip).where(Trip.id == trip_id))
     ).scalar_one_or_none()
     if source is None:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -308,16 +344,19 @@ async def clone_trip(trip_id: str, db: AsyncSession = Depends(get_db), current_u
         await db.execute(select(TripStop).where(TripStop.trip_id == source.id).order_by(TripStop.position))
         ).scalars().all()
 
-    pos_in_day: dict = {}  # позиции — по-дневные (0..n внутри дня)
+    # QA: позиции по-дневные и 1-based (как add_stop/reorder/optimize);
+    # «не влезло в день» тоже часть маршрута — флаг копируется, иначе
+    # выкинутые селективной оптимизацией стопы оживали в копии
+    pos_in_day: dict = {}
     for s in stops:
         day_id = new_days_by_position.get(src_day_position.get(s.day_id))
         if day_id is None:
             continue  # у копии нет такого дня (диапазон дат оригинала кривой)
-        pos = pos_in_day.get(day_id, 0)
-        pos_in_day[day_id] = pos + 1
+        pos = pos_in_day.get(day_id, 0) + 1
+        pos_in_day[day_id] = pos
         db.add(TripStop(
             trip_id=new_trip.id, place_id=s.place_id, position=pos,
-            day_id=day_id, priority=s.priority,
+            day_id=day_id, priority=s.priority, included_in_route=s.included_in_route,
             visit_time=s.visit_time, duration_minutes=s.duration_minutes,
             duration_is_custom=s.duration_is_custom,
             transport_to_next=s.transport_to_next,

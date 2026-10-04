@@ -26,7 +26,7 @@ from app.schemas.plan import (
 from app.services import stops as stops_service
 from app.services.budget_estimate import recompute_auto_stops
 from app.services.optimizer import apply_day_optimization
-from app.services.trips import sync_trip_days
+from app.services.trips import DayError, sync_trip_days
 
 logger = get_logger("meili.executor")
 
@@ -93,8 +93,7 @@ async def _optimize_trip(db: AsyncSession, trip: Trip) -> None:
     )).scalars().all()
 
     for day in days:
-        if day.start_location is None or day.end_location is None:
-            continue
+        # QA: дни без старта/финиша тоже оптимизируются (открытый путь)
         stops = list((await db.execute(
             select(TripStop)
             .where(TripStop.day_id == day.id)
@@ -142,17 +141,27 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
                 case CreateTripAction():
                     if trip is not None:
                         raise ApplyError("trip_already_exists", 400)
+                    # Ревью: черновик мастера (S17) — источник того, чего модель
+                    # знать не может (координаты города) и что регулярно роняла
+                    # (город, валюта, бюджет). Явное значение из плана главнее,
+                    # черновик — фолбэк; координаты только из черновика.
+                    draft = conversation.draft_json or {}
+                    currency = (action.currency or draft.get("currency") or "").upper()
                     trip = Trip(
                         user_id=user_id,
                         title=action.title,
-                        city=action.city,
-                        country=action.country,
+                        city=action.city or draft.get("city"),
+                        country=action.country or draft.get("country"),
+                        city_lat=draft.get("city_lat"),
+                        city_lon=draft.get("city_lon"),
                         adults_count=action.adults_count,
                         children_count=action.children_count,
                         children_ages=action.children_ages,
                         transport_default=action.transport_default,
                         start_date=action.start_date,
                         end_date=action.end_date,
+                        budget_total=draft.get("budget_total"),
+                        **({"currency": currency} if currency else {}),
                     )
                     db.add(trip)
                     await db.flush()
@@ -179,11 +188,14 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
                     )).scalar_one_or_none()
                     if day is None:
                         raise ApplyError("day_not_found", 400)
-                    stop = await stops_service.add_stop(
-                        db, trip, place, day=day,
-                        duration_minutes=action.duration_minutes,
-                        transport_to_next=trip.transport_default or "walking",
-                    )
+                    try:
+                        stop = await stops_service.add_stop(
+                            db, trip, place, day=day,
+                            duration_minutes=action.duration_minutes,
+                            transport_to_next=trip.transport_default or "walking",
+                        )
+                    except stops_service.StopError as e:
+                        raise ApplyError(str(e), 400)
                     if any(v is not None for v in (
                         action.cost_amount, action.cost_min, action.cost_max,
                     )):
@@ -242,6 +254,12 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
     except ApplyError:
         await db.rollback()  # план остаётся proposed
         raise
+    except DayError as e:
+        # Ревью: sync_trip_days теперь режет слишком длинный диапазон
+        # (create_trip-action тоже ходит мимо TripCreate). Это ошибка ПЛАНА,
+        # а не сбой сервера — отдаём доменный код, не «apply_failed» 500.
+        await db.rollback()
+        raise ApplyError(str(e), e.status_code)
     except Exception:
         await db.rollback()
         logger.exception("plan_apply_failed", plan_id=str(plan_id))

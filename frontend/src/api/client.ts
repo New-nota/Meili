@@ -23,8 +23,15 @@ export function getAccessToken(): string | null {
     return accessToken;
 }
 
-/** Обновить access по refresh-cookie. true = сессия жива. */
-export async function tryRefresh(): Promise<boolean> {
+// QA: refresh — single-flight. Refresh-токен одноразовый (ротация jti), а
+// звать его хотят пачкой: StrictMode дважды запускает bootstrap-эффект,
+// TripPlanner шлёт 4-5 запросов разом, и все ловят 401 при протухшем access.
+// Каждый слал свой refresh со ОДНОЙ кукой — лишние ротации, а при неудачном
+// тайминге «reuse detected» и вылет из всех сессий. Теперь параллельные
+// вызовы делят один запрос.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function doRefresh(): Promise<boolean> {
     try {
         const res = await fetch(`${API_URL}/auth/refresh`, {
             method: "POST",
@@ -37,6 +44,14 @@ export async function tryRefresh(): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+/** Обновить access по refresh-cookie. true = сессия жива. */
+export function tryRefresh(): Promise<boolean> {
+    if (!refreshInFlight) {
+        refreshInFlight = doRefresh().finally(() => { refreshInFlight = null; });
+    }
+    return refreshInFlight;
 }
 
 export async function logout(): Promise<void> {
@@ -73,8 +88,11 @@ export async function apiFetch<T = unknown>(
 
     let res = await doFetch();
 
-    // молчаливый refresh: одна попытка, и не для самого /auth/refresh
-    if (res.status === 401 && path !== "/auth/refresh") {
+    // молчаливый refresh: одна попытка, и не для /auth/* — там 401 значит
+    // «неверный пароль/код», а не «протух access». QA: неудачный логин при
+    // живой куке ПРОШЛОГО юзера молча рефрешил его сессию — экран говорил
+    // «неверный пароль», а в памяти уже лежал чужой access.
+    if (res.status === 401 && !path.startsWith("/auth/")) {
         if (await tryRefresh()) {
             res = await doFetch();
         } else {

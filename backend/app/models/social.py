@@ -6,8 +6,15 @@ from app.core.database import Base
 class TripLike(Base):
     __tablename__ = "trip_likes"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id"), primary_key=True)
+    # Ревью: ON DELETE CASCADE. Без него DELETE /trips/{id} падал 500-кой на
+    # любой залайканной поездке — то есть ровно на публичных, которые для того
+    # и публикуют. Лайк без поездки бессмыслен, поэтому удаляется вместе с ней.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trips.id", ondelete="CASCADE"), primary_key=True
+    )
 
 class UserVisitedPlace(Base):
     __tablename__ = "user_visited_places"

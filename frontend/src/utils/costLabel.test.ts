@@ -24,6 +24,18 @@ describe('formatMoney', () => {
 })
 
 describe('stopCostLabel', () => {
+    it('факт брони важнее оценки и диапазона (QA)', () => {
+        const label = stopCostLabel(
+            { ...base, estimated_cost: '350.50', cost_source: 'manual',
+              cost_min: '100.00', cost_max: '200.00', booked_amount: '1200.00' },
+            'RUB', 'ru', 'Бесплатно',
+        )
+        expect(label?.approx).toBe(false)
+        expect(label?.text).toContain('1')
+        expect(label?.text).toContain('200,00')
+        expect(label?.text).not.toContain('≈')
+    })
+
     it('диапазон-оценка приоритетнее суммы', () => {
         const label = stopCostLabel(
             { ...base, estimated_cost: '500.00', cost_min: '400.00', cost_max: '700.00',

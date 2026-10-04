@@ -105,6 +105,10 @@ async def test_empty_choices_and_garbage_lines_skipped():
 def test_factory_selects_provider_and_pinned_models(monkeypatch):
     monkeypatch.setattr(settings, "LLM_API_KEY", "k")
     monkeypatch.setattr(settings, "LLM_PROVIDER", "mistral")
+    # Ревью: тест ПРО pinned-дефолты, значит override'ы обязан гасить сам.
+    # Раньше он читал живой settings и падал, если в .env стоял LLM_MODEL_LOOP.
+    monkeypatch.setattr(settings, "LLM_MODEL_LOOP", None)
+    monkeypatch.setattr(settings, "LLM_MODEL_SUMMARY", None)
     c = get_client()
     assert isinstance(c, mistral.MistralClient)
     assert c.model_loop == mistral.MODEL_LOOP
@@ -129,3 +133,85 @@ def test_factory_model_override_and_errors(monkeypatch):
     monkeypatch.setattr(settings, "LLM_API_KEY", None)
     with pytest.raises(LLMNotConfigured):
         get_client()
+
+
+# --- QA: цепочка запасных моделей --------------------------------------------
+
+def make_routed_client(responses: dict, fallbacks=("m-b", "m-c")):
+    """Ответ провайдера по имени модели: {model: (status, headers, body)}."""
+    from app.services.llm import base as llm_base
+
+    llm_base._unavailable.clear()
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        status, headers, body = responses[model]
+        return httpx.Response(status, text=body, headers={"content-type": "text/event-stream", **headers})
+
+    client = mistral.MistralClient("test-key", "m-loop", "m-sum", fallbacks=fallbacks)
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return client, seen
+
+
+OK_BODY = sse_body({"choices": [{"delta": {"content": "ок"}}]}, "[DONE]")
+TIER_403 = (403, {}, '{"type":"tier_not_allowed"}')
+ZERO_429 = (429, {"x-ratelimit-limit-req-minute": "0"}, '{"type":"rate_limited"}')
+
+
+async def test_fallback_on_tier_and_zero_limit_then_cached():
+    """403 «не в тарифе» и 429 с лимитом 0 — про модель, а не про нагрузку:
+    клиент уходит к следующей, а отказ кэширует (второй ход сразу на рабочую)."""
+    client, seen = make_routed_client({"m-loop": TIER_403, "m-b": ZERO_429, "m-c": (200, {}, OK_BODY)})
+    events = [e async for e in client.stream([{"role": "user", "content": "hi"}], None, "m-loop")]
+    assert [e.text for e in events if e.type == "token"] == ["ок"]
+    assert seen == ["m-loop", "m-b", "m-c"]
+    assert client.last_model == "m-c"
+
+    seen.clear()
+    [e async for e in client.stream([{"role": "user", "content": "hi"}], None, "m-loop")]
+    assert seen == ["m-c"]  # заведомо недоступные не дёргаем
+    await client.aclose()
+
+
+async def test_transient_429_falls_back_without_caching():
+    busy = (429, {"x-ratelimit-limit-req-minute": "60"}, "{}")
+    client, seen = make_routed_client({"m-loop": busy, "m-b": (200, {}, OK_BODY), "m-c": (200, {}, OK_BODY)})
+    [e async for e in client.stream([{"role": "user", "content": "hi"}], None, "m-loop")]
+    seen.clear()
+    [e async for e in client.stream([{"role": "user", "content": "hi"}], None, "m-loop")]
+    assert seen[0] == "m-loop"  # временный 429 не помечает модель мёртвой
+    await client.aclose()
+
+
+async def test_bad_key_does_not_fall_back():
+    """401 — про ключ: перебирать модели бессмысленно, ошибка уходит наверх."""
+    client, seen = make_routed_client({"m-loop": (401, {}, "{}"), "m-b": (200, {}, OK_BODY), "m-c": (200, {}, OK_BODY)})
+    with pytest.raises(httpx.HTTPStatusError) as e:
+        [e async for e in client.stream([{"role": "user", "content": "hi"}], None, "m-loop")]
+    assert e.value.response.status_code == 401
+    assert seen == ["m-loop"]
+    await client.aclose()
+
+
+async def test_all_models_unavailable_raises_last_status():
+    client, seen = make_routed_client({"m-loop": TIER_403, "m-b": TIER_403, "m-c": ZERO_429})
+    with pytest.raises(httpx.HTTPStatusError) as e:
+        [e async for e in client.stream([{"role": "user", "content": "hi"}], None, "m-loop")]
+    assert e.value.response.status_code == 429
+    await client.aclose()
+
+
+def test_factory_passes_fallbacks_base_url_and_proxy(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_API_KEY", "k")
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "mistral")
+    monkeypatch.setattr(settings, "LLM_MODEL_FALLBACKS", "x-1, x-2")
+    monkeypatch.setattr(settings, "LLM_BASE_URL", "https://kz.example/mistral/v1/")
+    monkeypatch.setattr(settings, "LLM_HTTP_PROXY", "socks5://127.0.0.1:1080")
+    client = get_client()
+    assert client.fallbacks == ["x-1", "x-2"]
+    assert client.base_url == "https://kz.example/mistral/v1"
+    assert client.proxy == "socks5://127.0.0.1:1080"
+    monkeypatch.setattr(settings, "LLM_MODEL_FALLBACKS", None)
+    assert get_client().fallbacks == list(mistral.MODEL_FALLBACKS)

@@ -1,53 +1,100 @@
+/* Дизайн-система «Лес» (редизайн 2026-10): скандинавский минимализм — хвоя,
+   мох, светлое дерево. Интерфейс всегда зелёный, маршрут на карте и подложка
+   под картой — дерево. Эталон: .impeccable/proto/skandi.html?theme=forest */
 :root {
-  /* герой / маршрут */
-  --accent: #B04A24;
-  --accent-hover: #97401F;
-  --route: #B04A24;
+  /* текст — хвоя */
+  --ink: #1F3A2E;
+  --ink-2: #4B5D52;
+  --ink-3: #5F6F64;
 
-  /* поверхности и текст */
-  --surface: #F3EFE3;
-  --surface-raised: #FBF8F1;
-  --border: #DED7C7;
-  --text-primary: #2A2622;
-  --text-muted: #6B6459;
+  /* поверхности: тёплый белый + берёза, подложка карты — дуб */
+  --page: #FCFAF5;
+  --raised: #FFFDF8;
+  --birch: #EFE3CE;
+  --birch-2: #E3D0AF;
+  --oak: #D9C29C;
+  --line: #E4D8C2;
 
-  /* цвета карты (дублируются хексами в стиле карты — WebGL не читает CSS-переменные) */
-  --map-land: #E7E2D0;
-  --map-water: #C4C9BE;
-  --map-road: #D8D2BE;
-  --map-green: #B7BDA0;
+  /* акцент интерфейса — мох; главная кнопка — орех */
+  --moss: #3D7550;
+  --moss-2: #2F6040;
+  --moss-wash: #E1ECE3;
+  --walnut: #5E3F28;
+  --walnut-2: #4A311F;
 
-  /* палитра дней — только кружки переключателя дней и режим «Все дни».
-     S11: расширена до 12 (дальше цикл) — 6 тёплых земляных + 6 холоднее,
-     чтобы соседние дни различались на длинных поездках. */
-  --day-1: #C69A4B;
-  --day-2: #8E8B57;
-  --day-3: #B0714A;
-  --day-4: #CBB88C;
-  --day-5: #9DA986;
-  --day-6: #A9603F;
-  --day-7: #6E8FA3;
-  --day-8: #A67B94;
-  --day-9: #79A08D;
-  --day-10: #C98A3C;
-  --day-11: #8778A8;
-  --day-12: #9C6B57;
+  /* маршрут и метки на карте — дерево */
+  --wood: #8F6236;
 
-  /* форма */
-  --radius: 10px;
-  --radius-lg: 14px;
+  /* состояния */
+  --ok: #3C7A4A;
+  --danger: #A8384A;      /* брусника */
+  --danger-wash: #F7E4E7;
+  --warn: #9A6A12;        /* морошка, затемнённая под текст */
 
-  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
+  /* старые имена (S10) — оставлены алиасами, ими пользуется половина экранов */
+  --accent: var(--moss);
+  --accent-hover: var(--moss-2);
+  --route: var(--wood);
+  --surface: #F4ECDD;
+  --surface-raised: var(--raised);
+  --border: var(--line);
+  --text-primary: var(--ink);
+  --text-muted: var(--ink-3);
+
+  /* цвета карты (дублируются хексами в utils/mapStyle.ts — WebGL не читает CSS-переменные) */
+  --map-land: #F4EEE2;
+  --map-water: #C2D5D0;
+  --map-road: #FFFDF8;
+  --map-green: #D3DEC3;
+
+  /* палитра дней — только режим «Все дни» на карте (линии и метки дней);
+     в остальном интерфейсе день зелёный, а открытый день на карте — дерево.
+     Первый — дерево, дальше природные тона, 12 штук, дальше цикл */
+  --day-1: #8F6236;
+  --day-2: #3F6F8C;
+  --day-3: #A8384A;
+  --day-4: #C98A2B;
+  --day-5: #3D7550;
+  --day-6: #7A5C8E;
+  --day-7: #6B7F3A;
+  --day-8: #B0603A;
+  --day-9: #2F7F7A;
+  --day-10: #8A7A5A;
+  --day-11: #4F5F9A;
+  --day-12: #9A4F6A;
+
+  /* форма: мягкие скругления вместо рамок */
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shadow-1: 0 1px 3px rgba(31, 58, 46, 0.12), 0 2px 8px rgba(31, 58, 46, 0.05);
+  --shadow-2: 0 6px 20px rgba(31, 58, 46, 0.14), 0 1px 3px rgba(31, 58, 46, 0.10);
+
+  --font-sans: "Onest", system-ui, sans-serif;
 }
 
-/* Тёмная тема — черновые значения, тюнинг позже. Проводка обязана работать уже сейчас. */
+/* Тёмная тема — черновые значения (ночной лес), проводка обязана работать уже сейчас. */
 [data-theme="dark"] {
-  --accent: #C86A3E;
-  --accent-hover: #D67B4E;
-  --route: #C86A3E;
-  --surface: #201D19;
-  --surface-raised: #2A2621;
-  --border: #3A352E;
-  --text-primary: #EDE7DA;
-  --text-muted: #A69E8F;
+  --ink: #E6EEE7;
+  --ink-2: #B9C7BC;
+  --ink-3: #9CAB9F;
+  --page: #141E18;
+  --raised: #1A2720;
+  --birch: #25352C;
+  --birch-2: #2F4237;
+  --oak: #3A2F24;
+  --line: #2D3C33;
+  --moss: #6FA982;
+  --moss-2: #85BB96;
+  --moss-wash: #213429;
+  --walnut: #9C6C45;
+  --walnut-2: #B07D53;
+  --wood: #C08A55;
+  --ok: #7DBA8A;
+  --danger: #E07A8A;
+  --danger-wash: #3A2228;
+  --warn: #D9A54A;
+  --surface: #18241D;
 }

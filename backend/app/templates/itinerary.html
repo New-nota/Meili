@@ -41,7 +41,7 @@
                 {% if item.stop.visit_time %}{{ item.stop.visit_time.strftime('%H:%M') }} · {% endif %}
                 {% if item.stop.duration_minutes %}{{ item.stop.duration_minutes }} мин · {% endif %}
                 {% if item.place.address %}{{ item.place.address }}{% endif %}
-                {% if item.stop.estimated_cost %} · ~{{ item.stop.estimated_cost }} {{ trip.currency }}{% endif %}
+                {% if item.cost %} · {{ item.cost }}{% endif %}
                 {% if item.opening %} · часы: {{ item.opening }}{% endif %}
             </div>
         </div>

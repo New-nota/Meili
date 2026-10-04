@@ -1,11 +1,11 @@
 from math import sqrt
 import uuid
-from sqlalchemy import select, func
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.models.social import UserVisitedPlace, TripLike
 from app.models.place import Place
-from app.models.trip import Trip
+from app.models.trip import Trip, TripStop
 
 
 STYLE_WEIGHT = 0.4
@@ -153,6 +153,11 @@ async def recommended_places(
     
     return result
 
+# QA: пустая публичная поездка (0 остановок, без дат) рекомендовалась как
+# готовый маршрут — открываешь, а там пусто. Рекомендуем только с местами.
+_has_stops = exists().where(TripStop.trip_id == Trip.id)
+
+
 async def _popular_trips(
         db: AsyncSession, city: str | None, exclude: set[str], limit: int
 ) -> list[Trip]:
@@ -161,7 +166,7 @@ async def _popular_trips(
     # потом остальные публичные.
     stmt = (
         select(Trip).outerjoin(TripLike, TripLike.trip_id == Trip.id)
-        .where(Trip.is_public.is_(True)).group_by(Trip.id)
+        .where(Trip.is_public.is_(True), _has_stops).group_by(Trip.id)
         .order_by(func.count(TripLike.user_id).desc(), Trip.created_at.desc())
     )
     if city:
@@ -195,7 +200,7 @@ async def recommend_trips(
     similar_ids = [uuid.UUID(uid) for uid in sim_map]
     stmt = (
         select(TripLike.user_id, Trip).join(Trip, Trip.id == TripLike.trip_id)
-        .where(TripLike.user_id.in_(similar_ids)).where(Trip.is_public.is_(True))
+        .where(TripLike.user_id.in_(similar_ids)).where(Trip.is_public.is_(True), _has_stops)
         .where(Trip.user_id != user_uuid)
     )
     if city:

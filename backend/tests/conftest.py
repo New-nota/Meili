@@ -20,3 +20,17 @@ os.environ.setdefault("VALHALLA_URL", "http://localhost:8002")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest")
 os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "15")
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_smtp(monkeypatch):
+    """QA: тесты не шлют настоящих писем. Внутри контейнера settings читает
+    backend/.env, и если там задан SMTP_HOST, каждая тестовая регистрация
+    фоном стучалась в боевой SMTP (на адреса @wanderown.dev). Тестам, которым
+    нужна prod-ветка email, SMTP_HOST подставляют явно через patch."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "SMTP_HOST", "")

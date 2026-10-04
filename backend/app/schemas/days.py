@@ -6,17 +6,27 @@ S16: у дня появились имя и 1-based position. Подпись «�
 from datetime import date, time
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.common import WallTime, not_null
 
 from app.schemas.stops import StopResponse
 
 
+# Ревью: координаты приходили голым float — внутрь БД уезжали и NaN
+# (падал ST/asyncpg -> 500), и «lat: 999», после чего день молча не
+# маршрутизировался. Границы заодно отсекают NaN: любое сравнение с ним False.
+Latitude = Annotated[float, Field(ge=-90, le=90)]
+Longitude = Annotated[float, Field(ge=-180, le=180)]
+
 class TripLocationCreate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, max_length=200)
     address: str | None = None
-    lat: float
-    lon: float
-    kind: str = "lodging"  # 'lodging' | 'address' | 'station' | 'custom'
+    lat: Latitude
+    lon: Longitude
+    kind: Literal["lodging", "address", "station", "custom"] = "lodging"
 
 
 class TripLocationResponse(BaseModel):
@@ -49,10 +59,28 @@ class TripDayUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     start_location_id: UUID | None = None
     end_location_id: UUID | None = None
-    start_time: time | None = None
-    end_time: time | None = None
+    # QA: WallTime — aware-время («10:00+03:00», число секунд) падало на
+    # сравнении с naive ниже TypeError'ом (500)
+    start_time: WallTime | None = None
+    end_time: WallTime | None = None
 
     _norm_title = field_validator("title")(_blank_title_is_none)
+    # рамки дня — NOT NULL (дефолт 09:00–21:00): «сбросить» null'ом нельзя
+    _nn = field_validator("start_time", "end_time")(not_null)
+
+    @model_validator(mode="after")
+    def _time_frame_ordered(self) -> "TripDayUpdate":
+        # Ревью: рамки дня принимались в любом порядке. «22:00–06:00» давал
+        # отрицательную длину дня, а селективная оптимизация считает бюджет
+        # как max(end - start, 0) -> 0 секунд и честно отвечала
+        # must_visit_over_budget на совершенно нормальном дне.
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.end_time <= self.start_time
+        ):
+            raise ValueError("end_time must be later than start_time")
+        return self
 
 
 class TripDaysReorder(BaseModel):

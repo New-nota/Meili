@@ -6,6 +6,9 @@ import {
     type Booking,
 } from '../api/bookings'
 import { updateStop } from '../api/trips'
+import { apiFetch } from '../api/client'
+import { apiErrorMessage } from '../utils/apiError'
+import { MAX_MONEY, MONEY_RE } from '../utils/limits'
 import { stopCostLabel } from '../utils/costLabel'
 import GroupSummary from './GroupSummary'
 import PriceSummary from './PriceSummary'
@@ -13,6 +16,7 @@ import BookingConfirmation from './BookingConfirmation'
 import RatingStars from './RatingStars'
 import { getVisitedPlaces, markVisited, unmarkVisited } from '../api/visited'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, CalendarDays, Check, CircleCheck, ExternalLink, Trash2 } from 'lucide-react'
 
 // Детали остановки + флоу бронирования (deep-link):
 // нет брони -> выбор даты и провайдера -> pending (открыт сайт партнёра)
@@ -32,9 +36,28 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
     const visitDate = dayDate ?? null
     const [refInput, setRefInput] = useState('')
     const [amountInput, setAmountInput] = useState('')
-    const [currency, setCurrency] = useState('EUR')
+    // QA: валюта брони — только валюта поездки (одна на поездку, бэк иначе
+    // отвечает booking_currency_mismatch). Раньше селект по умолчанию стоял
+    // на EUR, и подтверждение брони в рублёвой поездке падало «ошибкой»
+    const currency = trip?.currency ?? 'EUR'
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [confirmDelete, setConfirmDelete] = useState(false)
+
+    // QA: общая обёртка действий панели — раньше половина кнопок была голым
+    // await: ошибка = необработанный промис, клик «молча не работает»
+    const safely = async (fn: () => Promise<unknown>, fallback?: string) => {
+        if (busy) return
+        setBusy(true)
+        setError(null)
+        try {
+            await fn()
+        } catch (e) {
+            setError(apiErrorMessage(e, t, fallback))
+        } finally {
+            setBusy(false)
+        }
+    }
 
     // подхватываем существующую бронь этой остановки
     useEffect(() => {
@@ -50,34 +73,41 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
 
     const [costInput, setCostInput] = useState(stop.estimated_cost ?? '')
 
-    // панель не размонтируется при выборе другого стопа — синхронизируем поле
-    useEffect(() => {
+    // сумма поменялась снаружи (сохранили, «вернуть авто») — подхватываем в
+    // рендере; новый стоп — новый инстанс панели (key в TripPlanner)
+    const [seenCost, setSeenCost] = useState(stop.estimated_cost)
+    if (seenCost !== stop.estimated_cost) {
+        setSeenCost(stop.estimated_cost)
         setCostInput(stop.estimated_cost ?? '')
-    }, [stop.id, stop.estimated_cost])
+    }
+
 
     // S15: моя отметка «посещено» + оценка/комментарий (глобальная, юзер↔место)
     const queryClient = useQueryClient()
     const { data: visitedList } = useQuery({ queryKey: ['visited'], queryFn: getVisitedPlaces })
     const visited = visitedList?.find(v => v.place_id === stop.place_id) ?? null
-    const [rating, setRating] = useState(0)
-    const [comment, setComment] = useState('')
+    const [rating, setRating] = useState(visited?.rating ?? 0)
+    const [comment, setComment] = useState(visited?.comment ?? '')
     const [ratingSaved, setRatingSaved] = useState(false)
-    useEffect(() => {
+    // отметка «посещено» догружается асинхронно — подхватываем её в рендере
+    const visitedKey = `${stop.place_id}|${visited?.rating ?? ''}|${visited?.comment ?? ''}`
+    const [seenVisited, setSeenVisited] = useState(visitedKey)
+    if (seenVisited !== visitedKey) {
+        setSeenVisited(visitedKey)
         setRating(visited?.rating ?? 0)
         setComment(visited?.comment ?? '')
         setRatingSaved(false)
-        // visited подтягивается асинхронно — синхронизируемся и по нему
-    }, [stop.place_id, visited?.rating, visited?.comment])
+    }
 
     const invalidateVisited = () => queryClient.invalidateQueries({ queryKey: ['visited'] })
 
-    const toggleVisited = async () => {
+    const toggleVisited = () => safely(async () => {
         if (visited) await unmarkVisited(stop.place_id)
         else await markVisited(stop.place_id)
         invalidateVisited()
-    }
+    })
 
-    const saveRating = async () => {
+    const saveRating = () => safely(async () => {
         // оценка сама помечает место посещённым (создаёт строку)
         await markVisited(stop.place_id, {
             rating: rating || null,
@@ -85,21 +115,39 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
         })
         setRatingSaved(true)
         invalidateVisited()
-    }
+    })
 
     const saveCost = async () => {
-        // S9 WP-A/ТЗ-E: ручной ввод суммы -> cost_source=manual, движок её не трогает
-        if ((costInput || null) === stop.estimated_cost) return
-        await updateStop(stop.trip_id, stop.id, { estimated_cost: costInput || null })
-        onChanged()
+        // S9 WP-A/ТЗ-E: ручной ввод суммы -> cost_source=manual, движок её не трогает.
+        // QA: «12,5» (запятая), «abc», «-5» раньше улетали на бэк и падали 422
+        // необработанным промисом — поле молча «не сохранялось»
+        const raw = String(costInput).trim().replace(',', '.')
+        if ((raw || null) === stop.estimated_cost) return
+        if (raw && (!MONEY_RE.test(raw) || Number(raw) > MAX_MONEY)) {
+            setError(t('budget.invalidAmount'))
+            return
+        }
+        await safely(async () => {
+            await updateStop(stop.trip_id, stop.id, { estimated_cost: raw || null })
+            onChanged()
+        })
     }
 
-    const resetCostToAuto = async () => {
+    const resetCostToAuto = () => safely(async () => {
         // ТЗ-E: «вернуть авто» — сброс ручной суммы + пересчёт из цен места
         await updateStop(stop.trip_id, stop.id, { cost_source: 'auto' })
         setCostInput('')
         onChanged()
-    }
+    })
+
+    // QA: удалить место из маршрута было НЕЛЬЗЯ — ручка DELETE есть, кнопки
+    // не было нигде в UI (только через план Meili). Два клика: «Удалить» →
+    // «Точно удалить?»
+    const deleteStop = () => safely(async () => {
+        await apiFetch(`/trips/${stop.trip_id}/stops/${stop.id}`, { method: 'DELETE' })
+        onClose()
+        onChanged()
+    })
 
     // ТЗ-E/ТЗ-Meili: примерная стоимость в валюте поездки — общие правила
     // в utils/costLabel; null (нет данных/чужая валюта) → «цена не указана»
@@ -108,227 +156,197 @@ export default function StopDetailPanel({ stop, trip, dayDate, onClose, onChange
     const approx = label?.approx ?? false
     const costLabel = label?.text ?? t('budget.noPrice')
 
-    const handleBook = async (provider: string) => {
-        setBusy(true)
-        setError(null)
-        try {
-            const b = await createBooking(stop.id, provider, visitDate ?? undefined)
-            setBooking(b)
-            if (b.deep_link) window.open(b.deep_link, '_blank', 'noopener')
-        } catch {
-            setError(t('booking.createError'))
-        } finally {
-            setBusy(false)
-        }
-    }
+    const handleBook = (provider: string) => safely(async () => {
+        const b = await createBooking(stop.id, provider, visitDate ?? undefined)
+        setBooking(b)
+        if (b.deep_link) window.open(b.deep_link, '_blank', 'noopener')
+    }, t('booking.createError'))
 
-    const handleConfirm = async () => {
+    const handleConfirm = () => {
         if (!booking) return
-        setBusy(true)
-        setError(null)
-        try {
+        const amount = amountInput.trim().replace(',', '.')
+        if (amount && (!MONEY_RE.test(amount) || Number(amount) > MAX_MONEY)) {
+            setError(t('budget.invalidAmount'))
+            return
+        }
+        return safely(async () => {
             const b = await confirmBooking(booking.id, {
-                external_id: refInput || undefined,
-                amount: amountInput || undefined,
-                currency: amountInput ? currency : undefined,
+                external_id: refInput.trim() || undefined,
+                amount: amount || undefined,
+                currency: amount ? currency : undefined,
             })
             setBooking(b)
             onChanged()
-        } catch {
-            setError(t('booking.confirmError'))
-        } finally {
-            setBusy(false)
-        }
+        }, t('booking.confirmError'))
     }
 
-    const handleCancel = async () => {
+    const handleCancel = () => {
         if (!booking) return
-        setBusy(true)
-        try {
+        return safely(async () => {
             await cancelBooking(booking.id)
             setBooking(null)
             setRefInput('')
             onChanged()
-        } finally {
-            setBusy(false)
-        }
+        })
     }
 
+    const section: React.CSSProperties = { marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }
+
     return (
-        <div style={{ padding: 16 }}>
-            <button onClick={onClose} style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--accent)', fontSize: 13, padding: 0, marginBottom: 12,
-            }}>
-                {t('booking.backToRoute')}
+        <div style={{ padding: '18px 24px 32px' }} className="planner-pad">
+            <button type="button" onClick={onClose} className="btn btn-sm btn-ghost" style={{ marginLeft: -12, marginBottom: 10 }}>
+                <ArrowLeft />{t('booking.backToRoute')}
             </button>
 
-            <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>
-                {stop.place_name || t('common.untitled')}
-            </h3>
+            <h2 style={{ fontSize: 23, lineHeight: 1.15 }}>{stop.place_name || t('common.untitled')}</h2>
             {stop.place_address && (
-                <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--text-muted)' }}>
-                    {stop.place_address}
-                </p>
+                <p style={{ marginTop: 4, fontSize: 14, color: 'var(--ink-3)' }}>{stop.place_address}</p>
             )}
 
-            <GroupSummary
-                adults={trip?.adults_count ?? 1}
-                children={trip?.children_count ?? 0}
-            />
-            {/* S16: дату визита задаёт день маршрута, здесь она только показана */}
-            {visitDate && (
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '4px 0' }}>
-                    📅 {new Intl.DateTimeFormat(i18n.language, {
-                        weekday: 'short', day: 'numeric', month: 'long',
-                    }).format(new Date(visitDate + 'T00:00:00'))}
-                </div>
-            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 12, fontSize: 14.5, color: 'var(--ink-2)' }}>
+                {/* S16: дату визита задаёт день маршрута, здесь она только показана */}
+                {visitDate && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <CalendarDays size={16} style={{ color: 'var(--ink-3)' }} />
+                        {new Intl.DateTimeFormat(i18n.language, {
+                            weekday: 'short', day: 'numeric', month: 'long',
+                        }).format(new Date(visitDate + 'T00:00:00'))}
+                    </span>
+                )}
+                <GroupSummary adults={trip?.adults_count ?? 1} children={trip?.children_count ?? 0} />
+            </div>
+
             {/* ТЗ-E: примерная стоимость. Табличные цифры — суммы не прыгают */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '4px 0', flexWrap: 'wrap' }}>
-                <span>💶</span>
-                <span title={approx ? t('budget.approxHint') : t('budget.manualHint')}
-                    style={{
-                        fontVariantNumeric: 'tabular-nums',
-                        color: label === null ? 'var(--text-muted)' : 'var(--text-primary)',
-                    }}>
-                    {costLabel}
-                </span>
-                <input placeholder={t('budget.estimatedCost')} value={costInput} inputMode="decimal"
-                    onChange={e => setCostInput(e.target.value)} onBlur={saveCost}
-                    style={{ width: 90, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, marginLeft: 'auto' }} />
-                {!isAuto && (
-                    <button onClick={resetCostToAuto} title={t('budget.approxHint')}
-                        style={{
-                            border: '1px solid var(--border)', background: 'var(--surface-raised)',
-                            borderRadius: 4, cursor: 'pointer', fontSize: 11, padding: '2px 6px',
-                            color: 'var(--text-muted)',
-                        }}>
-                        {t('budget.backToAuto')}
-                    </button>
+            <div style={section}>
+                <div className="field-label" style={{ marginBottom: 8 }}>{t('budget.estimatedCost')}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span title={approx ? t('budget.approxHint') : t('budget.manualHint')}
+                        style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em',
+                            color: label === null ? 'var(--ink-3)' : 'var(--ink)' }}>
+                        {costLabel}
+                    </span>
+                    <input placeholder={t('budget.amount')} value={costInput} inputMode="decimal"
+                        aria-label={t('budget.estimatedCost')} className="input input-sm"
+                        onChange={e => setCostInput(e.target.value)} onBlur={saveCost}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        style={{ width: 130, marginLeft: 'auto' }} />
+                    {!isAuto && (
+                        <button type="button" onClick={resetCostToAuto} title={t('budget.approxHint')} className="link-btn">
+                            {t('budget.backToAuto')}
+                        </button>
+                    )}
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 6 }}>
+                    {approx ? t('budget.approxHint') : label ? t('budget.manualHint') : null}
+                </p>
+            </div>
+
+            {error && <p className="error-text" role="alert" style={{ marginTop: 10 }}>{error}</p>}
+
+            <div style={section}>
+                {/* нет активной брони — выбор провайдера */}
+                {!booking && (
+                    <>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                            <span className="field-label">{t('booking.bookVia')}</span>
+                            <PriceSummary amount={null} currency={null} />
+                        </div>
+                        <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                            {PROVIDERS.map(p => (
+                                <button key={p.value} type="button" disabled={busy} onClick={() => handleBook(p.value)}
+                                    className="provider-btn">
+                                    <span style={{ minWidth: 0 }}>
+                                        <strong style={{ display: 'block', fontSize: 15 }}>{p.label}</strong>
+                                        <span style={{ fontSize: 13.5, color: 'var(--ink-3)' }}>{t(`booking.hint${p.label === 'Viator' ? 'Viator' : p.label === 'OpenTable' ? 'Opentable' : 'Thefork'}`)}</span>
+                                    </span>
+                                    <ExternalLink size={17} style={{ color: 'var(--ink-3)' }} />
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                {/* бронь создана — ждём подтверждения от пользователя */}
+                {booking && booking.status === 'pending' && (
+                    <div className="on-surface" style={{ background: 'var(--surface)', borderRadius: 'var(--radius-lg)', padding: 14 }}>
+                        <div style={{ fontSize: 14.5, marginBottom: 6 }}>
+                            {t('booking.created', { provider: booking.provider })}
+                            {booking.deep_link && (
+                                <>
+                                    {' '}
+                                    <a href={booking.deep_link} target="_blank" rel="noopener noreferrer">
+                                        {t('booking.openPartner')}
+                                    </a>
+                                </>
+                            )}
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--ink-3)', marginBottom: 10 }}>
+                            {t('booking.confirmHint')}
+                        </div>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                            <input placeholder={t('booking.refPlaceholder')} value={refInput} maxLength={128}
+                                aria-label={t('booking.refPlaceholder')} className="input"
+                                onChange={e => setRefInput(e.target.value)} />
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <input placeholder={t('booking.amountPlaceholder')} value={amountInput} inputMode="decimal"
+                                    aria-label={t('booking.amountPlaceholder')} className="input"
+                                    onChange={e => setAmountInput(e.target.value)} />
+                                <span style={{ fontSize: 14, color: 'var(--ink-3)' }}>{currency}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button type="button" onClick={handleConfirm} disabled={busy} className="btn btn-sm btn-accent">
+                                    <Check />{t('booking.confirm')}
+                                </button>
+                                <button type="button" onClick={handleCancel} disabled={busy} className="btn btn-sm btn-ghost">
+                                    {t('booking.cancel')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* подтверждена */}
+                {booking && booking.status === 'confirmed' && (
+                    <BookingConfirmation booking={booking} onCancel={handleCancel} />
                 )}
             </div>
 
-            {error && <p style={{ color: 'var(--accent)', fontSize: 13 }}>{error}</p>}
-
-            {/* нет активной брони — выбор провайдера */}
-            {!booking && (
-                <div style={{ marginTop: 8 }}>
-                    <PriceSummary amount={null} currency={null} />
-                    <div style={{ fontSize: 13, fontWeight: 'bold', margin: '8px 0 6px' }}>
-                        {t('booking.bookVia')}
-                    </div>
-                    {PROVIDERS.map(p => (
-                        <button key={p.value} disabled={busy} onClick={() => handleBook(p.value)}
-                            style={{
-                                display: 'block', width: '100%', textAlign: 'left',
-                                padding: '8px 12px', marginBottom: 6,
-                                background: 'var(--surface-raised)', border: '1px solid var(--border)',
-                                borderRadius: 8, cursor: busy ? 'wait' : 'pointer', fontSize: 13,
-                            }}>
-                            <strong>{p.label}</strong>
-                            <span style={{ color: 'var(--text-muted)' }}> — {t(`booking.hint${p.label === 'Viator' ? 'Viator' : p.label === 'OpenTable' ? 'Opentable' : 'Thefork'}`)}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
-
-            {/* бронь создана — ждём подтверждения от пользователя */}
-            {booking && booking.status === 'pending' && (
-                <div style={{
-                    background: 'var(--surface)', border: '1px solid var(--accent)',
-                    borderRadius: 8, padding: 12, marginTop: 8,
-                }}>
-                    <div style={{ fontSize: 13, marginBottom: 8 }}>
-                        {t('booking.created', { provider: booking.provider })}
-                        {booking.deep_link && (
-                            <>
-                                {' '}
-                                <a href={booking.deep_link} target="_blank" rel="noopener noreferrer"
-                                    style={{ color: 'var(--accent)' }}>
-                                    {t('booking.openPartner')}
-                                </a>
-                            </>
-                        )}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-                        {t('booking.confirmHint')}
-                    </div>
-                    <input placeholder={t('booking.refPlaceholder')} value={refInput}
-                        onChange={e => setRefInput(e.target.value)}
-                        style={{
-                            width: '100%', padding: 6, marginBottom: 6, boxSizing: 'border-box',
-                            border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
-                        }} />
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                        <input placeholder={t('booking.amountPlaceholder')} value={amountInput} inputMode="decimal"
-                            onChange={e => setAmountInput(e.target.value)}
-                            style={{
-                                flex: 1, padding: 6, boxSizing: 'border-box',
-                                border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
-                            }} />
-                        <select value={currency} onChange={e => setCurrency(e.target.value)}
-                            style={{
-                                padding: 6, border: '1px solid var(--border)',
-                                borderRadius: 6, fontSize: 13, background: 'var(--surface-raised)',
-                            }}>
-                            {['EUR', 'USD', 'RUB'].map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={handleConfirm} disabled={busy} style={{
-                            padding: '6px 12px', background: 'var(--accent)', color: 'var(--surface)',
-                            border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-                        }}>
-                            {t('booking.confirm')}
-                        </button>
-                        <button onClick={handleCancel} disabled={busy} style={{
-                            padding: '6px 12px', background: 'none', color: 'var(--text-muted)',
-                            border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-                        }}>
-                            {t('booking.cancel')}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* подтверждена */}
-            {booking && booking.status === 'confirmed' && (
-                <BookingConfirmation booking={booking} onCancel={handleCancel} />
-            )}
-
-            {/* S15: блок «Оценка» — под бронированием; отметка глобальная (юзер↔место) */}
-            <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 'bold' }}>{t('visited.rateTitle')}</span>
-                    <button onClick={toggleVisited} style={{
-                        border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
-                        fontSize: 12, padding: '3px 8px',
-                        background: visited ? 'var(--accent)' : 'var(--surface-raised)',
-                        color: visited ? 'var(--surface)' : 'var(--text-muted)',
-                    }}>
-                        ✓ {visited ? t('visited.visited') : t('visited.markVisited')}
+            {/* S15: «Оценка» — под бронированием; отметка глобальная (юзер↔место) */}
+            <div style={section}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                    <span className="field-label">{t('visited.rateTitle')}</span>
+                    <button type="button" onClick={toggleVisited} aria-pressed={!!visited} className="chip">
+                        <CircleCheck size={16} />{visited ? t('visited.visited') : t('visited.markVisited')}
                     </button>
                 </div>
                 <RatingStars value={rating} onChange={v => { setRating(v); setRatingSaved(false) }} />
                 <textarea placeholder={t('visited.commentPlaceholder')} value={comment}
+                    aria-label={t('visited.commentPlaceholder')} className="textarea"
                     onChange={e => { setComment(e.target.value); setRatingSaved(false) }}
-                    rows={2}
-                    style={{
-                        width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 6,
-                        border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
-                        background: 'var(--surface-raised)', resize: 'vertical', fontFamily: 'inherit',
-                    }} />
-                <button onClick={saveRating}
-                    disabled={rating === 0 && !comment.trim() && !visited}
-                    style={{
-                        marginTop: 6, padding: '5px 12px', fontSize: 13, border: 'none',
-                        borderRadius: 6, cursor: 'pointer',
-                        background: 'var(--accent)', color: 'var(--surface)',
-                        opacity: rating === 0 && !comment.trim() && !visited ? 0.5 : 1,
-                    }}>
-                    {ratingSaved ? `✓ ${t('common.save')}` : t('common.save')}
+                    rows={2} maxLength={2000} style={{ marginTop: 8, minHeight: 72 }} />
+                <button type="button" onClick={saveRating} className="btn btn-sm" style={{ marginTop: 8 }}
+                    disabled={rating === 0 && !comment.trim() && !visited}>
+                    {ratingSaved && <Check />}{t('common.save')}
                 </button>
+            </div>
+
+            {/* удалить из маршрута — подтверждение вторым кликом */}
+            <div style={{ ...section, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {!confirmDelete ? (
+                    <button type="button" onClick={() => setConfirmDelete(true)} disabled={busy} className="btn btn-sm btn-danger" style={{ marginLeft: -12 }}>
+                        <Trash2 />{t('stop.delete')}
+                    </button>
+                ) : (
+                    <>
+                        <span style={{ fontSize: 14.5, marginRight: 4 }}>{t('stop.deleteConfirm')}</span>
+                        <button type="button" onClick={deleteStop} disabled={busy} className="btn btn-sm btn-danger-solid">
+                            {t('common.delete')}
+                        </button>
+                        <button type="button" onClick={() => setConfirmDelete(false)} disabled={busy} className="btn btn-sm btn-ghost">
+                            {t('common.cancel')}
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     )

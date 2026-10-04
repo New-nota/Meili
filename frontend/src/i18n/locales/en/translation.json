@@ -16,7 +16,8 @@
     "untitled": "Untitled",
     "search": "Searching...",
     "error": "Something went wrong",
-    "km": "km"
+    "km": "km",
+    "retry": "Retry"
   },
   "nav": {
     "myTrips": "My trips",
@@ -40,7 +41,9 @@
     "codeSixDigits": "Enter the 6 digits from the email",
     "confirm": "Confirm",
     "resend": "Resend code",
-    "resendIn": "Resend in {{s}} s"
+    "resendIn": "Resend in {{s}} s",
+    "fillAll": "Enter email and password",
+    "invalidEmail": "Invalid email"
   },
   "trip": {
     "route": "Route",
@@ -51,7 +54,8 @@
     "stopsLoadError": "Failed to load stops :(",
     "addPlaceError": "Failed to add place",
     "noTripsYet": "No trips yet. Plan your first one!",
-    "peopleCount": "{{count}} people",
+    "peopleCount_one": "{{count}} person",
+    "peopleCount_other": "{{count}} people",
     "deleteTitle": "Delete this trip?",
     "deleteWarning": "This action cannot be undone.",
     "deleteTrip": "Delete trip",
@@ -68,7 +72,7 @@
     "publicTitle": "Public route",
     "publicHint": "Other users will see your route and can copy it",
     "saveError": "Failed to save",
-    "setDatesHint": "Set trip dates in settings ⚙ to get days with per-day optimization",
+    "setDatesHint": "Set trip dates in settings — days will appear, each with its own optimization",
     "noDayGroup": "No day:",
     "recommendedTitle": "Similar travellers choose",
     "recommendedLoading": "Loading recommendations...",
@@ -97,46 +101,55 @@
       "errDates": "Set the trip dates",
       "errPast": "Start date can't be in the past",
       "errRange": "End date is before start",
-      "errTooLong": "Trip is longer than {{max}} days"
+      "errTooLong": "Trip is longer than {{max}} days",
+      "errBudget": "Budget must be a number from 0 to 99,999,999.99 with at most two decimals",
+      "cityNotFound": "Nothing found in the Kaliningrad region",
+      "cityLookupFailed": "City search is unavailable — try again"
     },
     "recommendationsTitle": "Recommendations",
     "recommendationsEmpty": "Nothing to suggest yet — check back later"
   },
   "day": {
     "title": "Day {{num}}",
-    "stopsCount": "{{count}} stops",
-    "start": "🏁 Start",
-    "finish": "🏁 Finish",
+    "stopsCount_one": "{{count}} stop",
+    "stopsCount_other": "{{count}} stops",
+    "start": "Start",
+    "finish": "Finish",
     "at": "at {{time}}",
-    "empty": "No stops — add one via search with this day selected",
-    "notFit": "Didn't fit the day:",
-    "optimize": "✨ Optimize day",
-    "optimizing": "⏳...",
+    "empty": "No places in this day yet — search above or tap the map",
+    "notFit": "Didn't fit the day",
+    "optimize": "Optimize day",
+    "optimizing": "Optimizing…",
     "modeFull": "All places",
     "modeSelective": "Max within time",
     "moveToDay": "Move to day",
     "dragDay": "Drag to reorder days",
     "dayShort": "D{{num}}",
     "priorityHint": "Priority: normal / important / must-visit",
-    "returnHint": "Mark as must-visit and bring back on next optimization",
+    "returnHint": "Put back into the route and mark as must-visit",
     "startOfDay": "Day start",
     "endOfDay": "Day finish",
     "outOfCoverage": "This day goes beyond map coverage: split it into two days or keep the transfer without intermediate stops",
     "mustVisitOverBudget": "Must-visit places don't fit the day budget — increase time or remove the must-visit mark",
     "optimizeError": "Optimization failed",
-    "allDays": "All days"
+    "allDays": "All days",
+    "budgetRequired": "Set a time budget above zero",
+    "dragStop": "Drag place"
   },
   "place": {
     "searchPlaceholder": "Find a place...",
-    "addToRoute": "+ Add to route",
-    "addShort": "+ Add",
-    "startPoint": "📍 Start point",
+    "addToRoute": "Add to route",
+    "addShort": "Add",
+    "startPoint": "Start point",
     "startPlaceholder": "Where do you start from?",
     "home": "Home",
-    "durationMin": "⏱ {{count}} min",
+    "durationMin": "{{count}} min",
     "addLocation": "Add location",
     "locationPlaceholder": "Hotel or station address...",
-    "notFitLabel": "Didn't fit the day"
+    "notFitLabel": "Didn't fit the day",
+    "searchNothing": "Nothing found in the Kaliningrad region",
+    "searchFailed": "Place search is unavailable — try again",
+    "pickDayFirst": "Set trip dates first — places are added to days"
   },
   "map": {
     "makeStart": "Make day start",
@@ -144,7 +157,7 @@
     "startUpdated": "Day start updated"
   },
   "booking": {
-    "backToRoute": "← Back to route",
+    "backToRoute": "Back to route",
     "bookVia": "Book via:",
     "hintViator": "tours & activities",
     "hintOpentable": "restaurants",
@@ -154,11 +167,11 @@
     "confirmHint": "Booked? Enter your confirmation number:",
     "refPlaceholder": "Booking ref (optional)",
     "amountPlaceholder": "Amount (optional)",
-    "confirm": "✓ Confirm",
+    "confirm": "Confirm",
     "cancel": "Cancel",
     "createError": "Failed to create booking",
     "confirmError": "Failed to confirm booking",
-    "confirmed": "✅ Booked",
+    "confirmed": "Booked",
     "refLabel": "Booking ref:",
     "viaProvider": "via {{provider}}",
     "cancelBooking": "Cancel booking",
@@ -176,13 +189,15 @@
     "surveyTitle": "How was your day?",
     "surveyLeft": "{{count}} left",
     "skip": "Skip",
-    "swipeHint": "Swipe left to skip without rating"
+    "swipeHint": "Swipe left to skip without rating",
+    "notToday": "Not today — close the survey"
   },
   "preview": {
     "like": "Like",
     "copy": "Copy to my trips",
     "budgetHint": "Rough activity cost of this route",
-    "noBudget": "Activity cost not specified"
+    "noBudget": "Activity cost not specified",
+    "noDays": "The author hasn't planned this trip by days yet"
   },
   "budget": {
     "title": "Budget",
@@ -213,7 +228,12 @@
     "approxHint": "approximate, from place prices",
     "manualHint": "entered manually",
     "backToAuto": "back to auto",
-    "refreshEstimates": "Refresh estimates"
+    "refreshEstimates": "Refresh estimates",
+    "invalidAmount": "Amount must be a number from 0 to 99,999,999.99 with at most 2 decimals",
+    "fillExpense": "Fill in the item title and amount",
+    "of": "of",
+    "nothingYet": "No expenses yet",
+    "category": "Category"
   },
   "profile": {
     "title": "Profile",
@@ -277,7 +297,9 @@
       "likedBy_one": "liked by {{count}} traveller",
       "likedBy_other": "liked by {{count}} travellers",
       "stops": "stops"
-    }
+    },
+    "oldPasswordRequired": "Enter your current password",
+    "saved": "Saved"
   },
   "export": {
     "pdf": "Download PDF",
@@ -302,7 +324,42 @@
     "code_expired": "Code expired — request a new one",
     "too_many_attempts": "Too many attempts — request a new code",
     "no_pending_registration": "Registration not found — start over",
-    "resend_cooldown": "Wait a minute before resending"
+    "resend_cooldown": "Wait a minute before resending",
+    "network": "Can't reach the server — check your connection and try again",
+    "validation": "Please check: {{fields}}",
+    "too_many_requests": "Too many attempts — please wait a bit",
+    "too_many_registrations": "Too many sign-ups for this address — try again in an hour",
+    "forbidden": "Access denied",
+    "not_found": "Not found — it may have been deleted",
+    "server": "Server error — please try again later",
+    "children_ages_mismatch": "Number of ages doesn't match number of children",
+    "dates_required": "Set both trip dates",
+    "invalid_value": "One of the fields has an invalid value",
+    "missing_value": "A required field can't be empty",
+    "invalid_reference": "Related item not found — refresh the page",
+    "conflict": "Data conflict — refresh the page and retry",
+    "upstream_unavailable": "External service (maps/place search) isn't responding — try later",
+    "unknown_category": "Unknown place category",
+    "invalid_date_range": "End date is before start date",
+    "trip_too_long": "Trip is longer than 60 days",
+    "booking_currency_mismatch": "Booking currency doesn't match trip currency",
+    "currency_mismatch": "Currency doesn't match trip currency",
+    "plan_discarded": "This plan was discarded — ask Meili for a new one",
+    "plan_already_applied": "Plan already applied",
+    "trip_already_exists": "A trip for this conversation already exists",
+    "no_trip_in_conversation": "Create the trip first",
+    "place_not_found": "Place not found",
+    "day_not_found": "Day not found",
+    "stop_not_found": "Stop not found",
+    "apply_failed": "Couldn't apply the plan",
+    "place_not_yours": "This place can't be edited",
+    "place_out_of_coverage": "The place is outside the Kaliningrad region — routes can't be built there",
+    "too_many_login_attempts": "Too many failed sign-in attempts — try again in 15 minutes",
+    "crashTitle": "Something broke on this page",
+    "crashText": "Your data is safe on the server. Reload the page or go back to your trips.",
+    "reload": "Reload",
+    "turn_in_progress": "Meili is still answering the previous message",
+    "oauth_failed": "Google sign-in didn't complete — please try again"
   },
   "meili": {
     "title": "Meili",
@@ -336,7 +393,17 @@
     "containsEstimates": "contains estimates",
     "planWith": "Plan with Meili",
     "consult": "Ask Meili for advice",
-    "draftPrefix": "I want to plan a trip:"
+    "draftPrefix": "I want to plan a trip:",
+    "rateLimited": "Too many requests to the model — wait a minute and try again",
+    "providerError": "The model is temporarily unavailable, please try again",
+    "timeout": "The model is taking too long — try a shorter question",
+    "providerAuth": "Assistant unavailable: the AI provider rejected access to the model (key or plan). Retrying will not help until it is reconfigured",
+    "turnInProgress": "Meili is still answering the previous message — please wait",
+    "messageInvalid": "The message is empty or too long (up to 4000 characters)",
+    "starter1": "What to see with a child on day one?",
+    "starter2": "How long does the day take on foot?",
+    "starter3": "Find a café near the first stop",
+    "startersLabel": "You could start with"
   },
   "planner": {
     "day": {
@@ -347,16 +414,76 @@
     "leg": {
       "walking": "on foot",
       "driving": "by car",
-      "transit": "by transit"
+      "transit": "by transit",
+      "unavailable": "The day route can't be built right now",
+      "change": "Change mode"
     },
     "stop": {
       "onSite": "{{duration}} on site",
-      "editDuration": "Change time on site"
+      "editDuration": "Change time on site",
+      "priority": "Priority",
+      "details": "Details and booking",
+      "more": "Place actions"
     },
     "error": {
       "rename": "Could not rename the day",
       "transport": "Could not change transport",
       "duration": "Could not change the time"
+    },
+    "searchForDay": "Find a place for day {{num}}",
+    "startAt": "Start at {{time}}",
+    "finishAround": "Finish around {{time}}",
+    "finish": "Finish",
+    "placeNotSet": "place not set",
+    "setPlace": "Set place",
+    "changePlace": "Change",
+    "savedPlaces": "Places in this trip",
+    "onTheWay": "on the way",
+    "noRoute": "no route yet",
+    "noPrices": "no prices yet",
+    "withoutPrice": "+ {{count}} unpriced",
+    "allPriced": "all priced",
+    "allShort": "All",
+    "daysLabel": "Trip days",
+    "overviewHint": "All routes on the map. Pick a day to edit it.",
+    "optimizeMode": "Optimization mode",
+    "timeBudget": "Time budget",
+    "priority": {
+      "p0": "Normal",
+      "p1": "Important",
+      "p2": "Must-visit",
+      "tag1": "important",
+      "tag2": "must-visit"
+    },
+    "map": {
+      "gestureWindows": "Use Ctrl + scroll to zoom the map",
+      "gestureMac": "Use ⌘ + scroll to zoom the map",
+      "gestureMobile": "Use two fingers to move the map"
     }
+  },
+  "fields": {
+    "email": "email",
+    "password": "password",
+    "new_password": "new password",
+    "name": "name",
+    "code": "code",
+    "title": "title",
+    "city": "city",
+    "country": "country",
+    "start_date": "start date",
+    "end_date": "end date",
+    "budget_total": "budget",
+    "currency": "currency",
+    "adults": "adults",
+    "children": "children",
+    "amount": "amount",
+    "duration_minutes": "time on site",
+    "estimated_cost": "cost",
+    "home_city": "home city",
+    "content": "message"
+  },
+  "stop": {
+    "delete": "Remove from route",
+    "deleteConfirm": "Remove this place from the route?"
   }
 }

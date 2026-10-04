@@ -11,7 +11,7 @@ from app.models.place import Place
 from app.models.user import User
 from app.schemas.places import PlaceCreate, PlaceResponse, PlaceUpdate, VisitedPlaceRequest
 from app.services.places import create_place, place_to_dict
-from app.services.overpass import search_places_overpass
+from app.services.overpass import CATEGORY_TO_OSM, search_places_overpass
 from app.models.social import UserVisitedPlace
 
 
@@ -42,15 +42,23 @@ async def update_place(
     place_id: UUID,
     data: PlaceUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     # ТЗ-E: ручное проставление цен (реальный сид 2GIS — отдельная задача).
     # Авто-оценки существующих стопов НЕ пересчитываются — для этого есть
     # POST /trips/{id}/recompute-estimates
+    #
+    # Ревью (broken access control): places — ОБЩИЙ каталог, а ручка правила
+    # любое место любым залогиненным юзером. Через неё чужие цены улетали в
+    # чужой бюджет (recompute считает по place), а описание подменялось всем.
+    # Правим только свои места (created_by); сидовые POI (created_by IS NULL)
+    # правит сид-скрипт, до появления админ-роли.
     result = await db.execute(select(Place).where(Place.id == place_id))
     place = result.scalar_one_or_none()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
+    if place.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="place_not_yours")
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(place, field, value)
     await db.commit()
@@ -76,14 +84,21 @@ async def search_places(
 
 @router.get("/search/nearby", response_model=list[dict])
 async def search_nearby(
-    lat: float = Query(...),
-    lon: float = Query(...),
-    radius: int = Query(1000), # дефолт 1 км
+    # QA: без границ lat=1e308 уходил в Overpass и возвращался 400 → 500 у нас
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    # Ревью: кап радиуса — Overpass просит щадить, а без границы один
+    # запрос тянул POI по половине области (и грел наш кэш мусором)
+    radius: int = Query(1000, ge=1, le=50_000), # дефолт 1 км
     category: str = Query("landmark"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     # поиск мест рядом с координатами через Overpass api кэш хранится 24ч в Redis
+    # QA: неизвестная категория молча превращалась в landmark, но ключ кэша
+    # брался по сырой строке — любой мусор плодил копии одного ответа в Redis
+    if category not in CATEGORY_TO_OSM:
+        raise HTTPException(status_code=422, detail="unknown_category")
     places = await search_places_overpass(lat, lon, radius, category)
     return places
 
@@ -94,6 +109,12 @@ async def mark_visited(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Ревью: без этой проверки несуществующий place_id ронял FK-констрейнт
+    # уже внутри INSERT — наружу уходило 500 вместо честного 404
+    exists = await db.execute(select(Place.id).where(Place.id == place_id))
+    if exists.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Place not found")
+
     mark = pg_insert(UserVisitedPlace).values(
         user_id=current_user.id, place_id=place_id, rating=data.rating,
         comment=data.comment, visited_at=datetime.utcnow()

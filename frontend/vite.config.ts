@@ -19,8 +19,8 @@ export default defineConfig({
         start_url: '/',
         display: 'standalone',
         // зеркала токенов --accent и --surface (манифест не читает CSS)
-        theme_color: '#B04A24',
-        background_color: '#F3EFE3',
+        theme_color: '#3D7550',
+        background_color: '#FCFAF5',
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },

@@ -1,4 +1,6 @@
-/* Базовые стили Hermod — все цвета только через токены (src/styles/tokens.css) */
+/* Базовые стили Hermod — все цвета только через токены (src/styles/tokens.css).
+   Редизайн «Лес»: общие классы ниже — единый словарь кнопок/полей/сегментов,
+   чтобы «Сохранить» выглядело одинаково на любом экране. */
 
 * {
   margin: 0;
@@ -18,8 +20,8 @@ body {
   font-variant-numeric: tabular-nums;
   font-size: 15px;
   line-height: 1.45;
-  color: var(--text-primary);
-  background: var(--surface);
+  color: var(--ink);
+  background: var(--page);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -31,8 +33,10 @@ body {
 }
 
 h1, h2, h3, h4 {
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 p { margin: 0; }
@@ -40,63 +44,339 @@ p { margin: 0; }
 input, select, button, textarea {
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
+  color: inherit;
 }
 
-/* --- Планировщик (S7 мобильная адаптация, S10 токены) --- */
-.planner-layout {
-  display: flex;
+::selection { background: var(--moss-wash); color: var(--moss-2); }
+:focus-visible { outline: 2.5px solid var(--moss); outline-offset: 2px; }
+* { scrollbar-width: thin; scrollbar-color: var(--birch-2) transparent; }
+a { color: var(--moss); text-underline-offset: 3px; }
+
+svg.lucide { flex-shrink: 0; }
+
+/* ---------- кнопки ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 18px; border: 0; border-radius: var(--radius);
+  font-size: 15px; font-weight: 600; line-height: 1; cursor: pointer;
+  background: var(--birch); color: var(--ink);
+  transition: background-color .15s ease-out, color .15s ease-out;
+  white-space: nowrap; text-decoration: none;
+}
+.btn:hover { background: var(--birch-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn svg { width: 18px; height: 18px; }
+.btn-primary { background: var(--walnut); color: var(--raised); }
+.btn-primary:hover { background: var(--walnut-2); }
+.btn-accent { background: var(--moss); color: var(--raised); }
+.btn-accent:hover { background: var(--moss-2); }
+.btn-ghost { background: transparent; color: var(--ink-2); }
+.btn-ghost:hover { background: var(--birch); color: var(--ink); }
+.btn-danger { background: transparent; color: var(--danger); }
+.btn-danger:hover { background: var(--danger-wash); }
+.btn-danger-solid { background: var(--danger); color: var(--raised); }
+.btn-danger-solid:hover { filter: brightness(.92); background: var(--danger); }
+.btn-sm { height: 34px; padding: 0 12px; font-size: 14px; gap: 6px; border-radius: var(--radius-sm); }
+.btn-sm svg { width: 16px; height: 16px; }
+.btn-lg { height: 52px; font-size: 16px; border-radius: var(--radius-lg); }
+.btn-block { width: 100%; }
+.btn-pill { border-radius: 999px; }
+
+.icon-btn {
+  width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 50%;
+  display: inline-grid; place-items: center; cursor: pointer;
+  background: transparent; color: var(--ink-2);
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.icon-btn:hover { background: var(--birch); color: var(--ink); }
+.icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+.icon-btn svg { width: 19px; height: 19px; }
+.icon-btn.filled { background: var(--birch); color: var(--ink); }
+.icon-btn.filled:hover { background: var(--birch-2); }
+.icon-btn.sm { width: 32px; height: 32px; }
+.icon-btn.sm svg { width: 16px; height: 16px; }
+
+.link-btn {
+  background: none; border: 0; padding: 4px 2px; cursor: pointer;
+  color: var(--moss); font-weight: 600; font-size: 14px;
+}
+.link-btn:hover { color: var(--moss-2); text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:disabled { color: var(--ink-3); cursor: not-allowed; text-decoration: none; }
+
+/* ---------- поля ---------- */
+.input, .select, .textarea {
+  width: 100%; height: 44px; padding: 0 14px;
+  border: 1px solid transparent; border-radius: var(--radius);
+  background-color: var(--birch); color: var(--ink); font-size: 15px;
+  transition: border-color .15s ease-out, box-shadow .15s ease-out, background-color .15s ease-out;
+}
+.input:hover, .select:hover, .textarea:hover { background-color: var(--birch-2); }
+.on-surface .input, .on-surface .select, .on-surface .textarea { background-color: var(--raised); }
+.textarea { height: auto; min-height: 88px; padding: 10px 14px; resize: vertical; line-height: 1.45; }
+.select { padding-right: 34px; appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235F6F64' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; }
+.input::placeholder, .textarea::placeholder { color: var(--ink-3); }
+.input:focus, .select:focus, .textarea:focus { outline: none; background-color: var(--raised); border-color: var(--moss); box-shadow: 0 0 0 3px var(--moss-wash); }
+.input:disabled, .select:disabled, .textarea:disabled { background-color: var(--surface); color: var(--ink-3); }
+.input-sm { height: 34px; font-size: 14px; padding: 0 10px; border-radius: var(--radius-sm); }
+.select.input-sm { padding-right: 32px; background-position: right 10px center; }
+
+.field { display: grid; gap: 6px; min-width: 0; }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.input[type="date"] { min-width: 0; }
+.field-label { font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.field-hint { font-size: 13px; color: var(--ink-3); }
+
+/* поиск с иконкой */
+.searchbox {
+  display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px;
+  background: var(--birch); border-radius: var(--radius-lg); color: var(--ink-3);
+  transition: box-shadow .15s ease-out, background-color .15s ease-out;
+}
+.searchbox:focus-within { background: var(--raised); box-shadow: 0 0 0 1px var(--moss), 0 0 0 4px var(--moss-wash); }
+.searchbox input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 15px; color: var(--ink); }
+.searchbox input::placeholder { color: var(--ink-3); }
+.searchbox svg { width: 18px; height: 18px; }
+
+/* ---------- сегменты и чипы ---------- */
+.seg { display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; background: var(--birch); border-radius: var(--radius-lg); padding: 4px; }
+.seg > button {
+  border: 0; background: transparent; cursor: pointer; padding: 9px 6px;
+  border-radius: calc(var(--radius-lg) - 4px); font-size: 14.5px; font-weight: 600; color: var(--ink-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.seg > button:hover { color: var(--ink); }
+.seg > button[aria-pressed="true"], .seg > button[aria-selected="true"] { background: var(--raised); color: var(--ink); box-shadow: var(--shadow-1); }
+.seg.sm > button { padding: 6px 6px; font-size: 13.5px; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px;
+  border: 0; border-radius: 999px; cursor: pointer; font-size: 14px; font-weight: 600;
+  background: var(--birch); color: var(--ink);
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.chip:hover { background: var(--birch-2); }
+.chip[aria-pressed="true"] { background: var(--moss); color: var(--raised); }
+
+/* кнопки-строки внутри списков: перегон, правка «на месте» */
+.leg-btn {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-2);
+  padding: 4px 10px; margin-left: -10px; border-radius: 999px; background: none; border: 0; cursor: pointer;
+  transition: background-color .15s ease-out, color .15s ease-out;
+}
+.leg-btn:hover, .leg-btn[aria-expanded="true"] { background: var(--birch); color: var(--ink); }
+.inline-edit {
+  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline dotted transparent; text-underline-offset: 3px;
+}
+.inline-edit:hover { color: var(--ink); text-decoration-color: var(--ink-3); }
+
+/* строки дня (components/trip/DayPlan) */
+.stop-row { transition: background-color .15s ease-out; }
+.stop-row:hover { background: var(--surface); }
+.grip {
+  width: 20px; height: 32px; display: grid; place-items: center; border: 0; padding: 0;
+  background: none; color: var(--ink-3); cursor: grab; touch-action: none; border-radius: 6px;
+  opacity: .5; transition: opacity .15s ease-out;
+}
+.stop-row:hover .grip, .grip:focus-visible { opacity: 1; }
+@media (hover: none) { .grip { opacity: .8; } }
+.stop-name {
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+  font-size: 16.5px; font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; color: var(--ink);
+}
+.stop-name:hover { text-decoration: underline; text-decoration-color: var(--birch-2); text-underline-offset: 4px; }
+.dayname {
+  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: text; text-align: left;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dayname:disabled { cursor: default; }
+.dayname:not(:disabled):hover { text-decoration: underline dotted; text-underline-offset: 4px; }
+.dayname-input {
+  flex: 1; min-width: 0; font: inherit; color: inherit; border: 0; border-radius: 8px;
+  background: rgba(255, 255, 255, .16); padding: 2px 8px; outline: 2px solid rgba(255, 255, 255, .55);
+}
+.dayname-input::placeholder { color: rgba(255, 253, 248, .7); }
+
+/* переключатель дней — образцы */
+.swatches { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px; scrollbar-width: none; }
+.swatch {
+  flex: 1 1 0; min-width: 66px; max-width: 132px; border: 0; cursor: pointer; text-align: left; line-height: 1.1;
+  border-radius: var(--radius-lg); padding: 10px 12px 12px; background: var(--birch); color: var(--ink);
+  transition: background-color .18s ease-out, color .18s ease-out; touch-action: pan-x;
+}
+.swatch small { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.swatch b { font-size: 24px; font-weight: 750; letter-spacing: -0.02em; }
+.swatch:hover { background: var(--birch-2); }
+.swatch[aria-pressed="true"] { background: var(--moss); color: var(--raised); }
+.swatch[aria-pressed="true"] small { color: rgba(255, 253, 248, .88); }
+
+/* выбор партнёра брони */
+.provider-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
+  padding: 11px 14px; border: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); cursor: pointer;
+  transition: background-color .15s ease-out;
+}
+.provider-btn:hover { background: var(--birch); }
+.provider-btn:disabled { cursor: wait; opacity: .6; }
+
+/* модалки: затемнение хвоей + лист */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 1000; padding: 16px;
+  background: rgba(20, 34, 27, .48);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-sheet {
+  background: var(--page); border-radius: var(--radius-xl); width: 100%; max-width: 520px;
+  max-height: calc(100dvh - 32px); overflow: hidden auto; padding: 24px; box-shadow: var(--shadow-2);
+}
+@media (max-width: 768px) {
+  .modal-scrim { align-items: flex-end; padding: 0; }
+  .modal-sheet { border-radius: var(--radius-xl) var(--radius-xl) 0 0; max-height: 94dvh; padding: 20px 16px max(20px, env(safe-area-inset-bottom)); }
+}
+
+/* переключатель (checkbox role=switch) */
+.switch {
+  appearance: none; flex-shrink: 0; width: 46px; height: 28px; border-radius: 999px; cursor: pointer; position: relative;
+  background: var(--birch-2); transition: background-color .18s ease-out;
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--raised); box-shadow: 0 1px 3px rgba(31, 58, 46, .25); transition: transform .18s ease-out;
+}
+.switch:checked { background: var(--moss); }
+.switch:checked::after { transform: translateX(18px); }
+
+/* ---------- текст ---------- */
+.muted { color: var(--ink-3); }
+.error-text { color: var(--danger); font-size: 13.5px; }
+.ok-text { color: var(--ok); }
+.section-title { font-size: 19px; font-weight: 700; letter-spacing: -0.015em; }
+
+/* ---------- всплывающее меню (ui/Menu): fixed, чтобы не резалось overflow ---------- */
+.menu {
+  position: fixed; z-index: 50; min-width: 200px; max-width: 280px; padding: 6px;
+  background: var(--raised); border-radius: var(--radius-lg); box-shadow: var(--shadow-2);
+  border: 1px solid var(--line);
+}
+.menu-label { font-size: 12.5px; color: var(--ink-3); padding: 8px 10px 4px; }
+.menu-item {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  border: 0; background: transparent; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 14.5px; color: var(--ink); text-align: left;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--birch); outline: none; }
+.menu-item[aria-checked="true"] { font-weight: 650; color: var(--moss-2); }
+.menu-item svg { width: 17px; height: 17px; color: var(--ink-3); }
+.menu-item[aria-checked="true"] svg { color: var(--moss); }
+.menu-sep { height: 1px; background: var(--line); margin: 5px 4px; }
+
+/* ---------- планировщик (S7 мобильная адаптация, редизайн «Лес») ----------
+   Десктоп: панель слева (шапка + тело), карта справа в скруглённой рамке на
+   дубовой подложке. Телефон: одна колонка, страница скроллится целиком —
+   шапка, карта 300px, тело. Карта одна и та же (один инстанс MapLibre). */
+.planner {
+  display: grid;
+  grid-template-columns: var(--panel-w, 460px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "head map" "body map";
   width: 100vw;
   height: 100vh;
-  height: 100dvh; /* мобильные браузеры: без прыжков от адресной строки */
+  height: 100dvh;
+  background: var(--oak);
 }
-.planner-panel {
-  /* S11: ширина через --panel-w (дефолт 400), задаётся инлайном при ресайзе;
-     var, а не прямой width — чтобы мобильный override width:100% (ниже) выиграл */
-  width: var(--panel-w, 400px);
-  flex-shrink: 0;
-  background: var(--surface-raised);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.planner-map {
-  flex: 1;
-  min-height: 0;
-}
+.planner-head { grid-area: head; background: var(--page); padding: 20px 24px 0; min-width: 0; }
+.planner-body { grid-area: body; background: var(--page); overflow-y: auto; min-height: 0; min-width: 0; }
+.planner-mapcell { grid-area: map; position: relative; padding: 16px; min-width: 0; }
+.planner-mapframe { position: relative; width: 100%; height: 100%; border-radius: var(--radius-xl); overflow: hidden; background: var(--map-land); }
+.planner-map { width: 100%; height: 100%; }  /* maplibre ставит контейнеру position: relative */
 /* S11: полоса ресайза между панелью и картой (десктоп) */
 .panel-resize-handle {
-  flex-shrink: 0;
-  width: 6px;
-  cursor: col-resize;
-  background: transparent;
-  border-right: 1px solid var(--border);
-  /* «мёртвая зона»: полоса шире визуальной линии, кнопки под неё не залезают */
-  margin-left: -3px;
-  z-index: 3;
-  transition: background 0.15s;
+  grid-column: 1; grid-row: 1 / 3; justify-self: end; position: relative; z-index: 3;
+  width: 8px; margin-right: -4px; cursor: col-resize; background: transparent;
+  transition: background-color .15s;
 }
 .panel-resize-handle:hover,
-.panel-resize-handle.dragging {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
+.panel-resize-handle.dragging { background: color-mix(in srgb, var(--moss) 35%, transparent); }
+
+.planner .maplibregl-ctrl-group { border-radius: 14px; box-shadow: var(--shadow-1); overflow: hidden; }
+.planner .maplibregl-ctrl-group button { width: 36px; height: 36px; }
+.maplibregl-popup-content { border-radius: var(--radius); box-shadow: var(--shadow-2); font-family: var(--font-sans); color: var(--ink); }
+
+/* метки на карте — дерево; обязательные крупнее */
+.map-mark {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--wood); color: var(--raised);
+  border: 3px solid var(--raised); display: grid; place-items: center; cursor: pointer;
+  font: 700 13.5px var(--font-sans); box-shadow: 0 2px 8px rgba(31, 58, 46, .28);
+}
+.map-mark.must { width: 38px; height: 38px; font-size: 15px; }
+.map-mark.dropped { width: 26px; height: 26px; background: var(--birch-2); color: var(--ink-3); opacity: .8; }
+.map-mark.depot { background: var(--raised); color: var(--wood); border-color: var(--wood); }
+.map-mark.depot svg { width: 16px; height: 16px; }
+
+@media (max-width: 768px) {
+  .planner {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas: "head" "map" "body";
+    height: auto; min-height: 100dvh; background: var(--page);
+    align-content: start;   /* иначе auto-строки растягиваются до высоты экрана */
+  }
+  .planner.is-chat {
+    height: 100dvh; min-height: 0; grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "head" "body";
+  }
+  .planner.is-chat .planner-body { overflow: hidden; }
+  .planner-head { padding: 12px 16px 0; padding-top: max(12px, env(safe-area-inset-top)); }
+  .planner-body { overflow: visible; }
+  .planner-mapcell { padding: 14px 16px 0; height: 314px; }
+  .planner-mapcell.hidden-mobile { display: none; }
+  /* S11: на мобилке панель во всю ширину — ресайз не нужен */
+  .panel-resize-handle { display: none; }
+}
+
+/* вход: одна спокойная колонка на дубовой подложке */
+.auth { min-height: 100dvh; display: grid; place-items: center; padding: 72px 16px 48px; position: relative; background: var(--oak); }
+.auth-col {
+  width: 100%; max-width: 420px; display: grid; justify-items: center; gap: 14px;
+  background: var(--page); border-radius: var(--radius-xl); padding: 36px 32px 28px; box-shadow: var(--shadow-2);
+}
+.auth-title { font-size: 26px; letter-spacing: -0.025em; margin-top: 6px; }
+@media (max-width: 520px) {
+  .auth { background: var(--page); place-items: start center; }
+  .auth-col { background: none; box-shadow: none; padding: 24px 0 0; }
 }
 
 /* --- Discover (S17): свои поездки сеткой --- */
 .trip-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
+/* плитка поездки: без рамки, мягкая тень, удаление поверх */
+.trip-tile { position: relative; background: var(--raised); border-radius: var(--radius-xl); box-shadow: var(--shadow-1); transition: box-shadow .18s ease-out, transform .18s ease-out; }
+.trip-tile:hover { box-shadow: var(--shadow-2); }
+.trip-tile-open {
+  width: 100%; min-height: 148px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 16px 18px; border: 0; background: none; cursor: pointer; text-align: left; color: var(--ink); border-radius: inherit;
+}
+.trip-tile-del { position: absolute; top: 10px; right: 10px; color: var(--ink-3); }
+.trip-tile-del:hover { color: var(--danger); background: var(--danger-wash); }
+
 /* --- Профиль (S16 §2): строки маршрутов и сетка рекомендаций --- */
+.trip-row { background: transparent; color: var(--ink); transition: background-color .15s ease-out; }
+.trip-row:hover { background: var(--surface); }
 .trip-row:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2.5px solid var(--moss);
   outline-offset: -2px;
 }
 .recommended-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 16px;
 }
 @media (max-width: 1024px) {
   .recommended-grid { grid-template-columns: repeat(2, 1fr); }
@@ -109,26 +389,32 @@ input, select, button, textarea {
   .trip-row-budget-inline { display: inline; }
 }
 
-/* --- Мобильная пилюля переключателя дней (S10, ТЗ Meili зад. 6) --- */
-.day-pill {
-  display: none;
-}
+/* общая страница-колонка (Мои поездки, Профиль, Настройки) */
+.page { width: 100%; max-width: 860px; margin: 0 auto; padding: 28px 24px 64px; }
+.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+.page-head h1 { font-size: 28px; line-height: 1.1; letter-spacing: -0.025em; margin-right: auto; }
+@media (max-width: 420px) { .hide-narrow { display: none; } }
 @media (max-width: 768px) {
-  .planner-layout { flex-direction: column-reverse; }
-  .planner-panel {
-    width: 100%;
-    height: 52dvh;
-    border-right: none;
-    border-top: 1px solid var(--border);
-  }
-  /* S11: на мобилке панель во всю ширину снизу — ресайз не нужен */
-  .panel-resize-handle { display: none; }
-  .discover-page { padding: 16px !important; }
-  .day-pill {
-    display: block;
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 6;
-  }
+  .page { padding: 16px 16px 48px; }
+  .page-head { margin-bottom: 20px; flex-wrap: wrap; }
+  .page-head h1 { font-size: 24px; }
+  .page-head .page-cta { order: 10; flex-basis: 100%; }
+}
+
+/* чат Meili внутри панели (на телефоне .planner.is-chat держит его в экране) */
+.planner-chat { height: 100%; }
+@media (max-width: 768px) {
+  .planner-chat > div { padding: 12px 16px max(14px, env(safe-area-inset-bottom)) !important; }
+  .planner-pad { padding: 16px 16px 40px !important; }
+}
+.overview-row {
+  width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) 18px; align-items: center; gap: 14px;
+  padding: 12px 10px; border: 0; background: none; border-radius: var(--radius-lg); cursor: pointer; text-align: left; color: var(--ink);
+}
+.overview-row:hover { background: var(--surface); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
 }

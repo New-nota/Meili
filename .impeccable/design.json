@@ -1,0 +1,815 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T17:26:20.202Z",
+  "title": "Design System: Hermod",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Хвоя",
+        "canonical": "#1F3A2E",
+        "tonalRamp": [
+          "#030E08",
+          "#182921",
+          "#32483D",
+          "#4F685C",
+          "#6D8A7C",
+          "#91AC9F",
+          "#B7D0C4",
+          "#DFF5EA"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Серая хвоя",
+        "canonical": "#4B5D52",
+        "tonalRamp": [
+          "#060D09",
+          "#1D2821",
+          "#38463D",
+          "#55665C",
+          "#75887C",
+          "#99AA9F",
+          "#BECEC4",
+          "#E4F3EA"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Лишайник",
+        "canonical": "#5F6F64",
+        "tonalRamp": [
+          "#060D08",
+          "#1E2821",
+          "#3A453D",
+          "#57655C",
+          "#77877C",
+          "#9AAA9F",
+          "#BFCDC4",
+          "#E6F2E9"
+        ]
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "Тёплый белый",
+        "canonical": "#FCFAF5",
+        "tonalRamp": [
+          "#0C0B09",
+          "#262522",
+          "#43423F",
+          "#63615D",
+          "#84827E",
+          "#A6A5A1",
+          "#CAC9C5",
+          "#F0EEEB"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Свежий лист",
+        "canonical": "#FFFDF8",
+        "tonalRamp": [
+          "#0C0B09",
+          "#262522",
+          "#43423F",
+          "#63615D",
+          "#84827E",
+          "#A6A5A1",
+          "#CAC9C5",
+          "#F0EEEB"
+        ]
+      },
+      "birch": {
+        "role": "neutral",
+        "displayName": "Берёза",
+        "canonical": "#EFE3CE",
+        "tonalRamp": [
+          "#0F0A04",
+          "#2A2419",
+          "#494133",
+          "#696050",
+          "#8C816E",
+          "#AEA492",
+          "#D1C8B8",
+          "#F6EDDF"
+        ]
+      },
+      "birch-2": {
+        "role": "neutral",
+        "displayName": "Светлый дуб",
+        "canonical": "#E3D0AF",
+        "tonalRamp": [
+          "#110A00",
+          "#2D2311",
+          "#4D402A",
+          "#6E5F44",
+          "#918061",
+          "#B3A387",
+          "#D6C7AE",
+          "#FAEDD6"
+        ]
+      },
+      "oak": {
+        "role": "tertiary",
+        "displayName": "Дуб",
+        "canonical": "#D9C29C",
+        "tonalRamp": [
+          "#120900",
+          "#2F230D",
+          "#4F3F25",
+          "#715E3F",
+          "#947F5B",
+          "#B6A281",
+          "#D9C7A9",
+          "#FDECD2"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Волосок",
+        "canonical": "#E4D8C2",
+        "tonalRamp": [
+          "#0F0A03",
+          "#2A2418",
+          "#494132",
+          "#69604F",
+          "#8C816D",
+          "#AEA491",
+          "#D1C8B7",
+          "#F6EDDE"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Льняная поверхность",
+        "canonical": "#F4ECDD",
+        "tonalRamp": [
+          "#0E0B06",
+          "#29251D",
+          "#464138",
+          "#676055",
+          "#898174",
+          "#ABA498",
+          "#CEC8BD",
+          "#F3EEE4"
+        ]
+      },
+      "moss": {
+        "role": "primary",
+        "displayName": "Мох",
+        "canonical": "#3D7550",
+        "tonalRamp": [
+          "#001103",
+          "#082D17",
+          "#224C31",
+          "#3C6E4D",
+          "#59916B",
+          "#80B38F",
+          "#A9D6B5",
+          "#D2FADD"
+        ]
+      },
+      "moss-2": {
+        "role": "primary",
+        "displayName": "Тёмный мох",
+        "canonical": "#2F6040",
+        "tonalRamp": [
+          "#001003",
+          "#0D2C19",
+          "#264B33",
+          "#416D4F",
+          "#5E906D",
+          "#85B292",
+          "#ACD5B7",
+          "#D5F9DF"
+        ]
+      },
+      "moss-wash": {
+        "role": "primary",
+        "displayName": "Моховая дымка",
+        "canonical": "#E1ECE3",
+        "tonalRamp": [
+          "#080C09",
+          "#212722",
+          "#3D443E",
+          "#5B645D",
+          "#7B857D",
+          "#9FA8A0",
+          "#C3CCC5",
+          "#E9F1EB"
+        ]
+      },
+      "walnut": {
+        "role": "secondary",
+        "displayName": "Орех",
+        "canonical": "#5E3F28",
+        "tonalRamp": [
+          "#150701",
+          "#332011",
+          "#543C2A",
+          "#785A45",
+          "#9D7A62",
+          "#BE9E87",
+          "#E0C3AE",
+          "#FFE9D6"
+        ]
+      },
+      "walnut-2": {
+        "role": "secondary",
+        "displayName": "Тёмный орех",
+        "canonical": "#4A311F",
+        "tonalRamp": [
+          "#140802",
+          "#312115",
+          "#523D2F",
+          "#745B4A",
+          "#997C68",
+          "#BA9F8C",
+          "#DDC4B3",
+          "#FFEADA"
+        ]
+      },
+      "wood": {
+        "role": "tertiary",
+        "displayName": "Дерево",
+        "canonical": "#8F6236",
+        "tonalRamp": [
+          "#190500",
+          "#381E01",
+          "#5B3A18",
+          "#7F5731",
+          "#A6774C",
+          "#C79B74",
+          "#E8C19D",
+          "#FFE7C7"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Хвойный успех",
+        "canonical": "#3C7A4A",
+        "tonalRamp": [
+          "#001100",
+          "#042E11",
+          "#1E4D2A",
+          "#396F45",
+          "#559362",
+          "#7DB587",
+          "#A6D8AE",
+          "#D0FCD6"
+        ]
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Брусника",
+        "canonical": "#A8384A",
+        "tonalRamp": [
+          "#250002",
+          "#4B0215",
+          "#731F2E",
+          "#9E3A49",
+          "#CA5866",
+          "#EB818B",
+          "#FFAAB1",
+          "#FFD3D9"
+        ]
+      },
+      "danger-wash": {
+        "role": "status",
+        "displayName": "Брусничная дымка",
+        "canonical": "#F7E4E7",
+        "tonalRamp": [
+          "#10090A",
+          "#2C2224",
+          "#4A3E40",
+          "#6B5D5F",
+          "#8E7D80",
+          "#B0A0A3",
+          "#D3C5C7",
+          "#F8EBED"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Морошка",
+        "canonical": "#9A6A12",
+        "tonalRamp": [
+          "#1A0500",
+          "#3A1D00",
+          "#5D3A00",
+          "#825806",
+          "#A87828",
+          "#C99C5A",
+          "#EBC287",
+          "#FFE8B5"
+        ]
+      },
+      "map-land": {
+        "role": "map",
+        "displayName": "Суша карты",
+        "canonical": "#F4EEE2",
+        "tonalRamp": [
+          "#0D0B07",
+          "#28251F",
+          "#45423A",
+          "#656157",
+          "#878277",
+          "#A9A49A",
+          "#CDC9BF",
+          "#F2EEE6"
+        ]
+      },
+      "map-water": {
+        "role": "map",
+        "displayName": "Вода карты",
+        "canonical": "#C2D5D0",
+        "tonalRamp": [
+          "#060D0B",
+          "#1D2825",
+          "#384542",
+          "#566561",
+          "#758782",
+          "#99A9A5",
+          "#BECDC9",
+          "#E5F2EE"
+        ]
+      },
+      "map-green": {
+        "role": "map",
+        "displayName": "Зелень карты",
+        "canonical": "#D3DEC3",
+        "tonalRamp": [
+          "#090D04",
+          "#222719",
+          "#3E4533",
+          "#5C6550",
+          "#7D876E",
+          "#A0A992",
+          "#C4CDB8",
+          "#EAF2DF"
+        ]
+      },
+      "map-road": {
+        "role": "map",
+        "displayName": "Дорога карты",
+        "canonical": "#FFFDF8",
+        "tonalRamp": [
+          "#0C0B09",
+          "#262522",
+          "#43423F",
+          "#63615D",
+          "#84827E",
+          "#A6A5A1",
+          "#CAC9C5",
+          "#F0EEEB"
+        ]
+      },
+      "day-1": {
+        "role": "day",
+        "displayName": "День 1 — Дерево",
+        "canonical": "#8F6236",
+        "tonalRamp": [
+          "#190500",
+          "#381E01",
+          "#5B3A18",
+          "#7F5731",
+          "#A6774C",
+          "#C79B74",
+          "#E8C19D",
+          "#FFE7C7"
+        ]
+      },
+      "day-2": {
+        "role": "day",
+        "displayName": "День 2 — Фьорд",
+        "canonical": "#3F6F8C",
+        "tonalRamp": [
+          "#000D1A",
+          "#08283A",
+          "#22465C",
+          "#3C6781",
+          "#5989A7",
+          "#80ACC7",
+          "#A8CFE9",
+          "#D1F4FF"
+        ]
+      },
+      "day-3": {
+        "role": "day",
+        "displayName": "День 3 — Брусника",
+        "canonical": "#A8384A",
+        "tonalRamp": [
+          "#250002",
+          "#4B0215",
+          "#731F2E",
+          "#9E3A49",
+          "#CA5866",
+          "#EB818B",
+          "#FFAAB1",
+          "#FFD3D9"
+        ]
+      },
+      "day-4": {
+        "role": "day",
+        "displayName": "День 4 — Морошка",
+        "canonical": "#C98A2B",
+        "tonalRamp": [
+          "#1D0200",
+          "#3E1A00",
+          "#623600",
+          "#895400",
+          "#B17402",
+          "#D1994B",
+          "#F2BF7C",
+          "#FFE6AC"
+        ]
+      },
+      "day-5": {
+        "role": "day",
+        "displayName": "День 5 — Мох",
+        "canonical": "#3D7550",
+        "tonalRamp": [
+          "#001103",
+          "#082D17",
+          "#224C31",
+          "#3C6E4D",
+          "#59916B",
+          "#80B38F",
+          "#A9D6B5",
+          "#D2FADD"
+        ]
+      },
+      "day-6": {
+        "role": "day",
+        "displayName": "День 6 — Черника",
+        "canonical": "#7A5C8E",
+        "tonalRamp": [
+          "#12041A",
+          "#2E1C3A",
+          "#4E375C",
+          "#6F5581",
+          "#9374A7",
+          "#B498C8",
+          "#D7BEE9",
+          "#FBE4FF"
+        ]
+      },
+      "day-7": {
+        "role": "day",
+        "displayName": "День 7 — Олива",
+        "canonical": "#6B7F3A",
+        "tonalRamp": [
+          "#070E00",
+          "#1F2A00",
+          "#3A4813",
+          "#58692C",
+          "#778C47",
+          "#9BAE71",
+          "#C0D29A",
+          "#E6F7C5"
+        ]
+      },
+      "day-8": {
+        "role": "day",
+        "displayName": "День 8 — Ржавчина",
+        "canonical": "#B0603A",
+        "tonalRamp": [
+          "#200000",
+          "#431400",
+          "#692F11",
+          "#914B2A",
+          "#BA6A44",
+          "#DB906E",
+          "#FCB798",
+          "#FFDFC3"
+        ]
+      },
+      "day-9": {
+        "role": "day",
+        "displayName": "День 9 — Залив",
+        "canonical": "#2F7F7A",
+        "tonalRamp": [
+          "#00110F",
+          "#002D2B",
+          "#094C49",
+          "#276E6A",
+          "#44918C",
+          "#70B3AE",
+          "#9BD6D1",
+          "#C7FBF6"
+        ]
+      },
+      "day-10": {
+        "role": "day",
+        "displayName": "День 10 — Сухая трава",
+        "canonical": "#8A7A5A",
+        "tonalRamp": [
+          "#110A00",
+          "#2D2410",
+          "#4C4029",
+          "#6D5F44",
+          "#908060",
+          "#B2A386",
+          "#D5C8AD",
+          "#F9EDD5"
+        ]
+      },
+      "day-11": {
+        "role": "day",
+        "displayName": "День 11 — Сумерки",
+        "canonical": "#4F5F9A",
+        "tonalRamp": [
+          "#040823",
+          "#192245",
+          "#333F6B",
+          "#4F5E93",
+          "#6D7FBC",
+          "#91A2DC",
+          "#B7C7FC",
+          "#DEEDFF"
+        ]
+      },
+      "day-12": {
+        "role": "day",
+        "displayName": "День 12 — Вереск",
+        "canonical": "#9A4F6A",
+        "tonalRamp": [
+          "#1D000B",
+          "#3F1325",
+          "#642D41",
+          "#8B4960",
+          "#B46781",
+          "#D58CA4",
+          "#F6B3C8",
+          "#FFDBEE"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Заголовок страницы",
+        "purpose": "Заголовки страниц (28px, 24px на телефоне); название поездки — 26px."
+      },
+      "title": {
+        "displayName": "Заголовок блока",
+        "purpose": "Имя дня в зелёном блоке; заголовки секций — 19px."
+      },
+      "numeral": {
+        "displayName": "Цифра образца",
+        "purpose": "Число дня в образце; цифры блока дня — 18px/700."
+      },
+      "item": {
+        "displayName": "Название места",
+        "purpose": "Название места в строке дня."
+      },
+      "body": {
+        "displayName": "Текст",
+        "purpose": "Основной текст, поля, кнопки (600)."
+      },
+      "meta": {
+        "displayName": "Мета",
+        "purpose": "Перегоны, мета поездки, длительность и цена места."
+      },
+      "label": {
+        "displayName": "Подпись",
+        "purpose": "Подписи полей; без капса и разрядки."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-1",
+        "value": "0 1px 3px rgba(31,58,46,.12), 0 2px 8px rgba(31,58,46,.05)",
+        "purpose": "Лёгкая: активный сегмент, плитка в покое, контролы карты."
+      },
+      {
+        "name": "shadow-2",
+        "value": "0 6px 20px rgba(31,58,46,.14), 0 1px 3px rgba(31,58,46,.10)",
+        "purpose": "Парящая: меню, модальный лист, карточка входа, ховер плитки, перетаскиваемая строка/образец, попап карты."
+      },
+      {
+        "name": "map-mark",
+        "value": "0 2px 8px rgba(31,58,46,.28)",
+        "purpose": "Метки мест на карте поверх белой обводки 3px."
+      },
+      {
+        "name": "focus-field",
+        "value": "0 0 0 3px var(--moss-wash)",
+        "purpose": "Ореол поля в фокусе вместе с контуром мха 1px."
+      },
+      {
+        "name": "focus-ring",
+        "value": "outline: 2.5px solid var(--moss); outline-offset: 2px",
+        "purpose": "Кольцо :focus-visible для всего интерактивного."
+      },
+      {
+        "name": "scrim",
+        "value": "rgba(20,34,27,.48)",
+        "purpose": "Затемнение хвоей под модальным листом."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": ".15s ease-out",
+        "purpose": "Смена заливки/цвета у кнопок, полей, чипов, строк."
+      },
+      {
+        "name": "swatch",
+        "value": ".18s ease-out",
+        "purpose": "Образцы дней, переключатель, тень плитки."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition: none; animation: none",
+        "purpose": "prefers-reduced-motion гасит всё движение."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "420px"
+      },
+      {
+        "name": "auth",
+        "value": "520px"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ],
+    "darkTheme": {
+      "status": "draft",
+      "selector": "[data-theme=\"dark\"]",
+      "note": "«Ночной лес»: те же токены, черновые значения в tokens.css."
+    }
+  },
+  "components": [
+    {
+      "name": "Главная кнопка (орех)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Одно главное действие блока: «Оптимизировать день», «Создать», «Войти».",
+      "html": "<button class=\"ds-btn-primary\">Оптимизировать день</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 18px;border:0;border-radius:var(--radius,12px);font-size:15px;font-weight:600;line-height:1;cursor:pointer;transition:background-color .15s ease-out,color .15s ease-out;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;height:52px;border-radius:var(--radius-lg,16px);font-size:16px;background:var(--walnut,#5E3F28);color:var(--raised,#FFFDF8);}.ds-btn-primary:hover{background:var(--walnut-2,#4A311F);}.ds-btn-primary:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}.ds-btn-primary:disabled{opacity:.5;cursor:not-allowed;}"
+    },
+    {
+      "name": "Кнопка-коммит (мох)",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "Коммит внутри панели: добавить место, расход, отправить сообщение.",
+      "html": "<button class=\"ds-btn-accent\">Добавить</button>",
+      "css": ".ds-btn-accent{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 18px;border:0;border-radius:var(--radius,12px);font-size:15px;font-weight:600;line-height:1;cursor:pointer;transition:background-color .15s ease-out,color .15s ease-out;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;background:var(--moss,#3D7550);color:var(--raised,#FFFDF8);}.ds-btn-accent:hover{background:var(--moss-2,#2F6040);}.ds-btn-accent:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}"
+    },
+    {
+      "name": "Кнопка по умолчанию (берёза)",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Нейтральные действия; малый вариант-пилюля — «Задать место», «Вернуть».",
+      "html": "<button class=\"ds-btn\">Отмена</button> <button class=\"ds-btn ds-btn-sm ds-pill\">Задать место</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 18px;border:0;border-radius:var(--radius,12px);font-size:15px;font-weight:600;line-height:1;cursor:pointer;transition:background-color .15s ease-out,color .15s ease-out;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;background:var(--birch,#EFE3CE);color:var(--ink,#1F3A2E);}.ds-btn:hover{background:var(--birch-2,#E3D0AF);}.ds-btn:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}.ds-btn-sm{height:34px;padding:0 12px;font-size:14px;border-radius:var(--radius-sm,10px);}.ds-pill{border-radius:999px;}"
+    },
+    {
+      "name": "Опасная кнопка",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Удаление и разрушительные действия — брусника, никогда --accent.",
+      "html": "<button class=\"ds-btn-danger\">Удалить поездку</button>",
+      "css": ".ds-btn-danger{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 18px;border:0;border-radius:var(--radius,12px);font-size:15px;font-weight:600;line-height:1;cursor:pointer;transition:background-color .15s ease-out,color .15s ease-out;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;background:transparent;color:var(--danger,#A8384A);}.ds-btn-danger:hover{background:var(--danger-wash,#F7E4E7);}.ds-btn-danger:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}"
+    },
+    {
+      "name": "Поле",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Берёзовая заливка без обводки; в фокусе — лист, контур мха и моховая дымка.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Название</span><input class=\"ds-input\" placeholder=\"Выходные в Калининграде\"></label>",
+      "css": ".ds-field{display:grid;gap:6px;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;}.ds-field-label{font-size:13.5px;font-weight:600;color:var(--ink-2,#4B5D52);}.ds-input{width:100%;height:44px;padding:0 14px;border:1px solid transparent;border-radius:var(--radius,12px);background-color:var(--birch,#EFE3CE);color:var(--ink,#1F3A2E);font-size:15px;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;transition:border-color .15s ease-out,box-shadow .15s ease-out,background-color .15s ease-out;}.ds-input::placeholder{color:var(--ink-3,#5F6F64);}.ds-input:hover{background-color:var(--birch-2,#E3D0AF);}.ds-input:focus{outline:none;background-color:var(--raised,#FFFDF8);border-color:var(--moss,#3D7550);box-shadow:0 0 0 3px var(--moss-wash,#E1ECE3);}"
+    },
+    {
+      "name": "Поиск места",
+      "kind": "input",
+      "refersTo": "searchbox",
+      "description": "Поиск с иконкой Lucide, 48px, радиус 16px.",
+      "html": "<label class=\"ds-search\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input placeholder=\"Найти место для дня 1\"></label>",
+      "css": ".ds-search{display:flex;align-items:center;gap:10px;height:48px;padding:0 16px;background:var(--birch,#EFE3CE);border-radius:var(--radius-lg,16px);color:var(--ink-3,#5F6F64);transition:box-shadow .15s ease-out,background-color .15s ease-out;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;}.ds-search:focus-within{background:var(--raised,#FFFDF8);box-shadow:0 0 0 1px var(--moss,#3D7550),0 0 0 4px var(--moss-wash,#E1ECE3);}.ds-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:15px;color:var(--ink,#1F3A2E);font-family:inherit;}.ds-search input::placeholder{color:var(--ink-3,#5F6F64);}"
+    },
+    {
+      "name": "Сегмент «Маршрут / Бюджет / Meili»",
+      "kind": "nav",
+      "refersTo": "segmented",
+      "description": "Берёзовый желоб; активная вкладка — лист с лёгкой тенью.",
+      "html": "<div class=\"ds-seg\" role=\"tablist\"><button aria-selected=\"true\">Маршрут</button><button aria-selected=\"false\">Бюджет</button><button aria-selected=\"false\">Meili</button></div>",
+      "css": ".ds-seg{display:grid;grid-auto-columns:1fr;grid-auto-flow:column;background:var(--birch,#EFE3CE);border-radius:var(--radius-lg,16px);padding:4px;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;}.ds-seg>button{border:0;background:transparent;cursor:pointer;padding:9px 6px;border-radius:12px;font-size:14.5px;font-weight:600;color:var(--ink-2,#4B5D52);font-family:inherit;transition:background-color .15s ease-out,color .15s ease-out;}.ds-seg>button:hover{color:var(--ink,#1F3A2E);}.ds-seg>button:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}.ds-seg>button[aria-selected=\"true\"]{background:var(--raised,#FFFDF8);color:var(--ink,#1F3A2E);box-shadow:var(--shadow-1,0 1px 3px rgba(31,58,46,.12),0 2px 8px rgba(31,58,46,.05));}"
+    },
+    {
+      "name": "Чип",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Берёзовая пилюля; выбранный — мох.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Пешком</button> <button class=\"ds-chip\" aria-pressed=\"false\">Авто</button>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:0;border-radius:999px;cursor:pointer;font-size:14px;font-weight:600;background:var(--birch,#EFE3CE);color:var(--ink,#1F3A2E);font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;transition:background-color .15s ease-out,color .15s ease-out;}.ds-chip:hover{background:var(--birch-2,#E3D0AF);}.ds-chip:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}.ds-chip[aria-pressed=\"true\"]{background:var(--moss,#3D7550);color:var(--raised,#FFFDF8);}"
+    },
+    {
+      "name": "Образцы дней + блок дня",
+      "kind": "custom",
+      "refersTo": "day-swatch",
+      "description": "Фирменный ход: активный образец и блок дня — мох; неактивные — берёза.",
+      "html": "<div class=\"ds-days\"><div class=\"ds-swatches\"><button class=\"ds-swatch\" aria-pressed=\"true\"><small>Вт</small><b>13</b></button><button class=\"ds-swatch\" aria-pressed=\"false\"><small>Ср</small><b>14</b></button><button class=\"ds-swatch\" aria-pressed=\"false\"><small>3 дня</small><b>Все</b></button></div><section class=\"ds-dayblock\"><h2>День 1 <span>· вт, 13 октября</span></h2><div class=\"ds-dayfacts\"><div><b>09:00–14:07</b><span>4 остановки</span></div><div><b>5,5 км</b><span>пешком</span></div><div><b>—</b><span>цены не указаны</span></div></div></section></div>",
+      "css": ".ds-days{display:grid;gap:20px;max-width:412px;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;color:var(--ink,#1F3A2E);}.ds-swatches{display:flex;gap:10px;}.ds-swatch{flex:1 1 0;min-width:66px;max-width:132px;border:0;cursor:pointer;text-align:left;line-height:1.1;border-radius:var(--radius-lg,16px);padding:10px 12px 12px;background:var(--birch,#EFE3CE);color:var(--ink,#1F3A2E);font-family:inherit;transition:background-color .18s ease-out,color .18s ease-out;}.ds-swatch small{display:block;font-size:13px;font-weight:600;color:var(--ink-2,#4B5D52);}.ds-swatch b{font-size:24px;font-weight:750;letter-spacing:-0.02em;}.ds-swatch:hover{background:var(--birch-2,#E3D0AF);}.ds-swatch:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}.ds-swatch[aria-pressed=\"true\"]{background:var(--moss,#3D7550);color:var(--raised,#FFFDF8);}.ds-swatch[aria-pressed=\"true\"] small{color:rgba(255,253,248,.88);}.ds-dayblock{background:var(--moss,#3D7550);color:var(--raised,#FFFDF8);border-radius:var(--radius-xl,22px);padding:16px 18px 18px;}.ds-dayblock h2{margin:0;font-size:21px;font-weight:700;letter-spacing:-0.015em;}.ds-dayblock h2 span{font-weight:500;opacity:.88;}.ds-dayfacts{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:4px 22px;margin-top:10px;}.ds-dayfacts b{display:block;font-size:18px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap;}.ds-dayfacts span{font-size:13px;opacity:.88;}"
+    },
+    {
+      "name": "Строка места и перегон",
+      "kind": "custom",
+      "refersTo": "stop-number",
+      "description": "Моховой номер, название 16.5/650, время прибытия; моховой пунктир перегона под номером.",
+      "html": "<div class=\"ds-stops\"><div class=\"ds-stop\"><span class=\"ds-num\">1</span><div><div class=\"ds-name\">Кафедральный собор</div><div class=\"ds-meta\">≈ 1 ч на месте · <span class=\"ds-muted\">цена не указана</span></div></div><span class=\"ds-time\">09:00</span></div><div class=\"ds-leg\"><span class=\"ds-rail\"></span><button class=\"ds-legbtn\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/><path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/><path d=\"M16 17h4\"/><path d=\"M4 13h4\"/></svg>6 мин пешком · 0,5 км<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"/></svg></button></div><div class=\"ds-stop\"><span class=\"ds-num\">2</span><div><div class=\"ds-name\">Рыбная деревня</div><div class=\"ds-meta\">≈ 1 ч на месте · <span class=\"ds-muted\">цена не указана</span></div></div><span class=\"ds-time\">10:06</span></div></div>",
+      "css": ".ds-stops{max-width:412px;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;color:var(--ink,#1F3A2E);}.ds-stop{display:grid;grid-template-columns:32px minmax(0,1fr) auto;column-gap:10px;align-items:start;padding:10px 8px;border-radius:var(--radius-lg,16px);transition:background-color .15s ease-out;}.ds-stop:hover{background:var(--surface,#F4ECDD);}.ds-num{width:32px;height:32px;border-radius:50%;background:var(--moss,#3D7550);color:var(--raised,#FFFDF8);display:grid;place-items:center;font-weight:700;font-size:14px;}.ds-name{padding-top:4px;font-size:16.5px;font-weight:650;line-height:1.25;letter-spacing:-0.01em;}.ds-meta{margin-top:3px;font-size:14px;color:var(--ink-2,#4B5D52);}.ds-muted{color:var(--ink-3,#5F6F64);}.ds-time{font-weight:650;font-size:15px;padding-top:6px;}.ds-leg{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:10px;align-items:center;padding:0 8px;}.ds-rail{justify-self:center;width:4px;align-self:stretch;min-height:30px;background:radial-gradient(circle,var(--moss,#3D7550) 1.6px,transparent 1.9px) center top/4px 8px repeat-y;}.ds-legbtn{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2,#4B5D52);padding:4px 10px;margin-left:-10px;border-radius:999px;background:none;border:0;cursor:pointer;font-family:inherit;transition:background-color .15s ease-out,color .15s ease-out;}.ds-legbtn:hover{background:var(--birch,#EFE3CE);color:var(--ink,#1F3A2E);}.ds-legbtn:focus-visible{outline:2.5px solid var(--moss,#3D7550);outline-offset:2px;}"
+    },
+    {
+      "name": "Рама карты и метки",
+      "kind": "custom",
+      "refersTo": "map-mark",
+      "description": "Карта в раме 22px на дубе; метки и маршрут — дерево.",
+      "html": "<div class=\"ds-mapcell\"><div class=\"ds-mapframe\"><svg class=\"ds-route\" viewBox=\"0 0 300 180\" preserveAspectRatio=\"none\"><polyline points=\"40,140 120,60 200,110 260,40\" fill=\"none\" stroke=\"#FFFDF8\" stroke-width=\"9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><polyline points=\"40,140 120,60 200,110 260,40\" fill=\"none\" stroke=\"#8F6236\" stroke-width=\"4.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg><span class=\"ds-mark\" style=\"left:40px;top:140px\">1</span><span class=\"ds-mark ds-must\" style=\"left:120px;top:60px\">2</span><span class=\"ds-mark\" style=\"left:200px;top:110px\">3</span><span class=\"ds-mark ds-dropped\" style=\"left:260px;top:40px\">4</span></div></div>",
+      "css": ".ds-mapcell{background:var(--oak,#D9C29C);padding:16px;width:332px;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;}.ds-mapframe{position:relative;height:180px;border-radius:var(--radius-xl,22px);overflow:hidden;background:var(--map-land,#F4EEE2);}.ds-route{position:absolute;inset:0;width:100%;height:100%;}.ds-mark{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;background:var(--wood,#8F6236);color:var(--raised,#FFFDF8);border:3px solid var(--raised,#FFFDF8);display:grid;place-items:center;font-weight:700;font-size:13.5px;box-shadow:0 2px 8px rgba(31,58,46,.28);box-sizing:border-box;}.ds-must{width:38px;height:38px;font-size:15px;}.ds-dropped{width:26px;height:26px;background:var(--birch-2,#E3D0AF);color:var(--ink-3,#5F6F64);opacity:.8;}"
+    },
+    {
+      "name": "Плитка поездки",
+      "kind": "card",
+      "refersTo": "trip-tile",
+      "description": "Без рамки, лист на тёплом белом, лёгкая тень → парящая на ховере.",
+      "html": "<div class=\"ds-tile\"><b>Выходные в Калининграде</b><span>13–15 октября · 3 дня</span><span>45 000 ₽</span></div>",
+      "css": ".ds-tile{width:260px;min-height:148px;display:flex;flex-direction:column;gap:4px;padding:16px 18px;background:var(--raised,#FFFDF8);border-radius:var(--radius-xl,22px);box-shadow:var(--shadow-1,0 1px 3px rgba(31,58,46,.12),0 2px 8px rgba(31,58,46,.05));color:var(--ink,#1F3A2E);cursor:pointer;transition:box-shadow .18s ease-out;font-family: var(--font-sans, 'Onest', system-ui, sans-serif); font-variant-numeric: tabular-nums;}.ds-tile:hover{box-shadow:var(--shadow-2,0 6px 20px rgba(31,58,46,.14),0 1px 3px rgba(31,58,46,.10));}.ds-tile b{font-size:17px;font-weight:700;letter-spacing:-0.01em;}.ds-tile span{font-size:14px;color:var(--ink-2,#4B5D52);}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Зелёный интерфейс, деревянная карта",
+    "overview": "«Лес» — скандинавский модерн для рабочего экрана. Всё, к чему человек прикасается в панели (активный день, блок дня, номера мест, пунктир перегонов, ссылки, выбранные чипы и переключатели), — мох. Всё, что лежит на карте (линия маршрута, метки мест, рама под картой), — дерево. Между ними — тёплый белый лист и берёзовые заливки, текст цвета хвои. Главное действие экрана — орех: тёмное, тёплое, одно.\n\nПлотность рабочая, не витринная: панель 460px, крупные цифры там, где их сверяют (дата дня, время с–по, км, ₽), остальное — спокойный текст 13.5–15px. Формы мягкие (радиусы 10–22px), поверхности различаются заливкой, а не рамкой. Тени есть, но только у того, что парит: плитки, меню, модалки, активный сегмент, перетаскиваемая строка, метки на карте.\n\nСистема заменила прежний вид «кремовый фон + терракота + одинаковые карточки с рамками + эмодзи»; он не возвращается ни на одном экране. Тёмная тема («ночной лес») подключена той же подменой токенов, значения пока черновые.",
+    "keyCharacteristics": [
+      "Два материала с жёсткой границей: мох для интерфейса, дерево для карты.",
+      "Одна главная кнопка (орех) на экран или на блок действия.",
+      "Заливки вместо рамок; поля — берёза без обводки.",
+      "Onest на всём, табличные цифры везде.",
+      "Иконки только Lucide; никаких эмодзи и текстовых глифов в роли иконок."
+    ],
+    "rules": [
+      {
+        "name": "The Green Interface, Wooden Map Rule",
+        "body": "Мох — всё, что в панели; дерево — всё, что на карте. Никогда наоборот: номер места в панели зелёный, тот же номер на карте деревянный.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Walnut Rule",
+        "body": "Орех — только главное действие своего блока; вторичные коммиты внутри панели — мох, всё прочее — берёза или призрак.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lingonberry Rule",
+        "body": "Ошибки и разрушительные действия — только danger/danger-wash. `--accent` — устаревший алиас мха (им пока пользуются логотипы); для ошибок он не годится никогда, и новый код пишет `--moss` напрямую.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Любая цифра в интерфейсе — табличная; это задано на body и на input/select/button/textarea, а не точечно.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Family Rule",
+        "body": "Только Onest. Акцент делается весом и размером, вторая гарнитура не вводится.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "body": "Списки, поля, блок дня и образцы дней не имеют тени; поверхность отделяется заливкой. Тень — признак того, что элемент лежит над слоем.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** красить мхом всё интерактивное в панели — активный день, блок дня, номера мест, перегоны, ссылки, выбранные состояния, фокус.",
+      "**Do** рисовать деревом всё на карте — маршрут открытого дня, метки, пин; ставить карту в раму 22px на дубовой подложке.",
+      "**Do** отдавать орех одному главному действию блока (52px на всю ширину в конце дня).",
+      "**Do** различать поверхности заливкой: берёза на тёплом белом, лист на льне.",
+      "**Do** показывать ошибки брусникой (danger на danger-wash для плашек) и вести их через `apiErrorMessage`.",
+      "**Do** брать иконки только из Lucide, 15–19px, цвета текста.",
+      "**Do** писать цвета через токены `tokens.css`; хекс-литералы — только в `utils/mapStyle.ts`, зеркалом токенов.",
+      "**Do** оставлять «Все дни» в палитре day-1…day-12, начиная с дерева."
+    ],
+    "donts": [
+      "**Don't** возвращать кремовый фон, терракоту, одинаковые карточки с рамками и эмодзи — прежний вид, от которого система отказалась.",
+      "**Don't** обводить поля и карточки рамкой; тонкая line — только разделитель строк и край меню.",
+      "**Don't** красить интерфейс панели деревом или маршрут на карте мхом.",
+      "**Don't** использовать `--accent` для ошибок или в новом коде: это алиас мха, а ошибки — брусника.",
+      "**Don't** ставить эмодзи и текстовые глифы (⚠, ✕, ✔, ❤) в роли иконок.",
+      "**Don't** вводить вторую гарнитуру, капс-надписи над заголовками и нетабличные цифры.",
+      "**Don't** давать тень плоским элементам в покое (строки, поля, блок дня, образцы); тень — только у парящего."
+    ]
+  }
+}

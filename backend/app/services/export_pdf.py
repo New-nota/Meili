@@ -31,6 +31,8 @@ async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
         )
     )).scalars().all()
 
+    from app.api.stops import booked_amounts  # поздний импорт: цикл api <-> services
+
     result = []
     for day in days:
         rows = (await db.execute(
@@ -42,6 +44,7 @@ async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
             )
             .order_by(TripStop.position)
         )).all()
+        booked = await booked_amounts(db, [stop.id for stop, _ in rows])
         result.append({
             "day": day,
             "start_location": day.start_location,
@@ -51,11 +54,31 @@ async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
                     "stop": stop,
                     "place": place,
                     "opening": _opening_str(place.opening_hours),
+                    "cost": _cost_str(stop, place, booked.get(stop.id), trip.currency),
                 }
                 for stop, place in rows
             ],
         })
     return {"days": result}
+
+
+def _cost_str(stop, place, booked_amount, currency: str) -> str | None:
+    """QA: стоимость стопа в PDF по тем же правилам, что UI (utils/costLabel).
+
+    Раньше печаталось «~estimated_cost» всегда: и для ручной суммы (должна
+    быть без «~»), и для забронированного места (должен быть факт брони),
+    а диапазон-оценка Meili и «бесплатно» не печатались вовсе.
+    """
+    if booked_amount is not None:
+        return f"{booked_amount} {currency} (бронь)"
+    if stop.cost_min is not None and stop.cost_max is not None:
+        return f"~{stop.cost_min}–{stop.cost_max} {currency}"
+    if stop.cost_source == "auto" and getattr(place, "pricing_model", None) == "free":
+        return "бесплатно"
+    if stop.estimated_cost is None:
+        return None
+    approx = stop.cost_is_estimate or stop.cost_source in ("auto", "estimate")
+    return f"{'~' if approx else ''}{stop.estimated_cost} {currency}"
 
 
 def _opening_str(opening_hours) -> str | None:

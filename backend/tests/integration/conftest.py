@@ -57,6 +57,9 @@ def _test_database():
     test_engine = create_engine(_TEST_SYNC_URL)
     with test_engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        # pg_trgm: поиск мест ищет по словоформам (word_similarity). Схема тут
+        # собирается из моделей, а не миграциями, поэтому расширения ставим сами
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         conn.commit()
     Base.metadata.create_all(bind=test_engine)
     test_engine.dispose()
@@ -105,9 +108,15 @@ async def register_and_verify(
     """S14: полный поток регистрации — register → код из Redis → verify.
 
     Возвращает Bearer-заголовки. Код читаем напрямую из pending-черновика
-    (SMTP в тестах нет — письмо ушло бы в лог)."""
-    from app.core.redis import get_pending_registration
+    (SMTP в тестах нет — письмо ушло бы в лог).
 
+    Квоту /auth/register снимаем явно: Redis общий с dev-приложением и
+    TRUNCATE тестовой БД его не чистит, поэтому счётчик от прошлого прогона
+    иначе роняет фикстуру 429-й. Точечно и только по своему адресу —
+    чужие ключи в общем Redis не трогаем."""
+    from app.core.redis import clear_register_quota, get_pending_registration
+
+    await clear_register_quota(email)
     r = await client.post(
         "/auth/register",
         json={"email": email, "password": password, "name": name},

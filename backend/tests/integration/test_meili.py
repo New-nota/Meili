@@ -481,14 +481,19 @@ async def test_apply_rolls_back_on_error(client, auth_headers, monkeypatch):
     """M4.2 DoD: ошибка на 3-м action откатывает всё — поездка не создаётся."""
     p = await client.post("/places/", json={"name": "Ок", "lat": 54.71, "lon": 20.5},
                           headers=auth_headers)
+    # QA: ссылки плана теперь проверяются и на заморозке, и в refreeze, так что
+    # «битый id» до executor'а не доходит. Executor'у гарантия отката всё равно
+    # нужна — сломаем 3-й action доменным отказом: место существует (ссылка
+    # валидна), но лежит вне зоны карт, и add_stop его не примет.
+    far = await client.post("/places/", json={"name": "Лувр", "lat": 48.86, "lon": 2.34},
+                            headers=auth_headers)
     plan_args = {
         "actions": [
             # S16: стоп живёт в дне, поэтому поездке нужен диапазон дат
             {"type": "create_trip", "title": "Обречённая",
              "start_date": D1, "end_date": D1},
             {"type": "add_stop", "place_id": p.json()["id"]},
-            # place_id валидного формата, но такого места нет -> ошибка на 3-м action
-            {"type": "add_stop", "place_id": "00000000-0000-0000-0000-000000000000"},
+            {"type": "add_stop", "place_id": far.json()["id"]},
         ],
         "summary": "х",
     }
@@ -496,11 +501,47 @@ async def test_apply_rolls_back_on_error(client, auth_headers, monkeypatch):
 
     r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
     assert r.status_code == 400
-    assert r.json()["detail"] == "place_not_found"
+    assert r.json()["detail"] == "place_out_of_coverage"
 
     # ноль записей: поездки нет, план остался proposed (повторный apply возможен)
     trips = (await client.get("/trips/", headers=auth_headers)).json()
     assert not [t for t in trips if t["title"] == "Обречённая"]
+
+
+async def test_refreeze_rejects_dangling_references(client, auth_headers, monkeypatch):
+    """QA: правки из редактора проходят ту же проверку ссылок, что и план модели."""
+    p = await client.post("/places/", json={"name": "Ок", "lat": 54.71, "lon": 20.5},
+                          headers=auth_headers)
+    good = {"actions": [{"type": "create_trip", "title": "Т", "start_date": D1, "end_date": D1},
+                        {"type": "add_stop", "place_id": p.json()["id"]}], "summary": "х"}
+    plan_id = await _freeze_plan(client, auth_headers, monkeypatch, good)
+    broken = {**good, "actions": [*good["actions"],
+              {"type": "add_stop", "place_id": "00000000-0000-0000-0000-000000000000"}]}
+    r = await client.post(f"/api/meili/plans/{plan_id}/refreeze", json=broken, headers=auth_headers)
+    assert r.status_code == 422
+    # исходный план не тронут — его всё ещё можно применить
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text
+
+
+async def test_remove_stop_by_name_resolved_by_system(client, auth_headers, monkeypatch):
+    """QA: снапшот даёт модели названия стопов, не id — «убери X» по имени."""
+    r = await client.post("/trips/", json={"title": "Т", "start_date": D1, "end_date": D2},
+                          headers=auth_headers)
+    trip_id = r.json()["id"]
+    days = (await client.get(f"/trips/{trip_id}/days", headers=auth_headers)).json()
+    for name, day in (("Музей янтаря", days[0]), ("Кафедральный собор", days[1])):
+        place = (await client.post("/places/", json={"name": name, "lat": 54.71, "lon": 20.5},
+                                   headers=auth_headers)).json()
+        await client.post(f"/trips/{trip_id}/stops",
+                          json={"place_id": place["id"], "day_id": day["id"]}, headers=auth_headers)
+    plan_id = await _freeze_plan(client, auth_headers, monkeypatch, {
+        "actions": [{"type": "remove_stop", "stop_name": "музей янтаря"}], "summary": "убрать",
+    }, trip_id=trip_id)
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    left = [s["place_name"] for s in (await client.get(f"/trips/{trip_id}/stops", headers=auth_headers)).json()]
+    assert left == ["Кафедральный собор"]
 
 
 async def test_apply_foreign_plan_is_403(client, auth_headers, monkeypatch):
@@ -803,7 +844,13 @@ async def test_summarization_and_window(client, auth_headers, monkeypatch):
 
 
 async def test_loop_stops_at_max_steps(client, auth_headers, monkeypatch):
-    """M2.6 DoD: зацикленная модель обрывается на LLM_MAX_STEPS, последний шаг без tools."""
+    """M2.6 DoD: зацикленная модель обрывается на LLM_MAX_STEPS.
+
+    Ревью: на последнем шаге теперь отбирается только ПОИСК — propose_plan
+    остаётся. Иначе модель, потратившая бюджет шагов на search_places, не
+    могла зафиксировать собранный маршрут, и кнопки «Применить» не было.
+    Зациклиться на propose_plan нельзя: он завершает ход заморозкой плана.
+    """
     endless = [
         [LLMEvent(type="tool_call", name="search_places",
                   arguments={"query": "x"}, id=f"call_{i}"),
@@ -815,5 +862,469 @@ async def test_loop_stops_at_max_steps(client, auth_headers, monkeypatch):
     events = await _stream_events(client, auth_headers, conv_id)
 
     assert len(fake.calls) == settings.LLM_MAX_STEPS
-    assert fake.calls[-1]["tools"] is None  # финальный шаг — только текст
+    last_tools = [t["function"]["name"] for t in fake.calls[-1]["tools"]]
+    assert last_tools == ["propose_plan"]   # поиска нет, зафиксировать план можно
     assert events[-1][0] == "done"
+
+
+# --- ревью: ссылки плана проверяются до заморозки, а не на «Применить» -------
+
+async def test_plan_with_invented_place_id_is_not_frozen(
+    client, auth_headers, monkeypatch
+):
+    """Модель придумывала place_id (наблюдался нулевой UUID) — план замерзал,
+    юзер видел убедительную карточку и получал сухое place_not_found только
+    после «Применить». Теперь ссылка проверяется на границе: ошибка уходит в
+    контекст, модель чинит план в пределах max_steps."""
+    invented = {
+        "actions": [{
+            "type": "add_stop",
+            "place_id": "00000000-0000-0000-0000-000000000000",
+            "day_index": 0,
+        }],
+        "summary": "Добавить парк во второй день",
+    }
+    fake = install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="propose_plan", arguments=invented, id="c1"),
+         LLMEvent(type="end")],
+        [LLMEvent(type="token", text="Не нашёл это место"), LLMEvent(type="end")],
+    ])
+    conv_id = await _conversation(client, auth_headers)
+    events = await _stream_events(client, auth_headers, conv_id)
+
+    assert not [d for e, d in events if e == "plan"]
+    tool_msgs = [m for m in fake.calls[1]["messages"] if m.get("role") == "tool"]
+    assert "не существует" in tool_msgs[-1]["content"]
+
+
+async def test_plan_with_real_place_id_still_freezes(
+    client, auth_headers, monkeypatch
+):
+    """Обратная сторона проверки: настоящее место план не блокирует."""
+    trip = (await client.post(
+        "/trips/", json={"title": "Ссылки", "start_date": D1, "end_date": D2},
+        headers=auth_headers,
+    )).json()
+    place_id = (await client.post(
+        "/places/", json={"name": "Парк", "lat": 54.71, "lon": 20.5},
+        headers=auth_headers,
+    )).json()["id"]
+
+    plan_id = await _freeze_plan(
+        client, auth_headers, monkeypatch,
+        {"actions": [{"type": "add_stop", "place_id": place_id, "day_index": 0}],
+         "summary": "Парк в первый день"},
+        trip_id=trip["id"],
+    )
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    stops = (await client.get(f"/trips/{trip['id']}/stops", headers=auth_headers)).json()
+    assert len(stops) == 1
+
+
+# --- ревью: поиск, черновик мастера, цены ------------------------------------
+
+async def test_search_finds_word_forms(client, auth_headers, monkeypatch):
+    """Раньше матч был ILIKE '%вся фраза целиком%': «Куршская коса» не находила
+    «Музей Куршской косы», модель получала пустоту и выдумывала места."""
+    await client.post(
+        "/places/", json={"name": "Музей Куршской косы", "lat": 55.0, "lon": 20.7},
+        headers=auth_headers,
+    )
+    fake = install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="search_places",
+                  arguments={"query": "Куршская коса"}, id="c1"),
+         LLMEvent(type="end")],
+        [LLMEvent(type="token", text="Нашла"), LLMEvent(type="end")],
+    ])
+    conv_id = await _conversation(client, auth_headers)
+    await _stream_events(client, auth_headers, conv_id)
+
+    tool_msgs = [m for m in fake.calls[1]["messages"] if m.get("role") == "tool"]
+    assert "Музей Куршской косы" in tool_msgs[-1]["content"]
+
+
+async def test_search_reports_unknown_price_not_free(client, auth_headers, monkeypatch):
+    """Место без цен больше не выдаётся модели как «бесплатно»."""
+    await client.post(
+        "/places/", json={"name": "Ресторан Прибой", "lat": 54.71, "lon": 20.5},
+        headers=auth_headers,
+    )
+    fake = install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="search_places",
+                  arguments={"query": "Прибой"}, id="c1"),
+         LLMEvent(type="end")],
+        [LLMEvent(type="token", text="ок"), LLMEvent(type="end")],
+    ])
+    conv_id = await _conversation(client, auth_headers)
+    await _stream_events(client, auth_headers, conv_id)
+
+    tool_msgs = [m for m in fake.calls[1]["messages"] if m.get("role") == "tool"]
+    assert "бесплатно" not in tool_msgs[-1]["content"]
+    assert "стоимость неизвестна" in tool_msgs[-1]["content"]
+
+
+DRAFT = {
+    "title": "Балтика", "city": "Зеленоградск", "country": "Россия",
+    "city_lat": 54.96, "city_lon": 20.47,
+    "start_date": D1, "end_date": D2,
+    "adults_count": 2, "children_count": 1, "children_ages": [7],
+    "budget_total": "30000", "currency": "RUB",
+}
+
+
+async def test_wizard_draft_reaches_the_model(client, auth_headers, monkeypatch):
+    """S17: факты мастера уходят в диалог структурно, а не пересказом.
+
+    Раньше город/валюта/бюджет были только в тексте первого сообщения, и
+    модель их роняла — созданные ею поездки выходили с city=NULL и EUR.
+    """
+    fake = install_fake(monkeypatch, [
+        [LLMEvent(type="token", text="Понятно"), LLMEvent(type="end")],
+    ])
+    conv = await client.post(
+        "/api/meili/conversations", json=DRAFT, headers=auth_headers
+    )
+    assert conv.status_code == 201, conv.text
+    await _stream_events(client, auth_headers, conv.json()["id"])
+
+    system = fake.calls[0]["messages"][0]["content"]
+    assert "Зеленоградск" in system
+    assert "RUB" in system and "30000" in system
+    assert "возраст: 7" in system
+
+
+async def test_create_trip_takes_city_and_currency_from_draft(
+    client, auth_headers, monkeypatch
+):
+    """Executor добирает из черновика то, чего модель знать не может."""
+    conv = await client.post(
+        "/api/meili/conversations", json=DRAFT, headers=auth_headers
+    )
+    conv_id = conv.json()["id"]
+
+    install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="propose_plan", arguments={
+            # модель указала только название и даты — город и валюту забыла
+            "actions": [{"type": "create_trip", "title": "Балтика",
+                         "start_date": D1, "end_date": D2, "adults_count": 2}],
+            "summary": "Создать поездку",
+        }, id="c1"), LLMEvent(type="end")],
+    ])
+    events = await _stream_events(client, auth_headers, conv_id)
+    plan_id = [d for e, d in events if e == "plan"][0]["plan_id"]
+
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    trip = (await client.get(f"/trips/{r.json()['trip_id']}", headers=auth_headers)).json()
+    assert trip["city"] == "Зеленоградск"
+    assert trip["country"] == "Россия"
+    assert trip["currency"] == "RUB"
+    assert trip["city_lat"] == 54.96          # координаты модель дать не могла
+    assert trip["budget_total"] == "30000.00"
+
+
+async def test_plan_can_still_be_proposed_on_the_last_step(
+    client, auth_headers, monkeypatch
+):
+    """Модель, израсходовавшая шаги на поиск, всё ещё может предложить план."""
+    searches = [
+        [LLMEvent(type="tool_call", name="search_places",
+                  arguments={"query": "парк"}, id=f"call_{i}"),
+         LLMEvent(type="end")]
+        for i in range(settings.LLM_MAX_STEPS - 1)
+    ]
+    install_fake(monkeypatch, [*searches, [
+        LLMEvent(type="tool_call", name="propose_plan", arguments=PLAN_ARGS, id="last"),
+        LLMEvent(type="end"),
+    ]])
+    conv_id = await _conversation(client, auth_headers)
+    events = await _stream_events(client, auth_headers, conv_id)
+
+    assert [d for e, d in events if e == "plan"], "план на последнем шаге не заморожен"
+
+
+# --- ревью: место по имени, память диалога о найденном -----------------------
+
+async def test_add_stop_by_name_resolves_to_real_place(
+    client, auth_headers, monkeypatch
+):
+    """UUID модель между ходами не помнит и начинала их сочинять.
+
+    Теперь в add_stop можно передать place_name — идентификатор подставляет
+    система, при заморозке плана.
+    """
+    trip = (await client.post(
+        "/trips/", json={"title": "По имени", "start_date": D1, "end_date": D2},
+        headers=auth_headers,
+    )).json()
+    await client.post(
+        "/places/", json={"name": "Музей Мирового океана", "lat": 54.7, "lon": 20.5},
+        headers=auth_headers,
+    )
+
+    plan_id = await _freeze_plan(
+        client, auth_headers, monkeypatch,
+        {"actions": [{"type": "add_stop", "place_name": "Музей Мирового океана"}],
+         "summary": "Музей в первый день"},
+        trip_id=trip["id"],
+    )
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    stops = (await client.get(f"/trips/{trip['id']}/stops", headers=auth_headers)).json()
+    assert [s["place_name"] for s in stops] == ["Музей Мирового океана"]
+
+
+async def test_invented_uuid_is_rescued_by_name(client, auth_headers, monkeypatch):
+    """Сочинённый id + верное имя = план всё равно собирается."""
+    trip = (await client.post(
+        "/trips/", json={"title": "Спасение", "start_date": D1, "end_date": D2},
+        headers=auth_headers,
+    )).json()
+    await client.post(
+        "/places/", json={"name": "Парк Юность", "lat": 54.73, "lon": 20.52},
+        headers=auth_headers,
+    )
+
+    plan_id = await _freeze_plan(
+        client, auth_headers, monkeypatch,
+        {"actions": [{
+            "type": "add_stop",
+            "place_id": "00000000-0000-0000-0000-000000000000",
+            "place_name": "Парк Юность",
+        }], "summary": "Парк"},
+        trip_id=trip["id"],
+    )
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text
+
+
+async def test_unknown_name_lists_available_places(client, auth_headers, monkeypatch):
+    """Отказ должен подсказывать, на что сослаться — иначе модель гадает по кругу."""
+    await client.post(
+        "/places/", json={"name": "Реальное место", "lat": 54.7, "lon": 20.5},
+        headers=auth_headers,
+    )
+    fake = install_fake(monkeypatch, [
+        # сначала поиск: диалог запомнит найденное
+        [LLMEvent(type="tool_call", name="search_places",
+                  arguments={"query": "Реальное"}, id="c1"), LLMEvent(type="end")],
+        [LLMEvent(type="tool_call", name="propose_plan", arguments={
+            "actions": [{"type": "add_stop", "place_name": "Кафе Которого Нет"}],
+            "summary": "х",
+        }, id="c2"), LLMEvent(type="end")],
+        [LLMEvent(type="token", text="не нашла"), LLMEvent(type="end")],
+    ])
+    conv_id = await _conversation(client, auth_headers)
+    events = await _stream_events(client, auth_headers, conv_id)
+
+    assert not [d for e, d in events if e == "plan"]
+    tool_msgs = [m for m in fake.calls[-1]["messages"] if m.get("role") == "tool"]
+    error = tool_msgs[-1]["content"]
+    assert "нет в базе" in error
+    # в отказе перечислены реальные варианты
+    assert "Реальное место" in error
+
+
+async def test_found_places_survive_the_turn(client, auth_headers, monkeypatch):
+    """Найденное в прошлом ходе видно в снапшоте следующего.
+
+    Раньше place_id жили только внутри своего хода, и на «готов» модель
+    оставалась без единого настоящего идентификатора.
+    """
+    await client.post(
+        "/places/", json={"name": "Запоминаемый парк", "lat": 54.7, "lon": 20.5},
+        headers=auth_headers,
+    )
+    conv_id = await _conversation(client, auth_headers)
+
+    install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="search_places",
+                  arguments={"query": "Запоминаемый"}, id="c1"), LLMEvent(type="end")],
+        [LLMEvent(type="token", text="нашла"), LLMEvent(type="end")],
+    ])
+    await _stream_events(client, auth_headers, conv_id, "поищи")
+
+    # СЛЕДУЮЩИЙ ход: поиска нет, но места должны быть в системном промпте
+    fake2 = install_fake(monkeypatch, [
+        [LLMEvent(type="token", text="ок"), LLMEvent(type="end")],
+    ])
+    await _stream_events(client, auth_headers, conv_id, "готов")
+    system = fake2.calls[0]["messages"][0]["content"]
+    assert "Запоминаемый парк" in system
+
+
+async def test_rate_limit_is_reported_distinctly(client, auth_headers, monkeypatch):
+    """429 провайдера — отдельная ошибка, а не общий «assistant_error».
+
+    Пользователь видел «ассистент недоступен» и не понимал, что достаточно
+    подождать минуту.
+    """
+    import httpx
+
+    class RateLimited:
+        model_loop = model_summary = "fake"
+
+        async def stream(self, messages, tools, model):
+            response = httpx.Response(429, request=httpx.Request("POST", "http://llm"))
+            raise httpx.HTTPStatusError("429", request=response.request, response=response)
+            yield  # pragma: no cover — делает функцию генератором
+
+    monkeypatch.setattr("app.services.meili.loop.get_client", lambda: RateLimited())
+    conv_id = await _conversation(client, auth_headers)
+    events = await _stream_events(client, auth_headers, conv_id)
+
+    assert events[-1] == ("error", {"detail": "rate_limited"})
+
+
+async def test_search_relaxes_instead_of_returning_nothing(
+    client, auth_headers, monkeypatch
+):
+    """Строгий поиск обнулялся на живых данных, и модель шла выдумывать.
+
+    «мясной ресторан» требовал обоих слов в названии; ресторанов в городе
+    восемь, а инструмент отвечал пустотой. Теперь ограничения отпускаются
+    по одному, и ослабление помечено loose_match.
+    """
+    for name in ("Балт", "Встреча", "Ривьера"):
+        await client.post(
+            "/places/",
+            json={"name": name, "lat": 54.96, "lon": 20.47,
+                  "category": "restaurant", "city": "Зеленоградск"},
+            headers=auth_headers,
+        )
+
+    fake = install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="search_places", arguments={
+            "query": "мясной ресторан", "category": "restaurant",
+            "city": "Зеленоградск",
+        }, id="c1"), LLMEvent(type="end")],
+        [LLMEvent(type="token", text="вот что есть"), LLMEvent(type="end")],
+    ])
+    conv_id = await _conversation(client, auth_headers)
+    await _stream_events(client, auth_headers, conv_id)
+
+    tool_msgs = [m for m in fake.calls[1]["messages"] if m.get("role") == "tool"]
+    found = json.loads(tool_msgs[-1]["content"])
+    assert found, "каскад обязан что-то вернуть вместо пустоты"
+    # точного совпадения нет — результат помечен как подбор по категории
+    assert all(item["loose_match"] for item in found)
+    assert {item["name"] for item in found} == {"Балт", "Встреча", "Ривьера"}
+
+
+async def test_stream_retries_once_on_dropped_connection(monkeypatch):
+    """Провайдер под нагрузкой закрывает коннект молча.
+
+    Один повтор ДО первого события снимает флап; после первого токена
+    повторять нельзя — ответ напечатался бы дважды.
+    """
+    import httpx
+
+    from app.services.llm.base import OpenAICompatibleClient
+
+    class Flaky(OpenAICompatibleClient):
+        base_url = "http://llm"
+
+        def __init__(self):
+            super().__init__("k", "loop", "sum")
+            self.attempts = 0
+
+        async def _stream_once(self, messages, tools, model):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise httpx.RemoteProtocolError("Server disconnected")
+            yield LLMEvent(type="token", text="ответ")
+            yield LLMEvent(type="end")
+
+    client = Flaky()
+    events = [e async for e in client.stream([], None, "m")]
+    assert client.attempts == 2
+    assert [e.type for e in events] == ["token", "end"]
+
+
+async def test_stream_does_not_retry_after_first_token(monkeypatch):
+    """Повтор после начала ответа удвоил бы текст — так делать нельзя."""
+    import httpx
+    import pytest as _pytest
+
+    from app.services.llm.base import OpenAICompatibleClient
+
+    class DiesMidway(OpenAICompatibleClient):
+        base_url = "http://llm"
+
+        def __init__(self):
+            super().__init__("k", "loop", "sum")
+            self.attempts = 0
+
+        async def _stream_once(self, messages, tools, model):
+            self.attempts += 1
+            yield LLMEvent(type="token", text="нача")
+            raise httpx.RemoteProtocolError("оборвалось на середине")
+
+    client = DiesMidway()
+    with _pytest.raises(httpx.RemoteProtocolError):
+        [e async for e in client.stream([], None, "m")]
+    assert client.attempts == 1
+
+
+# --- QA: защита чата и поиск ориентиров ---------------------------------------
+
+async def test_blank_and_huge_messages_rejected(client, auth_headers, fake_llm):
+    conv_id = await _conversation(client, auth_headers)
+    for content in ("   ", "x" * 4001):
+        r = await client.post(
+            f"/api/meili/conversations/{conv_id}/messages",
+            json={"content": content}, headers=auth_headers,
+        )
+        assert r.status_code == 422, content[:10]
+    assert fake_llm.calls == []  # ни одного платного запроса к модели
+
+
+async def test_second_turn_in_same_conversation_is_409(client, auth_headers, fake_llm):
+    """Двойная отправка запускала два agent loop'а над одной историей."""
+    from app.core.redis import acquire_turn_lock, release_turn_lock
+
+    conv_id = await _conversation(client, auth_headers)
+    assert await acquire_turn_lock(conv_id, 60)   # «первый ход ещё идёт»
+    try:
+        r = await client.post(
+            f"/api/meili/conversations/{conv_id}/messages",
+            json={"content": "привет"}, headers=auth_headers,
+        )
+        assert r.status_code == 409
+        assert r.json()["detail"] == "turn_in_progress"
+    finally:
+        await release_turn_lock(conv_id)
+    # после хода лок снят — следующий проходит
+    events = await _stream_events(client, auth_headers, conv_id)
+    assert events[-1][0] == "done"
+    events = await _stream_events(client, auth_headers, conv_id)
+    assert events[-1][0] == "done"
+
+
+async def test_search_near_landmark_and_type_words(client, auth_headers, monkeypatch):
+    """«кафе рядом с Рыбной деревней»: район в city — это ориентир; «кафе» —
+    категория, а не подстрока («Кафедральный собор» не кафе)."""
+    for body in (
+        {"name": "Рыбная деревня", "lat": 54.7058, "lon": 20.5178},
+        {"name": "Кафедральный собор", "lat": 54.7065, "lon": 20.5110, "category": "historic"},
+        {"name": "Isola", "lat": 54.7050, "lon": 20.5190, "category": "cafe"},
+        {"name": "Далёкое кафе", "lat": 54.9500, "lon": 20.4800, "category": "cafe"},
+    ):
+        r = await client.post("/places/", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+
+    fake = install_fake(monkeypatch, [
+        [LLMEvent(type="tool_call", name="search_places",
+                  arguments={"query": "кафе", "city": "Рыбная деревня"}, id="c1"),
+         LLMEvent(type="end")],
+        [LLMEvent(type="token", text="ок"), LLMEvent(type="end")],
+    ])
+    conv_id = await _conversation(client, auth_headers)
+    await _stream_events(client, auth_headers, conv_id, "кафе рядом с Рыбной деревней")
+    tool_msg = [m for m in fake.calls[1]["messages"] if m.get("role") == "tool"][-1]
+    found = json.loads(tool_msg["content"])
+    names = [p["name"] for p in found]
+    assert names[0] == "Isola"
+    assert "Кафедральный собор" not in names and "Далёкое кафе" not in names
+    assert found[0]["near"] == "Рыбная деревня" and 0 < found[0]["distance_m"] < 300

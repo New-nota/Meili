@@ -1,7 +1,7 @@
 import { Heart, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
-import { rowGrid, metaStyle, tripDaysCount } from './TripRow'
+import { rowGrid, metaStyle, tripDaysCount } from './tripRowUtils'
 
 // S16 §2.3: строка понравившейся поездки. Сердце здесь — МАРКЕР, не кнопка:
 // всё в блоке лайкнуто по определению, а снять лайк можно крестиком справа
@@ -24,11 +24,10 @@ export default function LikedTripRow({ trip, onOpen, onRemove }: Props) {
     return (
         <div
             onClick={() => onOpen(trip.id)}
-            style={rowGrid}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface)'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+            className="trip-row"
+            style={rowGrid}>
             <Heart aria-hidden="true" size={14} fill="currentColor"
-                style={{ color: 'var(--accent)', marginTop: 4 }} />
+                style={{ color: 'var(--danger)', marginTop: 4 }} />
 
             <span style={{ minWidth: 0 }}>
                 <span style={{ fontWeight: 600, fontSize: 15, display: 'block' }}>
@@ -40,21 +39,15 @@ export default function LikedTripRow({ trip, onOpen, onRemove }: Props) {
             <span />
 
             {/* кнопка видна всегда — иначе недоступна с клавиатуры и на тач-экранах */}
-            <button
+            <button type="button" className="icon-btn sm trip-tile-del" style={{ position: 'static' }}
                 aria-label={t('profile.liked.remove')}
                 title={t('profile.liked.remove')}
                 onClick={e => {
                     e.preventDefault()
                     e.stopPropagation()   // клик по крестику не открывает поездку
                     onRemove(trip.id)
-                }}
-                style={{
-                    background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                    color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
-                }}
-                onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
-                <X size={16} />
+                }}>
+                <X />
             </button>
         </div>
     )

@@ -1,14 +1,14 @@
 <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
   <!-- Знак Hermod, версия «точки» (ТЗ-rename, шаг 4): H с пролётом-мостом вниз;
        кольца заменены сплошными точками — как у фавикона знака Meili -->
-  <line x1="28" y1="22" x2="28" y2="78" stroke="#B04A24" stroke-width="5"/>
-  <line x1="72" y1="22" x2="72" y2="78" stroke="#B04A24" stroke-width="5"/>
-  <polyline points="28,48 50,58 72,48" fill="none" stroke="#B04A24"
+  <line x1="28" y1="22" x2="28" y2="78" stroke="#3D7550" stroke-width="5"/>
+  <line x1="72" y1="22" x2="72" y2="78" stroke="#3D7550" stroke-width="5"/>
+  <polyline points="28,48 50,58 72,48" fill="none" stroke="#3D7550"
     stroke-width="5" stroke-linejoin="miter" stroke-linecap="butt"
     stroke-miterlimit="9"/>
-  <circle cx="28" cy="22" r="7.5" fill="#B04A24"/>
-  <circle cx="72" cy="22" r="7.5" fill="#B04A24"/>
-  <circle cx="28" cy="78" r="7.5" fill="#B04A24"/>
-  <circle cx="72" cy="78" r="7.5" fill="#B04A24"/>
-  <circle cx="50" cy="58" r="4.5" fill="#B04A24"/>
+  <circle cx="28" cy="22" r="7.5" fill="#3D7550"/>
+  <circle cx="72" cy="22" r="7.5" fill="#3D7550"/>
+  <circle cx="28" cy="78" r="7.5" fill="#3D7550"/>
+  <circle cx="72" cy="78" r="7.5" fill="#3D7550"/>
+  <circle cx="50" cy="58" r="4.5" fill="#3D7550"/>
 </svg>

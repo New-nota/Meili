@@ -18,11 +18,11 @@ export function RecommendedTrips({ city }: {city?: string}) {
 
     // S17: секция рендерится всегда — она отбивает нижнюю часть Discover,
     // и пустой заголовок без подписи выглядел бы поломкой
-    const muted: React.CSSProperties = { fontSize: 13, color: 'var(--text-muted)' }
+    const muted: React.CSSProperties = { fontSize: 14.5, color: 'var(--ink-3)' }
 
     return (
-        <section style={{marginTop: 16}}>
-            <h2 style={{fontSize: 17, margin: '0 0 10px'}}>{t('trip.recommendationsTitle')}</h2>
+        <section>
+            <h2 className="section-title" style={{ marginBottom: 14 }}>{t('trip.recommendationsTitle')}</h2>
             {isLoading && <p style={muted}>{t('trip.recommendedLoading')}</p>}
             {isError && <p style={muted}>{t('trip.recommendedError')}</p>}
             {!isLoading && !isError && (!trips || trips.length === 0) && (

@@ -16,9 +16,75 @@ from app.services.budget import compute_budget
 EMPTY_SNAPSHOT = "Поездка ещё не создана: пользователь пока только обсуждает планы."
 
 
-async def build_snapshot(db: AsyncSession, trip_id: UUID | None) -> str:
+def _group_line(adults: int, children: int, ages: list[int] | None) -> str:
+    group = f"Группа: {adults} взр."
+    if children:
+        group += f" + {children} дет."
+        if ages:
+            group += f" (возраст: {', '.join(map(str, ages))})"
+    return group
+
+
+def draft_lines(draft: dict) -> list[str]:
+    """Черновик мастера создания (S17) словами.
+
+    Ревью: раньше этих фактов у модели не было вовсе — мастер отдавал их одной
+    текстовой строкой первого сообщения, и модель их роняла (созданные ею
+    поездки выходили с city=NULL и валютой EUR вместо выбранной). Теперь они
+    приходят из conversations.draft_json, то есть от системы.
+    """
+    lines = ["Поездки ещё нет. Пользователь пришёл из мастера создания с черновиком:"]
+    if draft.get("title"):
+        lines.append(f"Рабочее название: «{draft['title']}»")
+    where = ", ".join(filter(None, (draft.get("city"), draft.get("country"))))
+    if where:
+        lines.append(f"Направление: {where}")
+    if draft.get("start_date") and draft.get("end_date"):
+        lines.append(f"Даты: {draft['start_date']} — {draft['end_date']}")
+    lines.append(_group_line(
+        draft.get("adults_count") or 1,
+        draft.get("children_count") or 0,
+        draft.get("children_ages"),
+    ))
+    if draft.get("budget_total"):
+        lines.append(f"Бюджет: {draft['budget_total']} {draft.get('currency') or ''}".strip())
+    elif draft.get("currency"):
+        lines.append(f"Валюта: {draft['currency']}")
+    lines.append(
+        "Эти данные уже собраны — переспрашивать их не нужно; "
+        "при create_trip перенеси их как есть."
+    )
+    return lines
+
+
+def recent_places_lines(recent: list | None) -> list[str]:
+    """Места, найденные в этом диалоге, с их настоящими id.
+
+    Ревью: результат search_places не переживает ход, поэтому на следующем
+    ходе («готов» -> propose_plan) модель оставалась без единого реального
+    place_id и сочиняла их. Держим найденное на виду — тогда сослаться на
+    место можно и через ход.
+    """
+    if not recent:
+        return []
+    lines = ["Места, найденные в этом диалоге (place_id брать ТОЛЬКО отсюда"
+             " или из свежего search_places):"]
+    lines += [f"- {p.get('name') or '?'} — {p.get('id')}" for p in recent]
+    return lines
+
+
+async def build_snapshot(
+    db: AsyncSession,
+    trip_id: UUID | None,
+    draft: dict | None = None,
+    recent_places: list | None = None,
+) -> str:
+    found = recent_places_lines(recent_places)
+
     if trip_id is None:
-        return EMPTY_SNAPSHOT
+        # черновика может не быть (чат открыт «с нуля») — тогда прежний текст
+        head = draft_lines(draft) if draft else [EMPTY_SNAPSHOT]
+        return "\n".join(head + found)
 
     trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
     if trip is None:
@@ -34,14 +100,21 @@ async def build_snapshot(db: AsyncSession, trip_id: UUID | None) -> str:
         .order_by(TripStop.position)
     )).all()
 
-    lines = [f"Поездка «{trip.title}»" + (f", {trip.city}" if trip.city else "")]
-
-    group = f"Группа: {trip.adults_count} взр."
-    if trip.children_count:
-        group += f" + {trip.children_count} дет."
-        if trip.children_ages:
-            group += f" (возраст: {', '.join(map(str, trip.children_ages))})"
-    lines.append(group)
+    # Ревью: раньше в шапке были только название и город. Модель не знала ни
+    # дат, ни длительности, ни валюты — и переспрашивала то, что уже в БД.
+    where = ", ".join(filter(None, (trip.city, trip.country)))
+    lines = [f"Поездка «{trip.title}»" + (f", {where}" if where else "")]
+    if trip.start_date and trip.end_date:
+        nights = (trip.end_date - trip.start_date).days
+        lines.append(
+            f"Даты: {trip.start_date} — {trip.end_date} ({nights + 1} дн.)"
+        )
+    if not trip.city:
+        lines.append(
+            "Город не задан — спроси у пользователя и предложи его записать "
+            "в поездку, пока не знаешь город, места искать бессмысленно."
+        )
+    lines.append(_group_line(trip.adults_count, trip.children_count, trip.children_ages))
 
     # стопы по дням — только названия (компактность)
     by_day: dict = {}
@@ -49,7 +122,8 @@ async def build_snapshot(db: AsyncSession, trip_id: UUID | None) -> str:
         by_day.setdefault(stop.day_id, []).append(place_name)
     for day in days:
         names = by_day.pop(day.id, [])
-        lines.append(f"{day.title or f'День {day.position}'} ({day.date}): "
+        # QA: day_index рядом с датой — модель путала «День 3» с датой и индексом
+        lines.append(f"{day.title or f'День {day.position}'} ({day.date}, day_index={day.position - 1}): "
                      + ("; ".join(names) if names else "пусто"))
     unassigned = [n for names in by_day.values() for n in names]
     if unassigned:
@@ -58,11 +132,11 @@ async def build_snapshot(db: AsyncSession, trip_id: UUID | None) -> str:
     # стоимость vs бюджет — тем же compute_budget, что и вкладка «Бюджет»:
     # факт подтверждённой брони важнее оценки, null-стопы не считаются нулём
     budget = await compute_budget(db, trip)
-    cost = f"Стоимость активностей: {budget.activities_total} {trip.currency}"
+    cost = f"Валюта поездки: {trip.currency}. Стоимость активностей: {budget.activities_total} {trip.currency}"
     if budget.expenses_total:
         cost += f", прочие расходы: {budget.expenses_total} {trip.currency}"
     if budget.budget_total is not None:
         cost += f" при бюджете {budget.budget_total} {trip.currency}"
     lines.append(cost)
 
-    return "\n".join(lines)
+    return "\n".join(lines + found)
