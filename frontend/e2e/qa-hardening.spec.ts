@@ -3,7 +3,7 @@ import { addFromSearch, backendUp, compose, futureDate, login as loginAs, regist
 
 // QA-прогон: сценарии, которые ломались «на полпути» и были починены общим
 // правилом. Требует запущенный docker-стек (:8000, Valhalla с тайлами области).
-const EMAIL = `e2e_qa_${Date.now()}@wanderown.dev`
+const EMAIL = `e2e_qa_${Date.now()}@e2e.example`
 
 // геокодер: город для мастера и два места в Калининграде для поиска
 const PLACES = [

@@ -5,7 +5,7 @@ import { API, addFromSearch, backendUp, futureDate, login, registerUser } from '
 // карт (живая Valhalla строит маршрут), точка вне зоны отклоняется честно,
 // язык интерфейса доходит до бэкенда (PDF/.ics/письма).
 // Геокодер (Nominatim) мокаем, бэкенд и Valhalla — настоящие.
-const EMAIL = `e2e_world_${Date.now()}@wanderown.dev`
+const EMAIL = `e2e_world_${Date.now()}@e2e.example`
 let token = ''
 
 const MOSCOW = { city: 'Москва', city_lat: 55.7505, city_lon: 37.6175 }

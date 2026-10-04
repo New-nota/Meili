@@ -37,10 +37,22 @@ def build_message(to: str, subject: str, body: str) -> EmailMessage:
     return msg
 
 
+# RFC 2606: домены, которые по определению никому не принадлежат. Ревью: e2e
+# и нагрузочные прогоны регистрируют пользователей на живом стеке, и при
+# заданном SMTP каждая регистрация слала настоящее письмо (раньше — на
+# @wanderown.dev, чей-то потенциально реальный домен). Такие адреса — в лог.
+RESERVED_DOMAINS = {"example.com", "example.net", "example.org"}
+
+
+def _reserved(to: str) -> bool:
+    domain = to.rsplit("@", 1)[-1].lower()
+    return domain in RESERVED_DOMAINS or domain.endswith(".example")
+
+
 async def send_email(to: str, subject: str, body: str) -> bool:
     """True — письмо ушло (или залогировано в dev-режиме), False — ошибка."""
     msg = build_message(to, subject, body)
-    if not settings.SMTP_HOST:
+    if not settings.SMTP_HOST or _reserved(to):
         logger.info("[dev email] to=%s subject=%r\n%s", to, subject, body)
         return True
     try:
