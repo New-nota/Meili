@@ -79,3 +79,16 @@ def _no_real_llm(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "LLM_API_KEY", None)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_celery(monkeypatch):
+    """Тесты не ставят задачи в живую очередь. Ревью: брокер (Redis) общий с
+    dev-стеком — после прогона pytest живой воркер получал summarize по ID
+    тестовых диалогов из чужой базы. Постановка перехвачена; нужен факт
+    постановки — смотри список enqueued в тесте."""
+    from app.services.meili import loop
+
+    enqueued: list = []
+    monkeypatch.setattr(loop, "_schedule_summarize", lambda cid: enqueued.append(cid))
+    return enqueued
