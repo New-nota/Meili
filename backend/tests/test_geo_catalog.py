@@ -116,3 +116,46 @@ async def test_geocode_city_down_is_unknown_not_none(monkeypatch):
     _mock_nominatim(monkeypatch, lambda r: httpx.Response(503))
     with pytest.raises(GeocoderUnavailable):
         await geocode_city("Берлин")
+
+
+async def test_fetch_area_survives_failed_category(monkeypatch):
+    """Живой прогон по Москве: тяжёлый запрос Overpass отбивал 504. По
+    категории за запрос — упавшая категория не обнуляет остальные."""
+    real = httpx.AsyncClient
+
+    def handler(request):
+        q = request.read().decode()
+        if "restaurant" in q:
+            return httpx.Response(504)
+        if "museum" in q:
+            return httpx.Response(200, json={"elements": [
+                {"type": "node", "id": 7, "lat": 55.75, "lon": 37.62,
+                 "tags": {"tourism": "museum", "name": "ГИМ"}},
+            ]})
+        return httpx.Response(200, json={"elements": []})
+
+    monkeypatch.setattr(catalog.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    pois, complete = await catalog._fetch_area(55.75, 37.62, 5000)
+    assert [p["name"] for p in pois] == ["ГИМ"] and pois[0]["category"] == "museum"
+    assert complete is False  # дотянем позже, а не через месяц
+
+
+def test_seed_feature_to_poi():
+    from scripts.seed_pois import feature_to_poi
+
+    moscow = (55.35, 36.95, 56.05, 38.15)
+    park = {"type": "Feature", "id": "w42", "properties": {
+        "leisure": "park", "name": "Парк Горького", "addr:city": "Москва"},
+        "geometry": {"type": "Polygon", "coordinates": [[
+            [37.59, 55.72], [37.61, 55.72], [37.61, 55.73], [37.59, 55.73], [37.59, 55.72]]]}}
+    poi = feature_to_poi(park, moscow)
+    assert poi["osm_id"] == "way/42" and poi["category"] == "park" and poi["city"] == "Москва"
+    assert 55.72 <= poi["lat"] <= 55.73
+    museum = {"id": "n7", "properties": {"tourism": "museum", "name": "ГИМ"},
+              "geometry": {"type": "Point", "coordinates": [37.6176, 55.7553]}}
+    assert feature_to_poi(museum, moscow)["city"] is None  # без addr:city — без города
+    far = {**museum, "geometry": {"type": "Point", "coordinates": [20.5, 54.7]}}
+    assert feature_to_poi(far, moscow) is None
+    nameless = {**museum, "properties": {"tourism": "museum"}}
+    assert feature_to_poi(nameless, moscow) is None

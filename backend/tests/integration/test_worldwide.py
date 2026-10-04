@@ -143,7 +143,7 @@ async def test_city_catalog_autofill_is_idempotent(client, monkeypatch):
              "address": "", "city": None, "category": "theatre"},
             {"osm_id": "way/2", "name": "Royal Botanic Garden", "lat": -33.8642, "lon": 151.2166,
              "address": "Mrs Macquaries Rd", "city": "Sydney", "category": "park"},
-        ]
+        ], True
 
     monkeypatch.setattr(catalog, "_fetch_area", fake_fetch)
     sydney = CityRef("Сидней", -33.8688, 151.2093, 20_000)

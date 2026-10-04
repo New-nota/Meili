@@ -18,6 +18,7 @@
 """
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -55,8 +56,14 @@ MIN_AREA_PLACES = 40
 # Overpass-радиус: у Москвы bbox 50 км, но тянуть всю агломерацию незачем
 MAX_FETCH_RADIUS_M = 12_000
 AREA_DONE_TTL = 30 * 24 * 3600    # заполнили — месяц не трогаем
+AREA_PARTIAL_TTL = 600            # часть категорий не пришла — дотянем скоро
 AREA_FAIL_TTL = 3600              # Overpass лёг — не долбим его каждым ходом
 AREA_LOCK_TTL = 120
+# Живой прогон по Москве: один запрос на 7 категорий × 12 км публичный
+# Overpass отбивает 504 (оценка стоимости под нагрузкой), лёгкий проходит.
+# Поэтому по категории за запрос и общий бюджет — ход Meili не ждёт вечно
+FETCH_BUDGET_S = 30.0
+CATEGORY_TIMEOUT_S = 20.0
 
 # (OSM key, value | None = любое, наша категория, кап) — категории сида +
 # кап на категорию: в Париже одних кафе тысячи, а модели хватит сотни
@@ -166,10 +173,10 @@ def _area_key(city: CityRef) -> str:
     return f"catalog:area:{city.lat:.2f}:{city.lon:.2f}"
 
 
-def _build_area_query(lat: float, lon: float, radius: int) -> str:
-    """Один запрос на все категории: свой out с капом у каждой."""
+def _build_area_query(lat: float, lon: float, radius: int, categories=None) -> str:
+    """Запрос по категориям: свой out с капом у каждой."""
     blocks = []
-    for key, value, _, cap in CATALOG_CATEGORIES:
+    for key, value, _, cap in categories or CATALOG_CATEGORIES:
         selector = f'["{key}"="{value}"]' if value else f'["{key}"]'
         around = f"(around:{radius},{lat},{lon})"
         blocks.append(
@@ -186,15 +193,7 @@ def _category_of(tags: dict) -> str | None:
     return None
 
 
-async def _fetch_area(lat: float, lon: float, radius: int) -> list[dict]:
-    """POI вокруг точки — список в формате parse_overpass_response + category."""
-    async with httpx.AsyncClient(timeout=40.0) as client:
-        r = await client.post(
-            OVERPASS_URL, data={"data": _build_area_query(lat, lon, radius)},
-            headers={"User-Agent": USER_AGENT},
-        )
-        r.raise_for_status()
-        data = r.json()
+def _pois_from_overpass(data: dict) -> list[dict]:
     by_id = {f"{el['type']}/{el['id']}": el.get("tags", {}) for el in data.get("elements", [])}
     pois = []
     for poi in parse_overpass_response(data):
@@ -202,6 +201,58 @@ async def _fetch_area(lat: float, lon: float, radius: int) -> list[dict]:
         if category:
             pois.append({**poi, "category": category})
     return pois
+
+
+async def _fetch_area(lat: float, lon: float, radius: int) -> tuple[list[dict], bool]:
+    """POI вокруг точки по категории за запрос → (места, все ли категории пришли).
+
+    Упавшая категория не роняет остальные; бюджет времени общий.
+    """
+    loop_start = time.monotonic()
+    pois, complete = [], True
+    async with httpx.AsyncClient(timeout=CATEGORY_TIMEOUT_S) as client:
+        for category in CATALOG_CATEGORIES:
+            if time.monotonic() - loop_start > FETCH_BUDGET_S:
+                complete = False
+                break
+            try:
+                r = await client.post(
+                    OVERPASS_URL, data={"data": _build_area_query(lat, lon, radius, [category])},
+                    headers={"User-Agent": USER_AGENT},
+                )
+                r.raise_for_status()
+                pois += _pois_from_overpass(r.json())
+            except (httpx.HTTPError, ValueError) as e:
+                logger.warning("Overpass: категория %s не пришла: %s", category[2], e)
+                complete = False
+    return pois, complete
+
+
+async def add_pois(db: AsyncSession, pois: list[dict], default_city: str | None) -> int:
+    """Get-or-create по osm_id пачкой (без commit). → сколько добавлено.
+
+    Общая точка автозаполнения (Overpass) и сида региона из pbf.
+    """
+    ids = [p["osm_id"] for p in pois]
+    known = set((await db.execute(
+        select(Place.osm_id).where(Place.osm_id.in_(ids))
+    )).scalars().all()) if ids else set()
+    added = 0
+    for poi in pois:
+        if poi["osm_id"] in known:
+            continue
+        known.add(poi["osm_id"])  # node и way одного места — разные id, это ок
+        db.add(Place(
+            name=poi["name"],
+            category=poi["category"],
+            address=poi.get("address") or None,
+            # addr:city из OSM, иначе город, ради которого тянули
+            city=poi.get("city") or default_city,
+            osm_id=poi["osm_id"],
+            location=ST_SetSRID(ST_MakePoint(poi["lon"], poi["lat"]), 4326),
+        ))
+        added += 1
+    return added
 
 
 async def _area_place_count(db: AsyncSession, city: CityRef) -> int:
@@ -232,35 +283,18 @@ async def ensure_city_catalog(city: CityRef) -> int:
             return 0  # соседний ход уже заполняет — не дублируем запрос
         try:
             radius = min(city.radius_m, MAX_FETCH_RADIUS_M)
-            try:
-                pois = await _fetch_area(city.lat, city.lon, radius)
-            except (httpx.HTTPError, ValueError) as e:
-                logger.warning("Overpass недоступен для %s: %s", city.name, e)
+            pois, complete = await _fetch_area(city.lat, city.lon, radius)
+            if not pois and not complete:
+                logger.warning("Overpass недоступен для %s", city.name)
                 await redis_client.setex(marker, AREA_FAIL_TTL, "fail")
                 return 0
-
-            ids = [p["osm_id"] for p in pois]
-            known = set((await db.execute(
-                select(Place.osm_id).where(Place.osm_id.in_(ids))
-            )).scalars().all()) if ids else set()
-            added = 0
-            for poi in pois:
-                if poi["osm_id"] in known:
-                    continue
-                known.add(poi["osm_id"])  # node и way одного места — разные id, это ок
-                db.add(Place(
-                    name=poi["name"],
-                    category=poi["category"],
-                    address=poi.get("address") or None,
-                    # addr:city из OSM, иначе город, ради которого тянули
-                    city=poi.get("city") or city.name,
-                    osm_id=poi["osm_id"],
-                    location=ST_SetSRID(ST_MakePoint(poi["lon"], poi["lat"]), 4326),
-                ))
-                added += 1
+            added = await add_pois(db, pois, city.name)
             await db.commit()
-            await redis_client.setex(marker, AREA_DONE_TTL, "1")
-            logger.info("каталог %s: +%d мест", city.name, added)
+            await redis_client.setex(
+                marker, AREA_DONE_TTL if complete else AREA_PARTIAL_TTL,
+                "1" if complete else "partial",
+            )
+            logger.info("каталог %s: +%d мест%s", city.name, added, "" if complete else " (частично)")
             return added
         finally:
             await redis_client.delete(lock)
