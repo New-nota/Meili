@@ -92,3 +92,34 @@ def _no_real_celery(monkeypatch):
     enqueued: list = []
     monkeypatch.setattr(loop, "_schedule_summarize", lambda cid: enqueued.append(cid))
     return enqueued
+
+
+@pytest.fixture(autouse=True)
+def _no_real_valhalla(monkeypatch):
+    """Тесты не ходят в Valhalla. CI нашёл: test_apply_creates_trip_stops_atomically
+    проходил только с живой Valhalla, а локальная проверка «без Valhalla»
+    обманывала — матрицу отдавал общий с dev Redis-кэш. Подмена — по прямой:
+    ~1,3 м/с пешком, длина в км; линии маршрута пустые.
+    Нужна настоящая cached_post — верни её в тесте явно."""
+    from app.services import optimizer, valhalla
+    from app.services.places.geo import haversine_m
+
+    def secs(a, b):
+        return int(haversine_m(a["lat"], a["lon"], b["lat"], b["lon"]) / 1.3)
+
+    async def fake_cached_post(action, body, slim=None):
+        if action == "sources_to_targets":
+            src = body["sources"]
+            return {"sources_to_targets": [[{"time": secs(a, b)} for b in src] for a in src]}
+        if action == "route":
+            locs = body["locations"]
+            return {"trip": {"legs": [
+                {"summary": {"time": secs(a, b),
+                             "length": haversine_m(a["lat"], a["lon"], b["lat"], b["lon"]) / 1000},
+                 "shape": ""}
+                for a, b in zip(locs, locs[1:])
+            ]}}
+        raise AssertionError(f"неожиданный вызов Valhalla: {action}")
+
+    monkeypatch.setattr(valhalla, "cached_post", fake_cached_post)
+    monkeypatch.setattr(optimizer, "cached_post", fake_cached_post)

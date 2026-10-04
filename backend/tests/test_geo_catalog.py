@@ -12,6 +12,7 @@ from app.services.places.catalog import (
     geocode_city,  # настоящий: autouse-фикстура подменяет его уже после импорта
 )
 from app.services.places.geo import in_coverage, timezone_at
+from app.services.valhalla import cached_post as REAL_CACHED_POST
 
 
 def test_empty_coverage_means_whole_world(monkeypatch):
@@ -165,6 +166,8 @@ async def test_valhalla_cache_serves_repeat_and_survives_redis_outage(monkeypatc
     """Ревью (нагрузка): одинаковый маршрут — из кэша; Redis лёг — идём в Valhalla."""
     from app.services import valhalla
 
+    # настоящая cached_post (autouse-фикстура подменяет её фейком)
+    monkeypatch.setattr(valhalla, "cached_post", REAL_CACHED_POST)
     calls = []
     real = httpx.AsyncClient
 
