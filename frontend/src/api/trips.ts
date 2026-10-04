@@ -1,6 +1,6 @@
 import type { Stop, TransportMode, Trip } from '../types/index'
 import type { TripDay } from './days'
-import { apiFetch, API_URL, getAccessToken } from "./client"
+import { apiFetch, API_URL, getAccessToken, getRequestLanguage } from "./client"
 
 
 
@@ -119,6 +119,8 @@ export async function downloadExport(tripId: string, kind: 'pdf' | 'ics'): Promi
     const headers: Record<string, string> = {}
     const token = getAccessToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
+    const lng = getRequestLanguage()
+    if (lng) headers['Accept-Language'] = lng  // PDF/.ics — на языке интерфейса
     const res = await fetch(`${API_URL}/trips/${tripId}/export/${kind}`, {
         headers, credentials: 'include',
     })

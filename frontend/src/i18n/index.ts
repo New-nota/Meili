@@ -3,6 +3,7 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
+import { setRequestLanguage } from '../api/client'
 
 import ru from './locales/ru/translation.json'
 import en from './locales/en/translation.json'
@@ -17,6 +18,15 @@ export const SUPPORTED_LANGUAGES = [
     { code: 'fr', label: 'Français' },
     { code: 'es', label: 'Español' },
 ] as const
+
+// язык интерфейса — бэкенду (PDF/.ics/письма) и в <html lang> (index.html
+// стартует с ru: скринридеры и переносы иначе читают английский как русский).
+// Подписка ДО init — первое languageChanged летит из самого init
+const syncLanguage = (lng: string) => {
+    setRequestLanguage(lng)
+    document.documentElement.lang = lng
+}
+i18n.on('languageChanged', syncLanguage)
 
 i18n
     .use(LanguageDetector)

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.stops import get_trip_or_404
 from app.core.database import get_db
+from app.core.i18n import Lang, get_lang
 from app.core.security import get_current_user
 from app.models.user import User
 from app.services.export_ics import render_trip_ics
@@ -26,9 +27,10 @@ async def export_pdf(
     trip_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    lang: Lang = Depends(get_lang),
 ):
     trip = await get_trip_or_404(trip_id, current_user.id, db)
-    pdf = await render_itinerary_pdf(db, trip)
+    pdf = await render_itinerary_pdf(db, trip, lang)
     filename = _safe_filename(trip.title, "pdf")
     return Response(
         content=pdf,
@@ -47,9 +49,10 @@ async def export_ics(
     trip_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    lang: Lang = Depends(get_lang),
 ):
     trip = await get_trip_or_404(trip_id, current_user.id, db)
-    ics_text = await render_trip_ics(db, trip)
+    ics_text = await render_trip_ics(db, trip, lang)
     filename = _safe_filename(trip.title, "ics")
     return Response(
         content=ics_text,

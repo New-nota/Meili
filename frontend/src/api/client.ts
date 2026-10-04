@@ -23,6 +23,19 @@ export function getAccessToken(): string | null {
     return accessToken;
 }
 
+// Язык интерфейса — бэкенду в Accept-Language: PDF, .ics и письма он пишет
+// сам (core/i18n.py). Ставит i18n/index.ts на каждую смену языка; браузерный
+// Accept-Language не годится — он про ОС, а не про выбор в дропдауне.
+let requestLanguage: string | null = null;
+
+export function setRequestLanguage(lng: string) {
+    requestLanguage = lng;
+}
+
+export function getRequestLanguage(): string | null {
+    return requestLanguage;
+}
+
 // QA: refresh — single-flight. Refresh-токен одноразовый (ротация jti), а
 // звать его хотят пачкой: StrictMode дважды запускает bootstrap-эффект,
 // TripPlanner шлёт 4-5 запросов разом, и все ловят 401 при протухшем access.
@@ -78,6 +91,9 @@ export async function apiFetch<T = unknown>(
         };
         if (accessToken) {
             headers["Authorization"] = `Bearer ${accessToken}`;
+        }
+        if (requestLanguage) {
+            headers["Accept-Language"] = requestLanguage;
         }
         return fetch(`${API_URL}${path}`, {
             ...options,

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <style>
@@ -30,37 +30,37 @@
     {% for day in days %}
     <div class="day">
         {# S16: у дня может быть имя; иначе дефолтная подпись из position #}
-        <h2>{{ day.day.title or "День " ~ day.day.position }} · {{ day.day.date }}</h2>
+        <h2>{{ day.day.title or t('pdf.day', num=day.day.position) }} · {{ day.day.date }}</h2>
         {% if day.start_location %}
-        <div class="depot">🏁 Старт: {{ day.start_location.name or day.start_location.address }} в {{ day.day.start_time.strftime('%H:%M') }}</div>
+        <div class="depot">🏁 {{ t('pdf.start', place=day.start_location.name or day.start_location.address, time=day.day.start_time.strftime('%H:%M')) }}</div>
         {% endif %}
         {% for item in day.stops %}
         <div class="stop">
             <span class="name">{{ loop.index }}. {{ item.place.name }}</span>
             <div class="meta">
                 {% if item.stop.visit_time %}{{ item.stop.visit_time.strftime('%H:%M') }} · {% endif %}
-                {% if item.stop.duration_minutes %}{{ item.stop.duration_minutes }} мин · {% endif %}
+                {% if item.stop.duration_minutes %}{{ t('pdf.minutes', count=item.stop.duration_minutes) }} · {% endif %}
                 {% if item.place.address %}{{ item.place.address }}{% endif %}
                 {% if item.cost %} · {{ item.cost }}{% endif %}
-                {% if item.opening %} · часы: {{ item.opening }}{% endif %}
+                {% if item.opening %} · {{ t('pdf.hours', hours=item.opening) }}{% endif %}
             </div>
         </div>
         {% endfor %}
         {% if day.end_location %}
-        <div class="depot">🏁 Финиш: {{ day.end_location.name or day.end_location.address }}</div>
+        <div class="depot">🏁 {{ t('pdf.finish', place=day.end_location.name or day.end_location.address) }}</div>
         {% endif %}
     </div>
     {% endfor %}
 
     <div class="budget">
-        <h2>Бюджет</h2>
+        <h2>{{ t('pdf.budget') }}</h2>
         <table>
-            <tr><td>Запланировано</td><td>{{ budget.planned_total }} {{ budget.currency }}</td></tr>
-            <tr><td>Забронировано</td><td>{{ budget.booked_total }} {{ budget.currency }}</td></tr>
+            <tr><td>{{ t('pdf.planned') }}</td><td>{{ budget.planned_total }} {{ budget.currency }}</td></tr>
+            <tr><td>{{ t('pdf.booked') }}</td><td>{{ budget.booked_total }} {{ budget.currency }}</td></tr>
             {% if budget.budget_total is not none %}
-            <tr class="total"><td>Лимит</td><td>{{ budget.budget_total }} {{ budget.currency }}</td></tr>
+            <tr class="total"><td>{{ t('pdf.limit') }}</td><td>{{ budget.budget_total }} {{ budget.currency }}</td></tr>
             <tr class="{% if budget.over_budget %}over{% endif %}">
-                <td>Остаток</td><td>{{ budget.remaining }} {{ budget.currency }}</td>
+                <td>{{ t('pdf.remaining') }}</td><td>{{ budget.remaining }} {{ budget.currency }}</td>
             </tr>
             {% endif %}
         </table>

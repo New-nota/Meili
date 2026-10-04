@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.i18n import Lang, get_lang
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.bookings import BookingConfirm, BookingCreate, BookingResponse
@@ -49,6 +50,7 @@ async def confirm(
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    lang: Lang = Depends(get_lang),
 ):
     try:
         booking = await confirm_booking(db, current_user.id, booking_id, data)
@@ -65,6 +67,7 @@ async def confirm(
         provider=booking.provider,
         booking_ref=booking.external_id or str(booking.id)[:8],
         visit_date=details.get("visit_date"),
+        lang=lang,
     )
     return booking_to_dict(booking)
 

@@ -12,6 +12,7 @@ from geoalchemy2.shape import to_shape
 from ics import Calendar, Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.i18n import DEFAULT_LANG, Lang, t
 from app.models.trip import Trip
 from app.services.export_pdf import collect_itinerary
 from app.services.valhalla import RouteError, route_legs
@@ -62,9 +63,9 @@ async def _travel_after(day_block: dict, trip: Trip) -> tuple[int, list[int]]:
     return lead, after
 
 
-async def render_trip_ics(db: AsyncSession, trip: Trip) -> str:
+async def render_trip_ics(db: AsyncSession, trip: Trip, lang: Lang = DEFAULT_LANG) -> str:
     tz = ZoneInfo(trip.timezone)
-    data = await collect_itinerary(db, trip)
+    data = await collect_itinerary(db, trip, lang)
 
     cal = Calendar()
     for day_block in data["days"]:
@@ -94,7 +95,7 @@ async def render_trip_ics(db: AsyncSession, trip: Trip) -> str:
             if stop.notes:
                 description.append(stop.notes)
             if stop.is_booked and stop.booking_ref:
-                description.append(f"Бронь: {stop.booking_ref}")
+                description.append(t(lang, "ics.booking", ref=stop.booking_ref))
             if description:
                 event.description = "\n".join(description)
             cal.events.add(event)

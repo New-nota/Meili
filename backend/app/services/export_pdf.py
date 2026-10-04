@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.i18n import DEFAULT_LANG, Lang, t
 from app.models.place import Place
 from app.models.trip import Trip, TripDay, TripStop
 from app.services.budget import compute_budget
@@ -19,7 +20,7 @@ _env = Environment(
 )
 
 
-async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
+async def collect_itinerary(db: AsyncSession, trip: Trip, lang: Lang = DEFAULT_LANG) -> dict:
     """Общие данные для PDF и ICS: дни -> стопы (included, по position)."""
     days = (await db.execute(
         select(TripDay)
@@ -54,7 +55,7 @@ async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
                     "stop": stop,
                     "place": place,
                     "opening": _opening_str(place.opening_hours),
-                    "cost": _cost_str(stop, place, booked.get(stop.id), trip.currency),
+                    "cost": _cost_str(stop, place, booked.get(stop.id), trip.currency, lang),
                 }
                 for stop, place in rows
             ],
@@ -62,7 +63,7 @@ async def collect_itinerary(db: AsyncSession, trip: Trip) -> dict:
     return {"days": result}
 
 
-def _cost_str(stop, place, booked_amount, currency: str) -> str | None:
+def _cost_str(stop, place, booked_amount, currency: str, lang: Lang = DEFAULT_LANG) -> str | None:
     """QA: стоимость стопа в PDF по тем же правилам, что UI (utils/costLabel).
 
     Раньше печаталось «~estimated_cost» всегда: и для ручной суммы (должна
@@ -70,11 +71,11 @@ def _cost_str(stop, place, booked_amount, currency: str) -> str | None:
     а диапазон-оценка Meili и «бесплатно» не печатались вовсе.
     """
     if booked_amount is not None:
-        return f"{booked_amount} {currency} (бронь)"
+        return t(lang, "cost.booked", amount=booked_amount, currency=currency)
     if stop.cost_min is not None and stop.cost_max is not None:
         return f"~{stop.cost_min}–{stop.cost_max} {currency}"
     if stop.cost_source == "auto" and getattr(place, "pricing_model", None) == "free":
-        return "бесплатно"
+        return t(lang, "cost.free")
     if stop.estimated_cost is None:
         return None
     approx = stop.cost_is_estimate or stop.cost_source in ("auto", "estimate")
@@ -89,12 +90,13 @@ def _opening_str(opening_hours) -> str | None:
     return None
 
 
-async def render_itinerary_pdf(db: AsyncSession, trip: Trip) -> bytes:
+async def render_itinerary_pdf(db: AsyncSession, trip: Trip, lang: Lang = DEFAULT_LANG) -> bytes:
     from weasyprint import HTML  # импорт тут: тяжёлый и нужен только на экспорт
 
-    data = await collect_itinerary(db, trip)
+    data = await collect_itinerary(db, trip, lang)
     budget = await compute_budget(db, trip)
     html = _env.get_template("itinerary.html").render(
-        trip=trip, days=data["days"], budget=budget
+        trip=trip, days=data["days"], budget=budget,
+        lang=lang, t=lambda key, **kw: t(lang, key, **kw),
     )
     return HTML(string=html).write_pdf()

@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from starlette.responses import RedirectResponse
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.i18n import Lang, get_lang
 from app.core.redis import (
     CODE_TTL,
     MAX_CODE_ATTEMPTS,
@@ -135,6 +136,7 @@ async def register(
     data: RegisterRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    lang: Lang = Depends(get_lang),
 ):
     # занят только ПОДТВЕРЖДЁННЫЙ юзер (в БД все такие — S14)
     result = await db.execute(select(User).where(func.lower(User.email) == data.email))
@@ -159,7 +161,7 @@ async def register(
     # результат никто не читает), но ждали мы его прямо в запросе — с лежащим
     # SMTP каждая регистрация висела на таймаут сокета (10 с) на ровном месте.
     # dev без SMTP: код уходит в лог (docker logs backend)
-    background.add_task(send_registration_code, data.email, code)
+    background.add_task(send_registration_code, data.email, code, lang)
     return RegisterResponse()
 
 
@@ -203,7 +205,11 @@ async def verify(
 
 
 @router.post("/resend-code", response_model=RegisterResponse)
-async def resend_code(data: ResendRequest, background: BackgroundTasks):
+async def resend_code(
+    data: ResendRequest,
+    background: BackgroundTasks,
+    lang: Lang = Depends(get_lang),
+):
     pending = await get_pending_registration(data.email)
     if pending is None:
         raise HTTPException(status_code=400, detail="no_pending_registration")
@@ -213,7 +219,7 @@ async def resend_code(data: ResendRequest, background: BackgroundTasks):
     pending["code_expires"] = time.time() + CODE_TTL
     pending["attempts"] = 0
     await save_pending_registration(data.email, pending)
-    background.add_task(send_registration_code, data.email, pending["code"])
+    background.add_task(send_registration_code, data.email, pending["code"], lang)
     return RegisterResponse()
 
 @router.post("/login",response_model=TokenResponse)
