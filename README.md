@@ -134,12 +134,22 @@ moscow       https://download.geofabrik.de/russia/central-fed-district-latest.os
 | Европа | 35 ГБ | ~32–40 ГБ | 32 ГБ / 250 ГБ NVMe / 6–12 ч | 8–16 ГБ / 50 ГБ |
 | Весь мир | 95 ГБ | ~75–90 ГБ | 64 ГБ / 1 ТБ NVMe / 18–24 ч | 16–32 ГБ / 120 ГБ |
 
+## Производительность и боевой запуск
+
+Образ бэкенда по умолчанию боевой: несколько процессов uvicorn
+(`WEB_CONCURRENCY`, по умолчанию 2), без `--reload`; docker-compose для
+разработки включает `--reload`. Маршруты и матрицы Valhalla кэшируются в
+Redis. Замер на ноутбуке (50 одновременных пользователей, типичные запросы
+планировщика вместе с маршрутами): dev-режим — ~220 rps, боевой образ на
+4 воркерах — ~600 rps, p50 маршрута 11 мс; поездка на 60 дней × 25 мест
+(1500 стопов) открывается за ~60 мс, PDF/`.ics` — ~1 с.
+
 ## Тесты
 
 ```bash
 # backend: юнит + интеграционные (реальный Postgres, отдельная БД wanderown_test),
 # включая прогон миграций с нуля и проверку дрейфа схемы
-docker compose exec backend python -m pytest          # ~336
+docker compose exec backend python -m pytest          # ~342
 
 cd frontend
 npm run test:unit      # vitest, ~59
