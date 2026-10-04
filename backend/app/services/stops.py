@@ -13,7 +13,7 @@ from app.models.enums import DEFAULT_TRANSPORT
 from app.models.place import Place
 from app.models.trip import Trip, TripDay, TripStop
 from app.services.budget_estimate import estimate_stop_cost
-from app.services.places.geo import in_region
+from app.services.places.geo import in_coverage
 
 # S16: длительность визита, если её нет ни в запросе, ни у места
 DEFAULT_DURATION_MINUTES = 60
@@ -41,10 +41,11 @@ async def add_stop(
     """
     # QA: место вне зоны тайлов ломает весь день — маршрут не строится,
     # оптимизация отвечает «вне покрытия». Отсекаем при добавлении (общая
-    # точка для ручки стопов и Meili-executor'а), а не на полпути.
+    # точка для ручки стопов и Meili-executor'а), а не на полпути. Зона —
+    # из конфига (ROUTING_COVERAGE), пустая = маршруты есть везде.
     if place.location is not None:
         point = to_shape(place.location)
-        if not in_region(point.y, point.x):
+        if not in_coverage(point.y, point.x):
             raise StopError("place_out_of_coverage")
 
     # QA: два параллельных добавления в один день (двойной клик, Meili +

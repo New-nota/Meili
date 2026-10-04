@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
-import maplibregl from 'maplibre-gl'
+import maplibregl from '../utils/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
-    ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, Settings2, X,
+    ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, RefreshCw, Settings2, X,
 } from 'lucide-react'
 import type { Stop } from '../types/index'
-import { getStops, getDayRoute, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
+import { getStops, dayRouteQuery, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
 import { addLocation, getDays, getLocations, updateDay, reorderDays, type TripDay, type TripLocation } from '../api/days'
 import DayPlan from '../components/trip/DayPlan'
 import DaySwatches from '../components/trip/DaySwatches'
@@ -27,15 +27,19 @@ import StopDetailPanel from '../components/StopDetailPanel'
 import MeiliChat from '../components/meili/MeiliChat'
 import { apiFetch, ApiError } from '../api/client'
 import { apiErrorMessage } from '../utils/apiError'
-import { inRegion } from '../utils/geocode'
+import { inCoverage } from '../utils/geocode'
+import { SearchAreaContext } from '../utils/searchArea'
+import { useRoutingCoverage } from '../api/meta'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getVisitedPlaces } from '../api/visited'
 import type { Place } from '../types/index'
 
-// стартовый вид карты до загрузки остановок (MVP-регион — Калининград);
-// после загрузки камера подстраивается через fitBounds
-const DEFAULT_MAP_CENTER: [number, number] = [20.5114, 54.7104]
-const DEFAULT_MAP_ZOOM = 13
+// стартовый вид карты до загрузки поездки — весь мир, без «родного» города:
+// дальше камера прыгает на город поездки (S11) или fitBounds по точкам
+const WORLD_CENTER: [number, number] = [15, 30]
+const WORLD_ZOOM = 1.5
+// зум города поездки, пока в ней нет точек
+const CITY_ZOOM = 13
 // S11: ресайз панели — память в localStorage; редизайн «Лес»: дефолт 460, мин 380
 const PANEL_MIN = 380
 const PANEL_DEFAULT = 460
@@ -69,10 +73,22 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     const [error, setError] = useState<string | null>(null)
     // ошибки загрузки — объектом, перевод при рендере (см. Discover)
     const [loadError, setLoadError] = useState<{ e: unknown, fallback: string } | null>(null)
+    // ревью: ошибка загрузки говорила «попробуйте ещё раз», а кнопки не было —
+    // только перезагрузка вкладки. Счётчик попыток перезапускает загрузки
+    const [loadAttempt, setLoadAttempt] = useState(0)
+    const retryLoad = () => { setLoadError(null); setLoadAttempt(n => n + 1) }
     // QA: чужая/удалённая/кривая поездка — честный экран «не найдена»
     const [notFoundId, setNotFoundId] = useState<string | null>(null)
     const notFound = notFoundId !== null && notFoundId === tripId
     const [trip, setTrip] = useState<TripInfo | null>(null)
+    // по миру: поиски внутри поездки — сначала в округе её города; объект
+    // мемоизирован, иначе каждый рендер перезапускал бы поиски-эффекты
+    const cityLat = trip?.city_lat, cityLon = trip?.city_lon
+    const searchArea = useMemo(
+        () => (cityLat != null && cityLon != null ? { lat: cityLat, lon: cityLon } : null),
+        [cityLat, cityLon],
+    )
+    const coverage = useRoutingCoverage()
     const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
     // S8 WP-3: мульти-день; null = режим «Все дни»
     const [days, setDays] = useState<TripDay[]>([])
@@ -148,8 +164,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         if (!map || trip?.city_lat == null || trip?.city_lon == null) return
         const hasPoints = stops.length > 0 || days.some(d => d.stops.length > 0)
         if (hasPoints) return
-        const center: [number, number] = [trip.city_lon, trip.city_lat]
-        whenMapReady(map, () => map.jumpTo({ center, zoom: DEFAULT_MAP_ZOOM }))
+        // камера не ждёт 'load': стиль с внешнего сервера тайлов грузится
+        // секундами, и всё это время карта показывала весь мир — клик по ней
+        // ставил точку в Африке («вне зоны карт»). jumpTo работает и без стиля
+        map.jumpTo({ center: [trip.city_lon, trip.city_lat], zoom: CITY_ZOOM })
     }, [trip, stops, days])
 
     // S13: превью — лайк (оптимистично) и копирование в свою редактируемую поездку
@@ -194,7 +212,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             setExpandedDayId(prev => prev ?? (d[0]?.id ?? null))
         }).catch(() => {})
         return () => { cancelled = true }
-    }, [tripId])
+    }, [tripId, loadAttempt])
 
     useEffect(()=> {
         const load = async () => {
@@ -211,7 +229,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         }
     load()
     // tripId в deps: при переходе между поездками роутер переиспользует компонент
-    }, [tripId] )
+    }, [tripId, loadAttempt] )
 
     useEffect(()=> {
         if(!mapContainer.current) return
@@ -219,8 +237,8 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         const map = new maplibregl.Map({
             container: mapContainer.current,
             style: 'https://tiles.openfreemap.org/styles/liberty',
-            center: DEFAULT_MAP_CENTER,
-            zoom: DEFAULT_MAP_ZOOM,
+            center: WORLD_CENTER,
+            zoom: WORLD_ZOOM,
             // редизайн «Лес»: на телефоне карта — блок в скроллящейся странице,
             // одним пальцем листаем страницу, двумя — карту
             cooperativeGestures: mobile,
@@ -323,7 +341,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             }
         }
         load()
-    }, [tripId])
+    }, [tripId, loadAttempt])
 
     // S8 WP-3: активный день — его стопы и депо; без дней — все стопы поездки
     const activeDay = days.find(d => d.id === expandedDayId) ?? null
@@ -361,7 +379,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     const dayStops = day.stops.filter(st => st.included_in_route !== false && st.place_lat && st.place_lon)
                     // S16: геометрия берётся из перегонов — у каждого свой транспорт
                     const coords = dayStops.length
-                        ? await getDayRoute(tripId!, day.id)
+                        ? await queryClient.fetchQuery(dayRouteQuery(tripId!, day))
                             .then(r => legsToCoordinates(r.legs)).catch(() => [])
                         : []
                     if (cancelled) return
@@ -392,8 +410,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         // исключённые селективным прогоном (S8 WP-4) в линию не входят
         const includedStops = routeStops.filter(s => s.included_in_route !== false)
         // S16: линия дня — геометрия перегонов (учитывает транспорт каждого)
+        // общий кэш с панелью дня (dayRouteKey): повторная отрисовка карты и
+        // DayPlan берут уже полученный маршрут, а не шлют /route заново
         const coordinates = activeDay && includedStops.length
-            ? await getDayRoute(tripId!, activeDay.id)
+            ? await queryClient.fetchQuery(dayRouteQuery(tripId!, activeDay))
                 .then(r => legsToCoordinates(r.legs)).catch(() => [])
             : []
         if (cancelled) return
@@ -469,7 +489,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
 
     // activeDay/routeStops — производные от days/expandedDayId/stops со
     // стабильными ссылками; t — подписи попапов при смене языка
-    }, [stops, trip, days, expandedDayId, activeDay, routeStops, tripId, t])
+    }, [stops, trip, days, expandedDayId, activeDay, routeStops, tripId, t, queryClient])
 
     // S16 §1.5: реордер дней — новый порядок id; сервер переставляет содержимое
     // по фиксированному пулу дат и возвращает дни уже в новом порядке
@@ -587,6 +607,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         tab === 'route' ? t('trip.route') : tab === 'budget' ? t('budget.title') : t('meili.title')
 
     return (
+        <SearchAreaContext.Provider value={searchArea}>
         <div className={`planner${panelTab === 'meili' ? ' is-chat' : ''}`}
             style={{
                 ['--panel-w' as string]: `${panelWidth}px`,
@@ -676,13 +697,13 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                                 </p>
                             )}
                             <div style={{display: 'grid', gap: 8}}>
-                                {/* QA: точка вне области ломала маршрут всего дня —
-                                    бэк её теперь не примет, предупреждаем заранее */}
-                                {!inRegion(clickedPoint.lat, clickedPoint.lng) && (
+                                {/* QA: точка вне зоны тайлов ломала маршрут всего дня —
+                                    бэк её не примет, предупреждаем заранее. Зона — с бэка (/meta) */}
+                                {!inCoverage(coverage, clickedPoint.lat, clickedPoint.lng) && (
                                     <span className="error-text">{t('errors.place_out_of_coverage')}</span>
                                 )}
                                 <button type="button" onClick={addClickedToRoute} className="btn btn-sm btn-accent"
-                                    disabled={!inRegion(clickedPoint.lat, clickedPoint.lng)}>
+                                    disabled={!inCoverage(coverage, clickedPoint.lat, clickedPoint.lng)}>
                                     <Plus />{t('place.addToRoute')}
                                 </button>
                                 <button type="button" onClick={makeClickedStart} disabled={!activeDay} className="btn btn-sm"
@@ -724,7 +745,12 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     />
                 ) : (
                     <div style={{ padding: '18px 24px 32px' }} className="planner-pad">
-                        {loadError && <p className="error-text" role="alert" style={{ marginBottom: 12 }}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>}
+                        {loadError && (
+                            <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                                <p className="error-text" style={{ margin: 0 }}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>
+                                <button type="button" onClick={retryLoad} className="btn btn-sm"><RefreshCw />{t('common.retry')}</button>
+                            </div>
+                        )}
                         {error && (
                             <div role="alert" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12, padding: '10px 12px',
                                 background: 'var(--danger-wash)', color: 'var(--danger)', borderRadius: 'var(--radius)', fontSize: 14 }}>
@@ -776,6 +802,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             <div className={`panel-resize-handle${resizing ? ' dragging' : ''}`}
                 onPointerDown={startResize} title={t('trip.resizePanel')} />
         </div>
+        </SearchAreaContext.Provider>
     )
 }
 

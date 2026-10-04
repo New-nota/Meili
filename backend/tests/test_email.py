@@ -34,7 +34,7 @@ def test_booking_confirmation_body_minimal():
 
 async def test_send_email_dev_mode_logs_and_succeeds(caplog):
     # SMTP_HOST не задан (dev) -> письмо в лог, результат True.
-    # Явно гасим SMTP_HOST: в backend/.env он может быть задан, а тест про dev-ветку
+    # Явно гасим SMTP_HOST: в .env он может быть задан, а тест про dev-ветку
     import logging
 
     from app.services import email as email_module
@@ -56,3 +56,14 @@ async def test_send_email_smtp_failure_returns_false():
         ):
             ok = await send_email("user@wanderown.dev", "Тест", "Привет")
     assert ok is False
+
+
+async def test_reserved_domains_never_hit_smtp():
+    """Ревью: тестовые регистрации на живом стеке слали настоящие письма.
+    RFC 2606-домены (example.com, *.example) — только в лог, даже с SMTP."""
+    from app.services import email as email_module
+
+    with patch.object(email_module.settings, "SMTP_HOST", "smtp.real.local"):
+        with patch.object(email_module, "_send_sync", side_effect=AssertionError("ушло в SMTP")):
+            assert await send_email("e2e_1@e2e.example", "Тест", "x") is True
+            assert await send_email("x@EXAMPLE.com", "Тест", "x") is True

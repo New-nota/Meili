@@ -6,6 +6,8 @@ Prod-режим: SMTP_HOST задан → отправка через smtplib (S
 
 Отправка намеренно «best effort»: сбой почты никогда не роняет запрос —
 подтверждение брони важнее письма о нём.
+
+Язык письма — из Accept-Language запроса, который его вызвал (core/i18n).
 """
 import asyncio
 import logging
@@ -13,6 +15,7 @@ import smtplib
 from email.message import EmailMessage
 
 from app.core.config import settings
+from app.core.i18n import DEFAULT_LANG, Lang, t
 
 logger = logging.getLogger("meili.email")
 
@@ -34,10 +37,22 @@ def build_message(to: str, subject: str, body: str) -> EmailMessage:
     return msg
 
 
+# RFC 2606: домены, которые по определению никому не принадлежат. Ревью: e2e
+# и нагрузочные прогоны регистрируют пользователей на живом стеке, и при
+# заданном SMTP каждая регистрация слала настоящее письмо (раньше — на
+# @wanderown.dev, чей-то потенциально реальный домен). Такие адреса — в лог.
+RESERVED_DOMAINS = {"example.com", "example.net", "example.org"}
+
+
+def _reserved(to: str) -> bool:
+    domain = to.rsplit("@", 1)[-1].lower()
+    return domain in RESERVED_DOMAINS or domain.endswith(".example")
+
+
 async def send_email(to: str, subject: str, body: str) -> bool:
     """True — письмо ушло (или залогировано в dev-режиме), False — ошибка."""
     msg = build_message(to, subject, body)
-    if not settings.SMTP_HOST:
+    if not settings.SMTP_HOST or _reserved(to):
         logger.info("[dev email] to=%s subject=%r\n%s", to, subject, body)
         return True
     try:
@@ -53,20 +68,22 @@ def booking_confirmation_body(
     provider: str,
     booking_ref: str,
     visit_date: str | None = None,
+    lang: Lang = DEFAULT_LANG,
 ) -> tuple[str, str]:
     """(subject, body) письма о подтверждённой брони."""
     # письмо шлёт сервис (Hermod), не ассистент; сухая подпись — ТЗ-rename шаг 5
-    subject = f"Hermod: бронь подтверждена — {place_name or 'место в маршруте'}"
+    subject = t(lang, "mail.booking.subject",
+                place=place_name or t(lang, "mail.booking.placeFallback"))
     lines = [
-        "Ваша бронь подтверждена!",
+        t(lang, "mail.booking.title"),
         "",
-        f"Место: {place_name or '—'}",
-        f"Провайдер: {provider}",
-        f"Номер брони: {booking_ref}",
+        t(lang, "mail.booking.place", place=place_name or "—"),
+        t(lang, "mail.booking.provider", provider=provider),
+        t(lang, "mail.booking.ref", ref=booking_ref),
     ]
     if visit_date:
-        lines.append(f"Дата визита: {visit_date}")
-    lines += ["", "Хорошей поездки!", "", "Hermod. Маршрут доставлен."]
+        lines.append(t(lang, "mail.booking.date", date=visit_date))
+    lines += ["", t(lang, "mail.booking.bye"), "", t(lang, "mail.signature")]
     return subject, "\n".join(lines)
 
 
@@ -76,27 +93,27 @@ async def send_booking_confirmation(
     provider: str,
     booking_ref: str,
     visit_date: str | None = None,
+    lang: Lang = DEFAULT_LANG,
 ) -> bool:
     subject, body = booking_confirmation_body(
-        place_name, provider, booking_ref, visit_date
+        place_name, provider, booking_ref, visit_date, lang
     )
     return await send_email(to, subject, body)
 
 
-def registration_code_body(code: str) -> tuple[str, str]:
+def registration_code_body(code: str, lang: Lang = DEFAULT_LANG) -> tuple[str, str]:
     """(subject, body) письма с кодом подтверждения регистрации (S14)."""
-    subject = "Hermod: код подтверждения регистрации"
     body = "\n".join([
-        f"Ваш код подтверждения: {code}",
+        t(lang, "mail.code.code", code=code),
         "",
-        "Код действует 10 минут. Если вы не регистрировались в Hermod —",
-        "просто проигнорируйте это письмо.",
+        t(lang, "mail.code.ttl"),
+        t(lang, "mail.code.ignore"),
         "",
-        "Hermod. Маршрут доставлен.",
+        t(lang, "mail.signature"),
     ])
-    return subject, body
+    return t(lang, "mail.code.subject"), body
 
 
-async def send_registration_code(to: str, code: str) -> bool:
-    subject, body = registration_code_body(code)
+async def send_registration_code(to: str, code: str, lang: Lang = DEFAULT_LANG) -> bool:
+    subject, body = registration_code_body(code, lang)
     return await send_email(to, subject, body)

@@ -2,21 +2,31 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # dev: код смонтирован, перезапуск на правках (образ по умолчанию — боевой,
+    # несколько воркеров без reload, см. backend/Dockerfile)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      # креды берутся из .env в корне проекта (см. .env.example)
+      # единый .env в корне (см. .env.example): ${…} подставляет compose,
+      # остальное отдаёт env_file. Адреса сервисов — здесь, внутри сети compose
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VALHALLA_URL=http://valhalla:8002
+      # зона тайлов valhalla ниже ([south, west, north, east], пусто = весь
+      # мир). Источник правды — scripts/valhalla_regions.txt; после правки
+      # регионов скрипт update_valhalla_tiles.sh печатает нужную строку
+      - ROUTING_COVERAGE=[[54.30,19.60,55.35,23.05],[55.35,36.95,56.05,38.15]]
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    # ревью «с нуля»: без healthy-зависимостей backend стартовал раньше, чем
+    # Postgres свежего volume заканчивал init, и первый alembic падал
     depends_on:
-      - postgres
-      - redis
-      - valhalla
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      valhalla: {condition: service_started}
     env_file:
-      - ./backend/.env
+      - ./.env
 
   # ТЗ-Meili M5.3: фоновая работа ассистента (суммаризация истории).
   # Интерактивный диалог живёт в backend (SSE в запросе), фон — здесь.
@@ -28,13 +38,14 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VALHALLA_URL=http://valhalla:8002
+      - ROUTING_COVERAGE=[[54.30,19.60,55.35,23.05],[55.35,36.95,56.05,38.15]]
     volumes:
       - ./backend:/app
     depends_on:
-      - postgres
-      - redis
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     env_file:
-      - ./backend/.env
+      - ./.env
 
   postgres:
     image: postgis/postgis:15-3.3-alpine
@@ -47,14 +58,30 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+    # -h 127.0.0.1: init-фаза образа поднимает временный сервер только на
+    # unix-сокете — проверка по сокету отвечала «готов» до перезапуска
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
       - "6379:6379"
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   valhalla:
-    image: ghcr.io/valhalla/valhalla-scripted:latest
+    # версия зафиксирована: latest застрял на 3.7.0, где пешеходные маршруты
+    # по Москве падали 500 «GetTags: offset exceeds size of text list»
+    # (valhalla#6288, исправлено в 3.9.0). Тот же образ собирает тайлы —
+    # см. scripts/update_valhalla_tiles.sh
+    image: ghcr.io/valhalla/valhalla-scripted:3.9.0
     restart: unless-stopped
     ports:
       - "8002:8002"

@@ -9,7 +9,7 @@ from tests.integration.conftest import future_date, register_and_verify
 
 async def _trip(client, headers, **extra) -> dict:
     body = {
-        "title": "QA", "city": "Калининград",
+        "title": "QA", "city": "Калининград", "city_lat": 54.71, "city_lon": 20.51,
         "start_date": future_date(5), "end_date": future_date(7),
         "currency": "RUB", **extra,
     }

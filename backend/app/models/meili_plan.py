@@ -18,7 +18,7 @@ class MeiliPlan(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     plan_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     # 'proposed' | 'applied' | 'discarded' (строкой — стиль проекта)

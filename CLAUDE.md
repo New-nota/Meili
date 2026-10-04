@@ -2,7 +2,9 @@
 
 Планировщик путешествий. **Hermod** — сервис, **Meili** — ИИ-ассистент внутри
 (ТЗ-rename; бэкенд-техимена ассистента остались meili). Бывш. Meili, ранее
-WanderOwn / fastrip — в git-истории и БД `wanderown_*` это одно приложение. Регион MVP — Калининград (тайлы Valhalla).
+WanderOwn / fastrip — в git-истории и БД `wanderown_*` это одно приложение. Работает по всему
+миру; маршруты — только там, где есть тайлы Valhalla (`ROUTING_COVERAGE`, локально — Калининградская
+область и Москва с агломерацией).
 Пет-проект, формат работы — **активное программирование**: Claude пишет код сам.
 Учебный формат из PROGRESS.md (студент пишет руками) — устарел, игнорировать.
 Тон общения и комментарии в коде — неформальный русский; комментарии помечаются
@@ -11,37 +13,62 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 ## Окружение и запуск
 
 - Весь бэкенд-стек в Docker: `docker compose up -d` → postgres+PostGIS, redis,
-  valhalla, backend (FastAPI на :8000), worker (Celery — фон Meili-ассистента).
-  Фронт — локально: `cd frontend && npm run dev` (:5173).
+  valhalla (3.9.0), backend (FastAPI на :8000), worker (Celery — фон
+  Meili-ассистента). backend/worker ждут healthy postgres/redis (healthcheck —
+  `pg_isready` по TCP: init-фаза образа врёт по сокету). Фронт — локально:
+  `cd frontend && npm run dev` (:5173). С нуля: README → «Быстрый старт»
+  (порядок: .env → тайлы → up → миграции → сид мест).
 - `./backend` смонтирован в контейнер как `/app` — правки на хосте видны сразу
   (uvicorn с reload). Команды бэкенда гонять **в контейнере**:
   `docker compose exec backend <cmd>`.
 - Миграции: `docker compose exec backend alembic upgrade head`.
   **Правило проекта: не применять миграцию, не прочитав её.** Миграции пишутся
   читаемо руками (заготовка через `alembic revision -m "..."` в контейнере).
-- Сид POI: `docker compose exec backend python -m scripts.seed_places` (идемпотентен).
-- Секреты в `.env` (корень — креды Postgres для compose) и `backend/.env`
-  (DATABASE_URL, SECRET_KEY, опции: Google OAuth, R2, SMTP, LLM_API_KEY —
-  без них соответствующие фичи отвечают 501).
+  Цепочка поднимается с нуля на голой базе (initial сама включает PostGIS) и
+  совпадает с моделями — `tests/integration/test_migrations.py` гоняет
+  upgrade → `alembic check` → downgrade base → upgrade. Индекс/расширение
+  только в миграции = дрейф: объявляй их и в модели.
+- Места (POI) региона с картами — из того же pbf, что тайлы, без Overpass:
+  `./scripts/seed_region_pois.sh moscow` (bbox из `scripts/valhalla_regions.txt`,
+  osmium → `scripts/seed_pois.py`, идемпотентен; Москва — ~16,8 тыс. мест за
+  ~15 с). Города без карт Meili заполняет сам через Overpass (по категории
+  за запрос — общий запрос по мегаполису публичный Overpass отбивает 504).
+  Старый сид Калининграда через Overpass: `python -m scripts.seed_places`.
+- **Один `.env` в корне** на весь проект (`cp .env.example .env`, впиши
+  пустые строки — это личные секреты). Его читают compose (`${…}` + `env_file`
+  у backend/worker), pydantic (`config.ROOT_ENV`, `extra="ignore"`,
+  `env_ignore_empty` — «KEY=» значит «не задано») и Vite (`envDir: '..'`,
+  наружу только `VITE_*`). Адреса сервисов и `ROUTING_COVERAGE` — в
+  docker-compose.yml, не в .env. Без SECRET_KEY бэкенд не стартует; без
+  Google/R2/SMTP/LLM — соответствующие фичи отвечают 501. `backend/.dockerignore`
+  не пускает .env в образ.
 
 ## Тесты
 
-- Бэкенд: `docker compose exec backend python -m pytest` (~295). Тесты не шлют
-  настоящих писем (autouse-фикстура в `tests/conftest.py` гасит SMTP_HOST). Юнит в `tests/`,
+- Бэкенд: `docker compose exec backend python -m pytest` (~336). Тесты не
+  зависят от личного `.env`: autouse-фикстуры в `tests/conftest.py` гасят
+  SMTP_HOST и LLM_API_KEY, ставят покрытие «весь мир», глушат сеть геокодера и
+  автозаполнения каталога (нужно — задай в тесте явно). Юнит в `tests/`,
   интеграционные в `tests/integration/` — реальный Postgres, отдельная БД
   `wanderown_test` (схема из моделей через `create_all`, TRUNCATE после каждого
   теста, скип всего пакета если БД недоступна). Фикстуры `client` (httpx→ASGI,
   подмена `get_db`) и `auth_headers` — в `tests/integration/conftest.py`.
-- Фронт: `npm run test:unit` (vitest, 53), `npm run test:e2e` (Playwright, 22;
+- Фронт: `npm run test:unit` (vitest, 59), `npm run test:e2e` (Playwright, 26;
   `e2e/qa-hardening.spec.ts` — сценарии QA-прогона, Meili там без LLM: план
-  замораживается в БД, SSE подменяется;
-  сам поднимает dev-сервер, нужен запущенный docker-стек; **спеки написаны по
-  русским строкам UI**).
+  замораживается в БД, SSE подменяется; `e2e/world.spec.ts` — мастер по миру,
+  Москва с живой Valhalla, точка вне зоны, язык → Accept-Language у PDF;
+  общие хелперы — `e2e/helpers.ts`; сам поднимает dev-сервер, нужен
+  запущенный docker-стек; из git-воркдерева — `E2E_STACK_DIR=<основная копия>`;
+  **спеки написаны по русским строкам UI**).
+- Аудит: `pip-audit`/`npm audit` на ревью 2026-10 — 0 уязвимостей (FastAPI
+  0.142/Starlette 1.7, PyJWT вместо python-jose, authlib 1.8, WeasyPrint 70,
+  maplibre-gl 6). Обновляя зависимости — прогоняй аудит снова.
 
 ## Бэкенд (`backend/app/`) — FastAPI, SQLAlchemy 2 async
 
 Слои: `api/` (роутеры) → `services/` (логика) → `models/` (SQLAlchemy) +
-`schemas/` (Pydantic) + `core/` (config, database, security, redis, logging).
+`schemas/` (Pydantic) + `core/` (config, database, security, redis, logging,
+i18n).
 
 Модели и связи (`models/`):
 - `trip.py`: **Trip** (группа adults/children, `budget_total`+`currency` — одна
@@ -89,15 +116,23 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   Meili-executor'а (позиции в хвост дня, смыкание, авто-оценка ТЗ-E).
 - `overpass.py` — поиск POI (кэш 24ч в Redis); `places/` — пакет: get-or-create
   по osm_id (`__init__.py`) + `opening.py` (`is_open_at`: часы работы, дни
-  недели, интервалы через полночь; None = «не знаем»),
-  `booking.py`, `export_pdf.py` (WeasyPrint + Jinja2 из `templates/`),
+  недели, интервалы через полночь; None = «не знаем») + `geo.py`
+  (`in_coverage`, `timezone_at` через tzfpy) + `catalog.py` (`resolve_city`:
+  каталог → Nominatim с кэшем; `ensure_city_catalog`: пустой город — один
+  раз тянем POI из Overpass, метка области в Redis на месяц),
+  `booking.py`, `export_pdf.py` (WeasyPrint + Jinja2 из `templates/`; рендер
+  без сети и файлов — `offline_fetcher`, не ослаблять),
   `export_ics.py`, `storage.py` (R2/boto3), `recommendations.py` (collaborative
   filtering), `email.py` (без SMTP — в лог).
 
-API (`api/`): auth (JWT access в памяти + refresh httpOnly cookie, ротация jti
-в Redis), trips, days, stops, places, route (прокси Valhalla), optimize,
-bookings, budget, export, users, recommendations, meili (префикс `/api/meili`).
-Роутеры подключаются в `main.py` (там же request-id middleware и structlog).
+API (`api/`): auth (JWT через PyJWT: access в памяти + refresh httpOnly
+cookie, ротация jti в Redis), trips, days, stops, places, optimize, bookings,
+budget, export, users, recommendations, meili (префикс `/api/meili`);
+`/health`, публичный `/meta` (покрытие маршрутов). Сырого прокси на Valhalla
+больше нет (ревью: им можно было гонять произвольные запросы) — маршрут дня
+только `GET /trips/{id}/route`. Роутеры подключаются в `main.py` (там же
+request-id middleware и structlog). Смоук роутов читает схему OpenAPI:
+FastAPI 0.14x держит include_router обёртками, `app.routes` их не раскрывает.
 
 ## AI-ассистент Meili (ТЗ-Meili, спринты M1–M5)
 
@@ -176,6 +211,27 @@ plan | done | error`. Контекст хода: системный промпт
 
 ## Конвенции бэкенда
 
+- **Производительность (ревью-профиль 2026-10, не откатывать):**
+  - никакого N+1: списки собираются пакетно (`days_to_response` — два
+    запроса на все дни); `tests/integration/test_performance.py` проверяет,
+    что число SQL не растёт с числом дней;
+  - **не держать соединение БД на внешнем вызове**: перед Valhalla, рендером
+    PDF, шагом LLM — `await db.commit()` (expire_on_commit=False, объекты
+    живы). Ход Meili держал соединение всё время генерации — 15 чатов клали
+    пул; тест проверяет 0 соединений, пока модель думает;
+  - синхронный CPU (WeasyPrint, OR-Tools) — только `asyncio.to_thread`;
+  - у решателя OR-Tools лимит 5 с и горизонт от задачи (перегруженный день
+    висел > 5 мин);
+  - Valhalla — через `valhalla.cached_post` (кэш в Redis 6 ч, только нужные
+    поля: Redis общий с сессиями и Celery, вытеснение LRU);
+  - индексы на все FK, по которым фильтруем (`index=True` + миграция);
+  - списки без лимита запрещены (`GET /places/` — limit ≤ 200).
+  Замеры: 50 VU — dev 220 rps, боевой образ на 4 воркерах ~600 rps.
+- Запуск: образ по умолчанию боевой (`WEB_CONCURRENCY`, без reload),
+  `--reload` — только в docker-compose для разработки.
+- Тесты изолированы от живого окружения автофикстурами (SMTP, LLM, геокодер,
+  Celery-очередь); e2e регистрируются на `@e2e.example` — RFC 2606-домены
+  сервис почты не шлёт в SMTP даже при заданном `SMTP_HOST`.
 - **Деньги — только `Numeric(10,2)` / `Decimal`**, наружу строками ("25.50").
   Нет данных → `None`/NULL, **не 0** и не выдуманное значение.
 - **Входные типы — из `schemas/common.py`** (QA-прогон): `Money` (ge=0, потолок
@@ -187,9 +243,18 @@ plan | done | error`. Контекст хода: системный промпт
   `missing_value` / `invalid_reference`, 409 `conflict`; `httpx.HTTPError`
   внешних сервисов → 502 `upstream_unavailable`. Это сетка, а не валидация —
   правила всё равно пишем в схемах.
-- **Регион MVP:** `services/places/geo.REGION_BBOX` / `in_region` — стоп вне
-  зоны тайлов не добавляется (`place_out_of_coverage`, общая точка
-  `services/stops.add_stop`).
+- **Тексты для людей — только в `core/i18n.py`** (ru/en): PDF, .ics, письма.
+  Язык — зависимость `get_lang` (Accept-Language, его шлёт фронт из выбора в
+  дропдауне); de/fr/es → en, без заголовка → ru. Ошибки API — по-прежнему
+  машинные коды, их переводит фронт.
+- **Покрытие маршрутов — конфиг, не код:** `ROUTING_COVERAGE` (JSON-список
+  `[south, west, north, east]`, пусто = весь мир; локально задан в
+  docker-compose под калининградские тайлы). Стоп вне зоны не добавляется
+  (`place_out_of_coverage`, общая точка `services/stops.add_stop`), фронт
+  берёт зону из публичного `GET /meta`. Справочник городов области живёт
+  только у сид-скриптов (`scripts/kaliningrad.py`).
+- **Таймзона поездки** — по координатам города (`geo.timezone_at`), без них
+  UTC; Meili-executor сам находит координаты города через `resolve_city`.
 - Позиции стопов **1-based** везде (add/reorder/optimize/clone); оптимизация
   работает и без старта/финиша дня (виртуальное депо = открытый путь).
 - Превью чужой публичной поездки не отдаёт личное автора: старт/финиш дней,
@@ -205,6 +270,9 @@ plan | done | error`. Контекст хода: системный промпт
 
 ## Фронтенд (`frontend/src/`) — Vite + React + TS
 
+- Карта — только через `utils/maplibre.ts` (MapLibre 6: ESM без default-
+  экспорта, воркер собирает Vite через `?worker&url` + `setWorkerUrl`; прямой
+  `import 'maplibre-gl'` даст «Worker failed to load»).
 - `pages/`: Auth, Discover («Мои поездки» + рекомендации), **TripPlanner** —
   главный экран (десктоп: панель слева + карта справа в рамке на дубовой
   подложке; телефон: одна колонка — шапка, карта 300px, тело; вкладки
@@ -224,14 +292,20 @@ plan | done | error`. Контекст хода: системный промпт
   машинные коды бэка — сразу в `errors.*` ru+en. Действия с сетью оборачивать
   в try/catch с показом ошибки (паттерн `safely` в DayPlan/StopDetailPanel) —
   голый `await` в onClick = «кнопка молча не работает».
-- Геокодер — только `utils/geocode.geocodeOblast` (bbox области, res.ok,
-  отмена устаревших запросов); числовые поля с границами — `IntInput`, потолки
+- Геокодер — только `utils/geocode.geocode` (по миру; внутри поездки —
+  сначала округа её города из `SearchAreaContext`, пусто — весь мир; res.ok,
+  отмена устаревших запросов). Покрытие маршрутов — `useRoutingCoverage()`
+  (`api/meta.ts`) + `inCoverage`; числовые поля с границами — `IntInput`, потолки
   — `utils/limits.ts` (зеркало `schemas/common.py`). Корень роутов обёрнут в
   `ErrorBoundary`.
 - Состояние: стопы/дни в TripPlanner — обычный `useState` + `reloadStops()`
   (перезагружает стопы, дни, выбранный стоп и инвалидирует `['budget', tripId]`);
-  TanStack Query используется точечно (бюджет, рекомендации); Zustand — только
-  чат Meili (`store/meiliStore.ts`).
+  TanStack Query используется точечно (бюджет, рекомендации, маршрут дня —
+  `api/trips.dayRouteQuery`: ключ от состава дня, общий для карты и
+  DayPlan, один `/route` на открытие); Zustand — только чат Meili.
+- Тяжёлые экраны (TripPlanner с MapLibre, Profile, TripSettings) — `React.lazy`
+  в `App.tsx`: начальный бандл 338 КБ вместо 1,76 МБ. Новый тяжёлый экран —
+  тоже лениво.
 - **Дизайн-система «Лес»** (редизайн 2026-10, `DESIGN.md` в корне): интерфейс
   зелёный (мох `--moss`), поверхности берёза/дуб, главная кнопка — орех
   (`--walnut`), маршрут и метки на карте — дерево (`--wood`, хекс в
@@ -246,10 +320,14 @@ plan | done | error`. Контекст хода: системный промпт
   `formatMoneyCompact` (без «,00»). Продуктовый контекст — `PRODUCT.md`,
   рабочие файлы дизайн-скилла — `.impeccable/`.
 - i18n (`i18n/locales/*/translation.json`, **отступ 2 пробела**): ключи есть во
-  всех пяти, но ~40% строк de/fr/es пока английские (фолбэк-копии);
+  всех пяти, de/fr/es переведены полностью (с en совпадают только
+  слова-двойники: Budget, Route, Transport, «{{count}} min»). de — на «du»,
+  fr — на «vous», es — на «tú» (испанский Испании). У fr/es в плюралах есть
+  `_many` (копия `_other`, CLDR-категория для миллионов).
   `src/i18n/locales.test.ts` падает, если ключ есть в en, но нет в каком-то
-  языке, или потерян плейсхолдер `{{…}}`. Новые строки — сразу
-  во все пять.
+  языке, или потерян плейсхолдер `{{…}}`. Новые строки — сразу во все пять.
+  Язык интерфейса уходит бэкенду в Accept-Language (`setRequestLanguage` в
+  `api/client.ts`, ставит `i18n/index.ts`) и в `<html lang>`.
 
 ## Доменные правила (не ломать)
 
@@ -289,13 +367,20 @@ plan | done | error`. Контекст хода: системный промпт
   — кто реально ответил (`scripts.llm_probe` печатает). Large вернётся через
   `LLM_HTTP_PROXY` (socks5/http, например ssh -D на сервер в КЗ) или
   `LLM_BASE_URL` (обратный прокси) — см. `.env.example`.
-- Ассистент: живой прогон только с `LLM_API_KEY` (Mistral) в `backend/.env` —
+- Ассистент: живой прогон только с `LLM_API_KEY` (Mistral) в `.env` —
   тесты гоняются на фейковом клиенте; e2e-сценариев чата нет; PlanEditor
   правит только числа/день/удаление action.
 - Деплой не решён; бронирование — deep-link, не API.
-- В `backend/.env` пустые `R2_ACCESS_KEY`/`R2_SECRET_KEY` — загрузка аватара
+- Пустые `R2_ACCESS_KEY`/`R2_SECRET_KEY` в `.env` — загрузка аватара
   выключена (`avatar_upload_enabled=false` в профиле, кнопка неактивна).
-- `valhalla_data/` — тяжёлые OSM-данные (не трогать без нужды);
-  `scripts/update_valhalla_tiles.sh` — ежемесячный cron.
+- `valhalla_data/` — тяжёлые OSM-данные (не трогать без нужды). Регионы тайлов —
+  `scripts/valhalla_regions.txt` (имя, источник, bbox, `cut` = вырезать
+  osmium'ом); `scripts/update_valhalla_tiles.sh` качает (`curl -z`), вырезает,
+  склеивает в один `regions.osm.pbf`, собирает в `valhalla_data/.build`,
+  проверяет временным сервисом и только потом подменяет живые тайлы
+  (ежемесячный cron). Положить pbf и рестартнуть НЕ работает: образ с
+  `use_tiles_ignore_pbf=True` игнорирует pbf, а хеширует имена, не содержимое.
+  Образ Valhalla зафиксирован на 3.9.0 (на 3.7.0 пешеходные маршруты по
+  Москве падали 500, valhalla#6288); сборка и рантайм — одним образом.
 - pgAdmin: `docker compose --profile tools up -d pgadmin` → :5050.
 - Swagger: http://localhost:8000/docs.

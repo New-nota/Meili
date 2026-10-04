@@ -76,14 +76,14 @@ EXPECTED_ROUTES = [
 
 
 def _registered_routes():
-    routes = set()
-    for route in app.routes:
-        methods = getattr(route, "methods", None)
-        path = getattr(route, "path", None)
-        if methods and path:
-            for m in methods:
-                routes.add((m, path))
-    return routes
+    """Роуты по схеме OpenAPI. Ревью: с FastAPI 0.14x app.routes держит
+    подключённые роутеры обёртками (_IncludedRouter), и обход app.routes
+    «терял» все роуты из include_router — публичная схема стабильна."""
+    return {
+        (method.upper(), path)
+        for path, ops in app.openapi()["paths"].items()
+        for method in ops
+    }
 
 
 def test_all_expected_routes_registered():

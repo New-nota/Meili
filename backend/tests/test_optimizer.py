@@ -8,6 +8,27 @@ from shapely.geometry import Point
 from shapely import wkb as shp_wkb
 
 from app.services import optimizer
+from app.services.valhalla import cached_post as REAL_CACHED_POST
+
+
+class _NullRedis:
+    """Кэш-заглушка: юнит-тесты не пишут фейковые матрицы в общий dev-Redis
+    (ревью: раньше писали — живой оптимизатор мог получить тестовые времена)."""
+
+    async def get(self, key):
+        return None
+
+    async def setex(self, key, ttl, value):
+        return None
+
+
+@pytest.fixture
+def real_matrix_call(monkeypatch):
+    """Настоящий cached_post (autouse-фикстура подменяет Valhalla), без кэша."""
+    import app.core.redis as redis_mod
+
+    monkeypatch.setattr(optimizer, "cached_post", REAL_CACHED_POST)
+    monkeypatch.setattr(redis_mod, "redis_client", _NullRedis())
 from app.services.optimizer import (
     OutOfCoverageError,
     get_time_matrix,
@@ -189,7 +210,7 @@ class _FakeAsyncClient:
         return _FakeResponse(self.payload)
 
 
-async def test_get_time_matrix_applies_traffic_buffer_for_auto(monkeypatch):
+async def test_get_time_matrix_applies_traffic_buffer_for_auto(monkeypatch, real_matrix_call):
     monkeypatch.setattr(optimizer.httpx, "AsyncClient", _FakeAsyncClient)
     locations = [{"lat": 54.7, "lon": 20.5}, {"lat": 54.71, "lon": 20.52}]
     matrix = await get_time_matrix(locations, costing="auto")
@@ -198,7 +219,7 @@ async def test_get_time_matrix_applies_traffic_buffer_for_auto(monkeypatch):
     assert matrix[1][0] == 280
 
 
-async def test_get_time_matrix_no_buffer_for_pedestrian(monkeypatch):
+async def test_get_time_matrix_no_buffer_for_pedestrian(monkeypatch, real_matrix_call):
     monkeypatch.setattr(optimizer.httpx, "AsyncClient", _FakeAsyncClient)
     locations = [{"lat": 54.7, "lon": 20.5}, {"lat": 54.71, "lon": 20.52}]
     matrix = await get_time_matrix(locations, costing="pedestrian")
@@ -206,7 +227,7 @@ async def test_get_time_matrix_no_buffer_for_pedestrian(monkeypatch):
     assert matrix[1][0] == 200
 
 
-async def test_get_time_matrix_handles_unreachable(monkeypatch):
+async def test_get_time_matrix_handles_unreachable(monkeypatch, real_matrix_call):
     class _NullClient(_FakeAsyncClient):
         payload = {"sources_to_targets": [[{"time": 0}, {"time": None}],
                                           [{"time": None}, {"time": 0}]]}
@@ -358,3 +379,24 @@ def test_costing_map_covers_three_modes():
     # мусор и None -> дефолтный режим, а не падение
     assert costing_for(None) == "pedestrian"
     assert costing_for("bicycle") == "pedestrian"
+
+
+def test_overloaded_day_solves_fast_instead_of_hanging():
+    """Ревью (стресс): 25 мест по часу не влезают в 12-часовой горизонт —
+    решатель без лимита искал решение больше 5 минут. Теперь «посетить всё»
+    решаемо всегда, и за секунды."""
+    import time
+
+    from app.services.optimizer import solve_selective_path, solve_tsp_path
+
+    n = 27  # старт + 25 мест + финиш
+    matrix = [[0 if i == j else 600 + 60 * abs(i - j) for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 8 * 3600)] * 25 + [(0, 12 * 3600)]
+    service = [0] + [3600] * 25 + [0]
+    t = time.perf_counter()
+    order = solve_tsp_path(matrix, windows, service)
+    assert order is not None and sorted(order) == list(range(n))
+    assert time.perf_counter() - t < 10
+    t = time.perf_counter()
+    kept, dropped = solve_selective_path(matrix, windows, service, [0] * n, 6 * 3600)
+    assert dropped and time.perf_counter() - t < 10

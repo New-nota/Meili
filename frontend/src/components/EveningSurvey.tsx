@@ -4,6 +4,7 @@ import { ArrowLeft, X } from 'lucide-react'
 import type { Stop } from '../types/index'
 import { getDays } from '../api/days'
 import { getVisitedPlaces, markVisited } from '../api/visited'
+import { useQueryClient } from '@tanstack/react-query'
 import RatingStars from './RatingStars'
 
 // S15: вечерний опрос «как вам день» — in-app вариант (Q21-C: настоящий
@@ -50,6 +51,7 @@ export default function EveningSurvey() {
     const [saveError, setSaveError] = useState(false)
     const dragStart = useRef<number | null>(null)
     const checking = useRef(false)
+    const queryClient = useQueryClient()
 
     const check = useCallback(async () => {
         if (checking.current) return
@@ -58,7 +60,11 @@ export default function EveningSurvey() {
         if (!tripId) return
         checking.current = true
         try {
-            const [days, visited] = await Promise.all([getDays(tripId), getVisitedPlaces()])
+            // посещённые — общий кэш ['visited'] с планировщиком (без второго запроса)
+            const [days, visited] = await Promise.all([
+                getDays(tripId),
+                queryClient.fetchQuery({ queryKey: ['visited'], queryFn: getVisitedPlaces, staleTime: 30_000 }),
+            ])
             const today = days.find(d => d.date === todayLocal())
             if (!today) return
             const visitedIds = new Set(visited.map(v => v.place_id))
@@ -74,7 +80,7 @@ export default function EveningSurvey() {
         } finally {
             checking.current = false
         }
-    }, [])
+    }, [queryClient])
 
     useEffect(() => {
         // первый опрос — колбэком таймера, как и по focus: это подписка на

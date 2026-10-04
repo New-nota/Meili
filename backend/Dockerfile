@@ -16,8 +16,14 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# ревью: pip/setuptools базового образа сами с CVE — обновляем до установки
+RUN pip install --no-cache-dir --upgrade pip setuptools \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# боевой запуск: несколько процессов (uvicorn берёт число из WEB_CONCURRENCY).
+# Ревью (нагрузка): один процесс упирался в одно ядро на ~230 rps. Для
+# разработки docker-compose.yml переопределяет команду на --reload
+ENV WEB_CONCURRENCY=2
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from geoalchemy2.functions import ST_MakePoint, ST_SetSRID, ST_X, ST_Y
+from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from geoalchemy2.shape import to_shape
 
 from app.models.place import Place

@@ -18,10 +18,10 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     # поездка удалена -> диалог живёт дальше без привязки
     trip_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("trips.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("trips.id", ondelete="SET NULL"), nullable=True, index=True
     )
     title: Mapped[str | None] = mapped_column(String, nullable=True)
     # Ревью (S17): черновик мастера создания — город с координатами, даты,

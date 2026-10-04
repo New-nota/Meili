@@ -13,13 +13,13 @@ class TripLike(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     trip_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("trips.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("trips.id", ondelete="CASCADE"), primary_key=True, index=True
     )
 
 class UserVisitedPlace(Base):
     __tablename__ = "user_visited_places"
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    place_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("places.id"), primary_key=True)
+    place_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("places.id"), primary_key=True, index=True)
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # S15: опциональное впечатление (панель стопа / вечерний опрос)
     comment: Mapped[str | None] = mapped_column(TEXT, nullable=True)

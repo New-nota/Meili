@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select, delete as sql_delete
+from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 from sqlalchemy.exc import IntegrityError
@@ -12,11 +12,12 @@ from app.models.trip import Trip, TripStop, TripDay
 from app.models.user import User
 from app.schemas.trips import TripCreate, TripDetailResponse, TripUpdate, TripResponse
 from app.models.social import TripLike
-from app.api.days import day_to_response
+from app.api.days import days_to_response
 from app.api.stops import get_trip_readable
 from app.schemas.route import RouteLeg, RouteRead
 from app.services.budget import compute_budget
 from app.services.budget_estimate import recompute_auto_stops
+from app.services.places.geo import DEFAULT_TIMEZONE, timezone_at
 from app.services.trips import DayError, decorate_trip_rows, sync_trip_days
 from app.services.valhalla import RouteError, route_legs
 
@@ -64,6 +65,8 @@ async def create_trip(
     # exclude_none: не задан currency -> отработает server_default 'EUR'
     # (одна валюта на поездку, S11 мастер обычно шлёт валюту явно)
     trip = Trip(user_id=current_user.id, **data.model_dump(exclude_none=True))
+    # таймзона — из координат города: факт системы, клиент её не шлёт
+    trip.timezone = timezone_at(trip.city_lat, trip.city_lon) or DEFAULT_TIMEZONE
     db.add(trip)
     await db.flush()
     # диапазон дат задан -> генерируем trip_days (S8 WP-3)
@@ -103,7 +106,7 @@ async def get_trip(
         )
     )).scalars().all()
     owner = trip.user_id == current_user.id
-    days = [await day_to_response(db, d, owner) for d in day_rows]
+    days = await days_to_response(db, list(day_rows), owner)
     trip.stops_count = sum(d["stops_count"] for d in days)
     _mark_draft(trip)
     trip.planned_total = (await compute_budget(db, trip)).planned_total
@@ -137,6 +140,9 @@ async def update_trip(
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(trip, field, value)
+    # город переехал — таймзона за ним (без координат старую не трогаем)
+    if updates.keys() & {"city_lat", "city_lon"}:
+        trip.timezone = timezone_at(trip.city_lat, trip.city_lon) or trip.timezone
 
     # QA: группа проверяется по ИТОГОВОМУ состоянию. Схема видит только
     # присланные поля, и PATCH одного children_count оставлял возраста от
@@ -240,6 +246,10 @@ async def get_day_route(
         points.append({"lat": day.end_location.lat, "lon": day.end_location.lon, "mode": None})
         ids.append(None)
 
+    # ревью (нагрузка): чтение закончено — отдаём соединение в пул ДО Valhalla.
+    # Иначе запрос держал его (idle in transaction) ~1,5 с ожидания маршрута,
+    # и под нагрузкой пул выбирали маршруты: всё API замедлялось вдвое
+    await db.commit()
     try:
         raw_legs = await route_legs(points)
     except RouteError:

@@ -10,6 +10,11 @@ class Place(Base):
 
     __table_args__ = (
         Index("uq_places_osm_id", "osm_id", unique=True, postgresql_where=text("osm_id IS NOT NULL"),),
+        # триграммный поиск Meili (миграция c4f80a1b9d33). Ревью: индекс жил
+        # только в миграции — alembic check видел дрейф, и autogenerate
+        # следующей ревизии молча его бы удалил (поиск по 20к мест — seq scan)
+        Index("ix_places_name_trgm", "name", postgresql_using="gin",
+              postgresql_ops={"name": "gin_trgm_ops"}),
     )
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     osm_id: Mapped[str | None] = mapped_column(String, nullable=True)

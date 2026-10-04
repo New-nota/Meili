@@ -1,11 +1,11 @@
+import asyncio
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import httpx
 from typing import List, Dict
 from shapely import wkb
 
-from app.core.config import settings
-from app.services.valhalla import costing_for
+from app.services.valhalla import cached_post, costing_for, slim_matrix
 
 # буфер на пробки: Valhalla считает по статическим скоростям (см. PROGRESS, С3)
 AUTO_TRAFFIC_FACTOR = 1.4
@@ -17,6 +17,11 @@ TIME_HORIZON_SECONDS = 12 * 3600
 LATE_ARRIVAL_PENALTY = 1000
 # максимум ожидания в одной точке (например, до открытия)
 MAX_SLACK_SECONDS = 1 * 3600
+# Ревью (стресс): решатель шёл без лимита времени. День, который не влезает
+# в горизонт (25 мест по часу = 25 ч > 12 ч), был невыполнимой задачей, и
+# OR-Tools искал первое решение бесконечно — запрос висел > 5 мин, занимая
+# поток CPU (готовый DoS). Лимит — страховка от любой подобной формулировки
+SOLVER_TIME_LIMIT_S = 5
 
 async def get_time_matrix(
         locations: List[Dict[str, float]],
@@ -27,13 +32,8 @@ async def get_time_matrix(
         "targets": [{"lon": loc["lon"], "lat": loc["lat"]} for loc in locations],
         "costing": costing
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            f"{settings.VALHALLA_URL}/sources_to_targets",
-            json=body
-        )
-        response.raise_for_status()
-        data = response.json()
+    # кэш в Redis: повторная оптимизация того же дня не ходит в Valhalla
+    data = await cached_post("sources_to_targets", body, slim=slim_matrix)
     n = len(locations)
     matrix = [[0] * n for _ in range(n)]
 
@@ -114,8 +114,12 @@ def solve_tsp_path(
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
     if time_windows:
+        # горизонт — не меньше самого длинного возможного пути: «посетить ВСЁ»
+        # обязано быть решаемым, окна работы и так мягкие (штраф за опоздание)
+        worst_path = sum(service) + sum(max(row) for row in matrix)
         routing.AddDimension(
-            transit_callback_index, MAX_SLACK_SECONDS, TIME_HORIZON_SECONDS, False, "Time"
+            transit_callback_index, MAX_SLACK_SECONDS,
+            max(TIME_HORIZON_SECONDS, worst_path), False, "Time"
         )
         time_dimension = routing.GetDimensionOrDie("Time")
         # старт дня фиксирован: время 0 = day.start_time
@@ -131,6 +135,7 @@ def solve_tsp_path(
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
+    search_params.time_limit.FromSeconds(SOLVER_TIME_LIMIT_S)
 
     solution = routing.SolveWithParameters(search_params)
     if solution is None:
@@ -204,6 +209,7 @@ def solve_selective_path(
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
+    search_params.time_limit.FromSeconds(SOLVER_TIME_LIMIT_S)
 
     solution = routing.SolveWithParameters(search_params)
     if solution is None:
@@ -304,14 +310,16 @@ async def optimize_day_stops(
             )
             budget_seconds = max(day_len, 0)
         priorities = [0] + [getattr(s, "priority", 0) for s in stops] + [0]
-        order, dropped = solve_selective_path(
-            matrix, time_windows, service_times, priorities, budget_seconds
+        # ревью (нагрузка): OR-Tools — синхронный CPU; в async-обработчике он
+        # останавливал event loop для ВСЕХ запросов, пока решался один день
+        order, dropped = await asyncio.to_thread(
+            solve_selective_path, matrix, time_windows, service_times, priorities, budget_seconds
         )
         ordered_ids = [str(stops[i - 1].id) for i in order if 0 < i < n - 1]
         dropped_ids = [str(stops[i - 1].id) for i in dropped]
         return ordered_ids, dropped_ids
 
-    order = solve_tsp_path(matrix, time_windows, service_times)
+    order = await asyncio.to_thread(solve_tsp_path, matrix, time_windows, service_times)
     if order is None:
         # при мягких окнах решение есть почти всегда; фолбэк — исходный порядок
         return [str(s.id) for s in stops], []

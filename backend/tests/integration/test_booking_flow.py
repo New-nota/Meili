@@ -1,6 +1,6 @@
 """Sprint 6 end-to-end (API + реальный Postgres): регистрация → поездка →
 место (PostGIS) → остановка → бронь → подтверждение → отмена."""
-from tests.integration.conftest import D1, D2
+from tests.integration.conftest import D1
 
 
 async def _make_trip_with_stop(client, headers) -> tuple[str, str]:

@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.place import Place
-from app.services.places.geo import nearest_city
+from scripts.kaliningrad import in_oblast, nearest_city
 
 
 async def main(dry_run: bool = False) -> None:
@@ -36,6 +36,11 @@ async def main(dry_run: bool = False) -> None:
         updated = 0
         for place in places:
             point = to_shape(place.location)
+            # справочник знает только область: места других городов (их
+            # подтягивает Meili, services/places/catalog.py) не трогаем —
+            # иначе nearest_city стёр бы им город в None
+            if not in_oblast(point.y, point.x):
+                continue
             city = nearest_city(point.y, point.x)
             if city == place.city:
                 continue

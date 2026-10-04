@@ -88,7 +88,7 @@
       "name": "Título",
       "city": "Ciudad",
       "cityPlaceholder": "Empieza a escribir una ciudad…",
-      "region": "Óblast de Kaliningrado",
+      "cityHint": "Cualquier ciudad o pueblo del mundo",
       "adults": "Adultos",
       "children": "Niños",
       "ages": "Edad de los niños",
@@ -106,7 +106,7 @@
       "errRange": "La fecha de fin es anterior a la de inicio",
       "errTooLong": "El viaje dura más de {{max}} días",
       "errBudget": "Presupuesto: número de 0 a 99 999 999,99, con dos decimales como máximo",
-      "cityNotFound": "No se encontró nada en la región de Kaliningrado",
+      "cityNotFound": "No se encontró esa localidad",
       "cityLookupFailed": "La búsqueda de ciudades no está disponible — inténtalo de nuevo"
     }
   },
@@ -149,7 +149,7 @@
     "addLocation": "Añadir ubicación",
     "locationPlaceholder": "Dirección del hotel o la estación...",
     "notFitLabel": "No cupo en el día",
-    "searchNothing": "No se encontró nada en la región de Kaliningrado",
+    "searchNothing": "No se encontró nada",
     "searchFailed": "La búsqueda de lugares no está disponible — inténtalo de nuevo",
     "pickDayFirst": "Primero indica las fechas del viaje — los lugares se añaden a los días"
   },
@@ -344,7 +344,7 @@
     "stop_not_found": "Parada no encontrada",
     "apply_failed": "No se pudo aplicar el plan",
     "place_not_yours": "Este lugar no se puede editar",
-    "place_out_of_coverage": "El lugar está fuera de la región de Kaliningrado — allí no se calculan rutas",
+    "place_out_of_coverage": "Aquí aún no se calculan rutas: el punto está fuera de la cobertura de nuestros mapas",
     "too_many_login_attempts": "Demasiados intentos fallidos de inicio de sesión — inténtalo en 15 minutos",
     "crashTitle": "Algo falló en esta página",
     "crashText": "Tus datos están a salvo en el servidor. Recarga la página o vuelve a tus viajes.",

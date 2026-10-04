@@ -4,6 +4,7 @@ DTSTART = дата дня + visit_time в таймзоне поездки; бе�
 стопы идут цепочкой от start_time дня (QA). Длительность из
 duration_minutes (дефолт 60 минут).
 """
+import asyncio
 import httpx
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ from geoalchemy2.shape import to_shape
 from ics import Calendar, Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.i18n import DEFAULT_LANG, Lang, t
 from app.models.trip import Trip
 from app.services.export_pdf import collect_itinerary
 from app.services.valhalla import RouteError, route_legs
@@ -62,17 +64,28 @@ async def _travel_after(day_block: dict, trip: Trip) -> tuple[int, list[int]]:
     return lead, after
 
 
-async def render_trip_ics(db: AsyncSession, trip: Trip) -> str:
+async def render_trip_ics(db: AsyncSession, trip: Trip, lang: Lang = DEFAULT_LANG) -> str:
     tz = ZoneInfo(trip.timezone)
-    data = await collect_itinerary(db, trip)
+    data = await collect_itinerary(db, trip, lang)
+
+    # ревью (профиль): дороги считались по дню за раз — 10 дней = 10
+    # последовательных походов в Valhalla, .ics отдавался ~4 с. Дни независимы —
+    # считаем параллельно (семафор, чтобы не завалить Valhalla 60-дневной поездкой)
+    await db.commit()  # данные собраны — соединение в пул до походов в Valhalla
+    gate = asyncio.Semaphore(6)
+
+    async def travel(day_block):
+        async with gate:
+            return await _travel_after(day_block, trip)
+
+    travels = await asyncio.gather(*(travel(b) for b in data["days"]))
 
     cal = Calendar()
-    for day_block in data["days"]:
+    for day_block, (lead, travel_after) in zip(data["days"], travels):
         day = day_block["day"]
         # QA: без visit_time все стопы дня стартовали в start_time дня — в
         # календаре 3-5 событий в 09:00 друг на друге. Теперь цепочка:
         # старт дня → дорога → стоп → его длительность → дорога → следующий
-        lead, travel = await _travel_after(day_block, trip)
         cursor = datetime.combine(day.date, day.start_time, tzinfo=tz) + timedelta(seconds=lead)
         for i, item in enumerate(day_block["stops"]):
             stop, place = item["stop"], item["place"]
@@ -82,7 +95,7 @@ async def render_trip_ics(db: AsyncSession, trip: Trip) -> str:
                 if stop.visit_time else cursor
             )
             minutes = stop.duration_minutes or DEFAULT_EVENT_MINUTES
-            cursor = begin + timedelta(minutes=minutes, seconds=travel[i])
+            cursor = begin + timedelta(minutes=minutes, seconds=travel_after[i])
 
             event = Event(
                 name=place.name,
@@ -94,7 +107,7 @@ async def render_trip_ics(db: AsyncSession, trip: Trip) -> str:
             if stop.notes:
                 description.append(stop.notes)
             if stop.is_booked and stop.booking_ref:
-                description.append(f"Бронь: {stop.booking_ref}")
+                description.append(t(lang, "ics.booking", ref=stop.booking_ref))
             if description:
                 event.description = "\n".join(description)
             cal.events.add(event)

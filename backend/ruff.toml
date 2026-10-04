@@ -1,0 +1,13 @@
+# Статика бэкенда: то же самое гоняет CI (.github/workflows/ci.yml).
+# Локально:  pip install ruff==0.6.9 && ruff check app scripts   (из backend/)
+target-version = "py311"
+
+[lint]
+# F — pyflakes (мусорные импорты, неопределённые имена), E9/PLE — синтаксис
+# и явные ошибки. Стиль не навязываем: проект пишется по-своему
+select = ["F", "E9", "PLE"]
+
+[lint.per-file-ignores]
+# реэкспорт: модели регистрируются в metadata импортом пакета
+"app/models/__init__.py" = ["F401"]
+"app/services/llm/__init__.py" = ["F401"]

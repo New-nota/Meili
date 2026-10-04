@@ -1,38 +1,15 @@
 import { test, expect, type Page } from '@playwright/test'
-import { execSync } from 'node:child_process'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { PASSWORD, backendUp, futureDate, readPendingCode, registerUser } from './helpers'
 
 // E2E-смоук (S7, S11/S14): регистрация по коду (API+Redis) → логин (UI) →
 // мастер создания → планировщик. Требует запущенный docker-стек (:8000).
-const API = 'http://localhost:8000'
 // уникальный юзер на каждый прогон — тесты не зависят от состояния БД
-const EMAIL = `e2e_${Date.now()}@wanderown.dev`
-const PASSWORD = 'e2e-secret-123'
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-
-// S14: код подтверждения достаём напрямую из Redis (SMTP в dev нет — письмо
-// уходит в лог); docker-стек e2e и так обязателен
-function readPendingCode(email: string): string {
-  const raw = execSync(
-    `docker compose exec -T redis redis-cli GET "pending_reg:${email.toLowerCase()}"`,
-    { cwd: REPO_ROOT, encoding: 'utf-8' },
-  ).trim()
-  return JSON.parse(raw).code
-}
+const EMAIL = `e2e_${Date.now()}@e2e.example`
 
 test.beforeAll(async ({ request }) => {
-  const health = await request.get(`${API}/health`).catch(() => null)
-  test.skip(!health || !health.ok(), 'Бэкенд не запущен — пропускаем e2e')
+  test.skip(!(await backendUp(request)), 'Бэкенд не запущен — пропускаем e2e')
   // S14: register больше не создаёт юзера — подтверждаем код
-  const res = await request.post(`${API}/auth/register`, {
-    data: { email: EMAIL, password: PASSWORD, name: 'E2E' },
-  })
-  expect(res.ok()).toBeTruthy()
-  const verify = await request.post(`${API}/auth/verify`, {
-    data: { email: EMAIL, code: readPendingCode(EMAIL) },
-  })
-  expect(verify.ok()).toBeTruthy()
+  await registerUser(request, EMAIL)
 })
 
 // S11: мастер создания ищет город через Nominatim — в e2e мокаем сеть
@@ -46,11 +23,6 @@ async function mockNominatim(page: Page) {
         class: 'place', addresstype: 'city',
       }]),
     }))
-}
-
-function futureDate(daysFromNow: number): string {
-  const d = new Date(Date.now() + daysFromNow * 86_400_000)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 test('логин через UI ведёт на /discover', async ({ page }) => {
@@ -108,7 +80,7 @@ test('кнопка Google присутствует на странице лог�
 })
 
 test('регистрация через UI: код с почты ведёт на /discover (S14)', async ({ page }) => {
-  const freshEmail = `ui_reg_${Date.now()}@wanderown.dev`
+  const freshEmail = `ui_reg_${Date.now()}@e2e.example`
   await page.goto('/auth')
   // переключаемся в режим регистрации
   await page.getByRole('button', { name: 'Нет аккаунта? Зарегистрируйтесь' }).click()
@@ -129,7 +101,7 @@ test('регистрация через UI: код с почты ведёт на
 })
 
 test('неверный код не пускает внутрь (S14)', async ({ page }) => {
-  const freshEmail = `ui_badcode_${Date.now()}@wanderown.dev`
+  const freshEmail = `ui_badcode_${Date.now()}@e2e.example`
   await page.goto('/auth')
   await page.getByRole('button', { name: 'Нет аккаунта? Зарегистрируйтесь' }).click()
   await page.getByPlaceholder('Email').fill(freshEmail)
@@ -157,7 +129,7 @@ test('регистрация на занятый email показывает ош
 test('короткий пароль при регистрации отклоняется на клиенте', async ({ page }) => {
   await page.goto('/auth')
   await page.getByRole('button', { name: 'Нет аккаунта? Зарегистрируйтесь' }).click()
-  await page.getByPlaceholder('Email').fill(`short_${Date.now()}@wanderown.dev`)
+  await page.getByPlaceholder('Email').fill(`short_${Date.now()}@e2e.example`)
   await page.getByPlaceholder('Пароль').fill('1234567')
   await page.getByRole('button', { name: 'Регистрация', exact: true }).click()
   // остаёмся на /auth, подсказка про 8 символов видна как ошибка

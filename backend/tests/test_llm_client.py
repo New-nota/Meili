@@ -215,3 +215,25 @@ def test_factory_passes_fallbacks_base_url_and_proxy(monkeypatch):
     assert client.proxy == "socks5://127.0.0.1:1080"
     monkeypatch.setattr(settings, "LLM_MODEL_FALLBACKS", None)
     assert get_client().fallbacks == list(mistral.MODEL_FALLBACKS)
+    # «без запасных» теперь явное слово: пустая строка в .env = «не задано»
+    monkeypatch.setattr(settings, "LLM_MODEL_FALLBACKS", "none")
+    assert get_client().fallbacks == []
+
+
+def test_settings_single_env_ignores_foreign_and_empty_keys(tmp_path, monkeypatch):
+    """Единый .env: ключи compose/Vite не валят бэкенд, «KEY=» — не задано."""
+    from app.core.config import Settings
+
+    env = tmp_path / ".env"
+    env.write_text(
+        "POSTGRES_USER=u\nVITE_API_URL=http://x\nSECRET_KEY=s\n"
+        "DATABASE_URL=postgresql+asyncpg://u:p@h/db\nREDIS_URL=redis://r\nVALHALLA_URL=http://v\n"
+        "LLM_MODEL_LOOP=\nSMTP_PORT=\nLLM_MODEL_FALLBACKS=\n"
+    )
+    for key in ("SECRET_KEY", "DATABASE_URL", "REDIS_URL", "VALHALLA_URL",
+                "LLM_MODEL_LOOP", "SMTP_PORT", "LLM_MODEL_FALLBACKS"):
+        monkeypatch.delenv(key, raising=False)
+    s = Settings(_env_file=env)
+    assert s.SECRET_KEY == "s"
+    assert s.LLM_MODEL_LOOP is None and s.LLM_MODEL_FALLBACKS is None
+    assert s.SMTP_PORT == 587

@@ -32,7 +32,7 @@ from app.services.meili.tools.registry import STEP_LABELS, TOOL_SCHEMAS, run_too
 
 logger = get_logger("meili.loop")
 
-DEFAULT_TZ = "Europe/Kaliningrad"
+DEFAULT_TZ = "UTC"  # ни tz клиента, ни поездки — нейтрально, не Калининград
 
 SYSTEM_PROMPT = (
     "Ты — Meili, ассистент планирования путешествий. Помогаешь собрать поездку: "
@@ -290,6 +290,12 @@ async def run_turn(
             # (список мест токен за токеном легко тянет минуту) резался на
             # полуслове TimeoutError'ом. wait_for на каждом событии заодно
             # уводит отмену во внутреннюю задачу, а не в задачу нашего хода.
+            # ревью (нагрузка): модель ждём БЕЗ соединения из пула. Открытая
+            # транзакция чтения (контекст, снапшот, результаты tools) держала
+            # его весь шаг генерации — десятки секунд; пятнадцать параллельных
+            # чатов выбирали пул целиком, и вставало всё API. commit отдаёт
+            # соединение; следующий запрос сессии возьмёт новое
+            await db.commit()
             events = client.stream(messages, tools=tools, model=client.model_loop)
             try:
                 while True:

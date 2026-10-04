@@ -477,7 +477,7 @@ async def test_apply_creates_trip_stops_atomically(client, auth_headers, monkeyp
     assert len([t for t in trips if t["title"] == "План от Meili"]) == 1
 
 
-async def test_apply_rolls_back_on_error(client, auth_headers, monkeypatch):
+async def test_apply_rolls_back_on_error(client, auth_headers, monkeypatch, kaliningrad_coverage):
     """M4.2 DoD: ошибка на 3-м action откатывает всё — поездка не создаётся."""
     p = await client.post("/places/", json={"name": "Ок", "lat": 54.71, "lon": 20.5},
                           headers=auth_headers)
@@ -808,7 +808,7 @@ async def test_summarization_and_window(client, auth_headers, monkeypatch):
 
     # три хода с эхо-фейком: история ~набирает токены (каждая реплика ~50)
     echo = [[LLMEvent(type="token", text="пон触"), LLMEvent(type="end")] for _ in range(3)]
-    fake = install_fake(monkeypatch, echo)
+    install_fake(monkeypatch, echo)
     conv_id = await _conversation(client, auth_headers)
     for i in range(3):
         await _stream_events(client, auth_headers, conv_id,
@@ -1171,6 +1171,7 @@ async def test_rate_limit_is_reported_distinctly(client, auth_headers, monkeypat
             yield  # pragma: no cover — делает функцию генератором
 
     monkeypatch.setattr("app.services.meili.loop.get_client", lambda: RateLimited())
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test-key")
     conv_id = await _conversation(client, auth_headers)
     events = await _stream_events(client, auth_headers, conv_id)
 
@@ -1328,3 +1329,37 @@ async def test_search_near_landmark_and_type_words(client, auth_headers, monkeyp
     assert names[0] == "Isola"
     assert "Кафедральный собор" not in names and "Далёкое кафе" not in names
     assert found[0]["near"] == "Рыбная деревня" and 0 < found[0]["distance_m"] < 300
+
+
+async def test_apply_with_valhalla_down_is_upstream_error_not_500(client, auth_headers, monkeypatch):
+    """CI нашёл: Valhalla недоступна → «Применить» плана с optimize падал 500
+    apply_failed. Теперь честный 502 upstream_unavailable, план можно повторить."""
+    import httpx
+
+    from app.services import optimizer
+
+    async def down(*a, **kw):
+        raise httpx.ConnectError("All connection attempts failed")
+
+    monkeypatch.setattr(optimizer, "cached_post", down)
+    p1 = await client.post("/places/", json={"name": "A", "lat": 54.71, "lon": 20.50}, headers=auth_headers)
+    p2 = await client.post("/places/", json={"name": "B", "lat": 54.72, "lon": 20.51}, headers=auth_headers)
+    plan_id = await _freeze_plan(client, auth_headers, monkeypatch, {
+        "actions": [
+            {"type": "create_trip", "title": "Даун", "start_date": D1, "end_date": D1},
+            {"type": "add_stop", "place_id": p1.json()["id"]},
+            {"type": "add_stop", "place_id": p2.json()["id"]},
+            {"type": "optimize"},
+        ],
+        "summary": "x",
+    })
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 502 and r.json()["detail"] == "upstream_unavailable"
+    # план не сгорел: Valhalla вернулась — тот же план применяется
+    async def up(action, body, slim=None):
+        src = body["sources"]
+        return {"sources_to_targets": [[{"time": 60} for _ in src] for _ in src]}
+
+    monkeypatch.setattr(optimizer, "cached_post", up)
+    r = await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    assert r.status_code == 200, r.text

@@ -124,22 +124,36 @@ async def _day_or_404(db: AsyncSession, trip_id: UUID, day_id: UUID) -> TripDay:
     return day
 
 
-async def day_to_response(db: AsyncSession, day: TripDay, owner: bool = True) -> dict:
-    """День со стопами внутри (S16). Публичный: им же собирает GET /trips/{id}.
+async def days_to_response(db: AsyncSession, days: list[TripDay], owner: bool = True) -> list[dict]:
+    """Дни со стопами внутри (S16) — им же собирает GET /trips/{id}.
 
     QA: owner=False — превью чужой публичной поездки. Старт/финиш дня (отель,
     дом) и факт броней — личное: UI превью их и так не рисует (S13 Q9), но
     API отдавал любому залогиненному.
+
+    Ревью (профиль): было по два запроса на КАЖДЫЙ день (стопы + брони) —
+    поездка на 10 дней открывалась 27 SQL-запросами. Теперь два на все дни.
     """
-    stops_result = await db.execute(
+    if not days:
+        return []
+    rows = (await db.execute(
         select(TripStop, Place)
         .join(Place, TripStop.place_id == Place.id)
-        .where(TripStop.day_id == day.id)
+        .where(TripStop.day_id.in_([d.id for d in days]))
         .order_by(TripStop.position)
-    )
-    rows = stops_result.all()
+    )).all()
     booked = await booked_amounts(db, [s.id for s, _ in rows]) if owner else {}
-    stops = [stop_to_dict(s, p, booked.get(s.id)) for s, p in rows]
+    by_day: dict = {}
+    for s, p in rows:
+        by_day.setdefault(s.day_id, []).append(stop_to_dict(s, p, booked.get(s.id)))
+    return [_day_dict(d, by_day.get(d.id, []), owner) for d in days]
+
+
+async def day_to_response(db: AsyncSession, day: TripDay, owner: bool = True) -> dict:
+    return (await days_to_response(db, [day], owner))[0]
+
+
+def _day_dict(day: TripDay, stops: list[dict], owner: bool) -> dict:
     return {
         "id": day.id,
         "date": day.date,
@@ -171,7 +185,7 @@ async def list_days(
         )
     )
     owner = trip.user_id == current_user.id
-    return [await day_to_response(db, d, owner) for d in result.scalars().all()]
+    return await days_to_response(db, list(result.scalars().all()), owner)
 
 
 @router.post("/{trip_id}/days/reorder", response_model=list[TripDayResponse])
@@ -214,7 +228,7 @@ async def reorder_days(
     await db.commit()
 
     ordered = sorted(days, key=lambda d: d.position)
-    return [await day_to_response(db, d) for d in ordered]
+    return await days_to_response(db, ordered)
 
 
 

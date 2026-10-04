@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { House, MapPin } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { apiErrorMessage } from "../utils/apiError";
-import { geocodeOblast, isAbort, type GeocodeHit } from "../utils/geocode";
+import { geocode, isAbort, type GeocodeHit } from "../utils/geocode";
+import { useSearchArea } from "../utils/searchArea";
 
 interface Props {
     tripId: string
@@ -13,6 +14,7 @@ interface Props {
 
 export default function StartPoint({ tripId, initialAddress, initialTime }: Props) {
     const { t, i18n } = useTranslation()
+    const near = useSearchArea()
     const [address, setAddress] = useState(initialAddress || '')
     const [time, setTime] = useState(initialTime?.slice(0, 5) || '09:00')
     const[isSaving, setIsSaving] = useState(false)
@@ -33,17 +35,17 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
     const searching = address.trim().length >= 3 && address !== savedAddress
     useEffect(()=> {
         if (address.trim().length < 3 || address === savedAddress) return
-        // QA: поиск в границах области; устаревший ответ отменяется
+        // QA: поиск в округе города поездки; устаревший ответ отменяется
         const ctrl = new AbortController()
         const timer = setTimeout(async () => {
             try {
-                setSuggestions(await geocodeOblast(address, { lang: i18n.language, limit: 3, signal: ctrl.signal }))
+                setSuggestions(await geocode(address, { lang: i18n.language, limit: 3, signal: ctrl.signal, near }))
             } catch (e) {
                 if (!isAbort(e)) setError(t('place.searchFailed'))
             }
         }, 300)
         return () => { clearTimeout(timer); ctrl.abort() }
-    }, [address, savedAddress, i18n.language, t])
+    }, [address, savedAddress, i18n.language, t, near])
 
     const save = async(lat: number, lon: number, addr: string) => {
         if (isSaving) return

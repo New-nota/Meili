@@ -7,7 +7,6 @@
 валютный mismatch с поездкой -> None (FX вне ТЗ); manual-стопы не трогаем.
 """
 from decimal import Decimal, ROUND_HALF_UP
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

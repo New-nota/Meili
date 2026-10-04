@@ -12,7 +12,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 import type { Stop, TransportMode } from '../../types'
 import { optimizeDay, updateDay, renameDay, type TripDay, type TripLocation } from '../../api/days'
-import { updateStop, reorderStops, getDayRoute, type RouteLeg } from '../../api/trips'
+import { updateStop, reorderStops, dayRouteQuery, type RouteLeg } from '../../api/trips'
 import { apiErrorMessage } from '../../utils/apiError'
 import { stopCostLabel } from '../../utils/costLabel'
 import { formatDistance } from '../../utils/format'
@@ -185,13 +185,15 @@ export default function DayPlan({
     const includedStops = day.stops.filter(s => s.included_in_route)
     const droppedStops = day.stops.filter(s => !s.included_in_route)
 
-    // S16 §4: маршрут грузим только для открытого дня
-    const routeQueryKey = ['dayRoute', tripId, day.id]
+    // S16 §4: маршрут грузим только для открытого дня.
+    // Ревью (e2e): ключ — от состава дня (был только (поездка, день): после
+    // второго стопа панель держала «—» и 0,0 км). Ключ общий с картой
+    // (api/trips.dayRouteKey) — один запрос на двоих
+    const routeQuery = dayRouteQuery(tripId, day)
+    const routeQueryKey = routeQuery.queryKey
     const { data: route, isFetching: routeLoading, error: routeError } = useQuery({
-        queryKey: routeQueryKey,
-        queryFn: () => getDayRoute(tripId, day.id),
+        ...routeQuery,
         enabled: includedStops.length > 0,
-        retry: false,
     })
     const invalidateRoute = () => queryClient.invalidateQueries({ queryKey: routeQueryKey })
     const legAfter = (stopId: string): RouteLeg | null => route?.legs.find(l => l.from_stop_id === stopId) ?? null

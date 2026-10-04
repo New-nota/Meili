@@ -1,4 +1,13 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Единый .env в корне репо (раньше их было три: корень, backend/, frontend/).
+# В docker его отдаёт compose (env_file) переменными окружения — они главнее
+# файла; путь ниже нужен для запуска с хоста (скрипты, отладка). В контейнере
+# /app — это backend/, корня репо там нет, и отсутствующий файл просто
+# пропускается.
+ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -70,7 +79,22 @@ class Settings(BaseSettings):
     # суммаризацию (Celery) и обрезает окно при сборке контекста
     MEILI_WINDOW_TOKENS: int = 2000
 
-    class Config:
-        env_file = ".env"
+    # Покрытие маршрутизатора: прямоугольники [south, west, north, east], где
+    # у Valhalla есть тайлы. Регион больше не зашит в код — он там, где карты:
+    # N городов = N прямоугольников, пусто = весь мир (планетные тайлы или
+    # внешний API). В env — JSON: ROUTING_COVERAGE='[[54.3,19.6,55.35,23.05]]'
+    ROUTING_COVERAGE: list[tuple[float, float, float, float]] = []
+    # геокодер для бэкенда (город для Meili, координаты городов поездок);
+    # публичный Nominatim требует User-Agent и ≤1 запроса/с — всё кэшируем
+    NOMINATIM_URL: str = "https://nominatim.openstreetmap.org"
+
+    model_config = SettingsConfigDict(
+        env_file=ROOT_ENV,
+        # в общем .env есть ключи compose (POSTGRES_*) и Vite (VITE_*) — не наши
+        extra="ignore",
+        # «KEY=» в .env = не задано: иначе LLM_MODEL_LOOP="" стал бы пустым
+        # ID модели, а SMTP_PORT="" ронял бы старт
+        env_ignore_empty=True,
+    )
 
 settings = Settings()

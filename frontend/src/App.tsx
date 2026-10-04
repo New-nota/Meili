@@ -1,12 +1,22 @@
 
-import { useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
-import TripPlanner from './pages/TripPlanner'
 import Auth from './pages/Auth'
-import Profile from './pages/Profile'
 import Discover from './pages/Discover'
 import ProtectedRoute from "./components/ProtectedRoute"
-import TripSettings from "./pages/TripSettings"
+
+// Ревью (бандл): всё приложение было одним чанком 1,76 МБ (500 КБ gzip) —
+// вход и список поездок тащили MapLibre (~800 КБ), хотя карта есть только
+// в планировщике. Тяжёлые экраны грузятся по требованию
+const TripPlanner = lazy(() => import('./pages/TripPlanner'))
+const Profile = lazy(() => import('./pages/Profile'))
+const TripSettings = lazy(() => import('./pages/TripSettings'))
+
+const Loading = () => (
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-muted)'}}>
+    ...
+  </div>
+)
 import { tryRefresh } from "./api/client"
 import ErrorBoundary from "./components/ErrorBoundary"
 
@@ -37,6 +47,7 @@ function App() {
   return(
     <BrowserRouter>
     <RoutedBoundary>
+    <Suspense fallback={<Loading />}>
     <Routes>
       <Route path="/auth" element={<Auth />} />
       <Route path="/trips/:tripId" element={<ProtectedRoute><TripPlanner /></ProtectedRoute>} />
@@ -47,6 +58,7 @@ function App() {
       <Route path="/" element={<Navigate to="/discover" replace />} />
       <Route path="/trips/:tripId/settings" element={<ProtectedRoute><TripSettings /></ProtectedRoute>} />
     </Routes>
+    </Suspense>
     </RoutedBoundary>
     </BrowserRouter>
   )

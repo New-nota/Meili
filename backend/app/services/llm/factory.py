@@ -9,9 +9,13 @@ from app.services.llm.base import LLMClient, LLMNotConfigured
 
 
 def _fallbacks(default: tuple[str, ...]) -> list[str]:
-    """LLM_MODEL_FALLBACKS="a,b" переопределяет цепочку провайдера; "" — без запасных."""
+    """LLM_MODEL_FALLBACKS="a,b" переопределяет цепочку провайдера; "none" — без
+    запасных. Пусто/не задано — цепочка провайдера (пустая строка в .env
+    теперь значит «не задано», см. env_ignore_empty в config)."""
     if settings.LLM_MODEL_FALLBACKS is None:
         return list(default)
+    if settings.LLM_MODEL_FALLBACKS.strip().lower() == "none":
+        return []
     return [m.strip() for m in settings.LLM_MODEL_FALLBACKS.split(",") if m.strip()]
 
 

@@ -5,7 +5,6 @@
 estimated_cost. Остальные категории — из trip_expenses.
 """
 from decimal import Decimal
-from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy import select

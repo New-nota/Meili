@@ -2,7 +2,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Literal
 from uuid import UUID
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 from app.models.enums import TransportMode
 from app.schemas.common import MAX_GROUP, Money, WallTime, not_null
@@ -22,6 +22,17 @@ DESCRIPTION_MAX = 5000
 def _strip_title(v):
     # «   » проходил min_length=1 и рисовал в списке пустую карточку
     return v.strip() if isinstance(v, str) else v
+
+
+# Ревью (атака на API): поездка на 9999-12-31 принималась. Дальше пяти лет
+# вперёд планировать нечего, а такие даты ломают «ближайшие поездки»
+MAX_YEARS_AHEAD = 5
+
+
+def _not_too_far(v: Optional[date]) -> Optional[date]:
+    if v is not None and v > date.today() + timedelta(days=366 * MAX_YEARS_AHEAD):
+        raise ValueError(f"date more than {MAX_YEARS_AHEAD} years ahead")
+    return v
 
 
 class TripCreate(BaseModel):
@@ -52,6 +63,7 @@ class TripCreate(BaseModel):
     currency: Optional[Currency] = None
 
     _strip = field_validator("title", mode="before")(_strip_title)
+    _far = field_validator("start_date", "end_date")(_not_too_far)
 
     @field_validator("children_ages")
     @classmethod
@@ -109,6 +121,7 @@ class TripUpdate(BaseModel):
     currency: Optional[Currency] = None
 
     _strip = field_validator("title", mode="before")(_strip_title)
+    _far = field_validator("start_date", "end_date")(_not_too_far)
     # QA: явный null в NOT NULL-колонку ронял flush (IntegrityError → 500)
     _nn = field_validator(
         "title", "adults_count", "children_count", "currency", "is_public",
@@ -143,6 +156,8 @@ class TripResponse(BaseModel):
     end_date: Optional[date] = None
     budget_total: Optional[Decimal] = None
     currency: str = "EUR"
+    # IANA-таймзона поездки — по координатам города (geo.timezone_at)
+    timezone: str = "UTC"
     # S13: лайкнул ли текущий юзер эту поездку (для ❤ в превью); проставляется
     # только в GET /{trip_id}, в остальных ответах остаётся дефолтным
     liked_by_me: bool = False
