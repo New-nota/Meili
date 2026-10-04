@@ -17,6 +17,11 @@ TIME_HORIZON_SECONDS = 12 * 3600
 LATE_ARRIVAL_PENALTY = 1000
 # максимум ожидания в одной точке (например, до открытия)
 MAX_SLACK_SECONDS = 1 * 3600
+# Ревью (стресс): решатель шёл без лимита времени. День, который не влезает
+# в горизонт (25 мест по часу = 25 ч > 12 ч), был невыполнимой задачей, и
+# OR-Tools искал первое решение бесконечно — запрос висел > 5 мин, занимая
+# поток CPU (готовый DoS). Лимит — страховка от любой подобной формулировки
+SOLVER_TIME_LIMIT_S = 5
 
 async def get_time_matrix(
         locations: List[Dict[str, float]],
@@ -109,8 +114,12 @@ def solve_tsp_path(
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
     if time_windows:
+        # горизонт — не меньше самого длинного возможного пути: «посетить ВСЁ»
+        # обязано быть решаемым, окна работы и так мягкие (штраф за опоздание)
+        worst_path = sum(service) + sum(max(row) for row in matrix)
         routing.AddDimension(
-            transit_callback_index, MAX_SLACK_SECONDS, TIME_HORIZON_SECONDS, False, "Time"
+            transit_callback_index, MAX_SLACK_SECONDS,
+            max(TIME_HORIZON_SECONDS, worst_path), False, "Time"
         )
         time_dimension = routing.GetDimensionOrDie("Time")
         # старт дня фиксирован: время 0 = day.start_time
@@ -126,6 +135,7 @@ def solve_tsp_path(
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
+    search_params.time_limit.FromSeconds(SOLVER_TIME_LIMIT_S)
 
     solution = routing.SolveWithParameters(search_params)
     if solution is None:
@@ -199,6 +209,7 @@ def solve_selective_path(
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
+    search_params.time_limit.FromSeconds(SOLVER_TIME_LIMIT_S)
 
     solution = routing.SolveWithParameters(search_params)
     if solution is None:

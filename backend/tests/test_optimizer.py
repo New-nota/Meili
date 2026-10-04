@@ -358,3 +358,24 @@ def test_costing_map_covers_three_modes():
     # мусор и None -> дефолтный режим, а не падение
     assert costing_for(None) == "pedestrian"
     assert costing_for("bicycle") == "pedestrian"
+
+
+def test_overloaded_day_solves_fast_instead_of_hanging():
+    """Ревью (стресс): 25 мест по часу не влезают в 12-часовой горизонт —
+    решатель без лимита искал решение больше 5 минут. Теперь «посетить всё»
+    решаемо всегда, и за секунды."""
+    import time
+
+    from app.services.optimizer import solve_selective_path, solve_tsp_path
+
+    n = 27  # старт + 25 мест + финиш
+    matrix = [[0 if i == j else 600 + 60 * abs(i - j) for j in range(n)] for i in range(n)]
+    windows = [(0, 0)] + [(0, 8 * 3600)] * 25 + [(0, 12 * 3600)]
+    service = [0] + [3600] * 25 + [0]
+    t = time.perf_counter()
+    order = solve_tsp_path(matrix, windows, service)
+    assert order is not None and sorted(order) == list(range(n))
+    assert time.perf_counter() - t < 10
+    t = time.perf_counter()
+    kept, dropped = solve_selective_path(matrix, windows, service, [0] * n, 6 * 3600)
+    assert dropped and time.perf_counter() - t < 10
