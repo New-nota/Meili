@@ -13,14 +13,21 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 ## Окружение и запуск
 
 - Весь бэкенд-стек в Docker: `docker compose up -d` → postgres+PostGIS, redis,
-  valhalla, backend (FastAPI на :8000), worker (Celery — фон Meili-ассистента).
-  Фронт — локально: `cd frontend && npm run dev` (:5173).
+  valhalla (3.9.0), backend (FastAPI на :8000), worker (Celery — фон
+  Meili-ассистента). backend/worker ждут healthy postgres/redis (healthcheck —
+  `pg_isready` по TCP: init-фаза образа врёт по сокету). Фронт — локально:
+  `cd frontend && npm run dev` (:5173). С нуля: README → «Быстрый старт»
+  (порядок: .env → тайлы → up → миграции → сид мест).
 - `./backend` смонтирован в контейнер как `/app` — правки на хосте видны сразу
   (uvicorn с reload). Команды бэкенда гонять **в контейнере**:
   `docker compose exec backend <cmd>`.
 - Миграции: `docker compose exec backend alembic upgrade head`.
   **Правило проекта: не применять миграцию, не прочитав её.** Миграции пишутся
   читаемо руками (заготовка через `alembic revision -m "..."` в контейнере).
+  Цепочка поднимается с нуля на голой базе (initial сама включает PostGIS) и
+  совпадает с моделями — `tests/integration/test_migrations.py` гоняет
+  upgrade → `alembic check` → downgrade base → upgrade. Индекс/расширение
+  только в миграции = дрейф: объявляй их и в модели.
 - Места (POI) региона с картами — из того же pbf, что тайлы, без Overpass:
   `./scripts/seed_region_pois.sh moscow` (bbox из `scripts/valhalla_regions.txt`,
   osmium → `scripts/seed_pois.py`, идемпотентен; Москва — ~16,8 тыс. мест за
@@ -38,17 +45,24 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 
 ## Тесты
 
-- Бэкенд: `docker compose exec backend python -m pytest` (~295). Тесты не шлют
-  настоящих писем (autouse-фикстура в `tests/conftest.py` гасит SMTP_HOST). Юнит в `tests/`,
+- Бэкенд: `docker compose exec backend python -m pytest` (~336). Тесты не
+  зависят от личного `.env`: autouse-фикстуры в `tests/conftest.py` гасят
+  SMTP_HOST и LLM_API_KEY, ставят покрытие «весь мир», глушат сеть геокодера и
+  автозаполнения каталога (нужно — задай в тесте явно). Юнит в `tests/`,
   интеграционные в `tests/integration/` — реальный Postgres, отдельная БД
   `wanderown_test` (схема из моделей через `create_all`, TRUNCATE после каждого
   теста, скип всего пакета если БД недоступна). Фикстуры `client` (httpx→ASGI,
   подмена `get_db`) и `auth_headers` — в `tests/integration/conftest.py`.
-- Фронт: `npm run test:unit` (vitest, 53), `npm run test:e2e` (Playwright, 22;
+- Фронт: `npm run test:unit` (vitest, 59), `npm run test:e2e` (Playwright, 26;
   `e2e/qa-hardening.spec.ts` — сценарии QA-прогона, Meili там без LLM: план
-  замораживается в БД, SSE подменяется;
-  сам поднимает dev-сервер, нужен запущенный docker-стек; **спеки написаны по
-  русским строкам UI**).
+  замораживается в БД, SSE подменяется; `e2e/world.spec.ts` — мастер по миру,
+  Москва с живой Valhalla, точка вне зоны, язык → Accept-Language у PDF;
+  общие хелперы — `e2e/helpers.ts`; сам поднимает dev-сервер, нужен
+  запущенный docker-стек; из git-воркдерева — `E2E_STACK_DIR=<основная копия>`;
+  **спеки написаны по русским строкам UI**).
+- Аудит: `pip-audit`/`npm audit` на ревью 2026-10 — 0 уязвимостей (FastAPI
+  0.142/Starlette 1.7, PyJWT вместо python-jose, authlib 1.8, WeasyPrint 70,
+  maplibre-gl 6). Обновляя зависимости — прогоняй аудит снова.
 
 ## Бэкенд (`backend/app/`) — FastAPI, SQLAlchemy 2 async
 
@@ -106,14 +120,19 @@ i18n).
   (`in_coverage`, `timezone_at` через tzfpy) + `catalog.py` (`resolve_city`:
   каталог → Nominatim с кэшем; `ensure_city_catalog`: пустой город — один
   раз тянем POI из Overpass, метка области в Redis на месяц),
-  `booking.py`, `export_pdf.py` (WeasyPrint + Jinja2 из `templates/`),
+  `booking.py`, `export_pdf.py` (WeasyPrint + Jinja2 из `templates/`; рендер
+  без сети и файлов — `offline_fetcher`, не ослаблять),
   `export_ics.py`, `storage.py` (R2/boto3), `recommendations.py` (collaborative
   filtering), `email.py` (без SMTP — в лог).
 
-API (`api/`): auth (JWT access в памяти + refresh httpOnly cookie, ротация jti
-в Redis), trips, days, stops, places, route (прокси Valhalla), optimize,
-bookings, budget, export, users, recommendations, meili (префикс `/api/meili`).
-Роутеры подключаются в `main.py` (там же request-id middleware и structlog).
+API (`api/`): auth (JWT через PyJWT: access в памяти + refresh httpOnly
+cookie, ротация jti в Redis), trips, days, stops, places, optimize, bookings,
+budget, export, users, recommendations, meili (префикс `/api/meili`);
+`/health`, публичный `/meta` (покрытие маршрутов). Сырого прокси на Valhalla
+больше нет (ревью: им можно было гонять произвольные запросы) — маршрут дня
+только `GET /trips/{id}/route`. Роутеры подключаются в `main.py` (там же
+request-id middleware и structlog). Смоук роутов читает схему OpenAPI:
+FastAPI 0.14x держит include_router обёртками, `app.routes` их не раскрывает.
 
 ## AI-ассистент Meili (ТЗ-Meili, спринты M1–M5)
 
@@ -230,6 +249,9 @@ plan | done | error`. Контекст хода: системный промпт
 
 ## Фронтенд (`frontend/src/`) — Vite + React + TS
 
+- Карта — только через `utils/maplibre.ts` (MapLibre 6: ESM без default-
+  экспорта, воркер собирает Vite через `?worker&url` + `setWorkerUrl`; прямой
+  `import 'maplibre-gl'` даст «Worker failed to load»).
 - `pages/`: Auth, Discover («Мои поездки» + рекомендации), **TripPlanner** —
   главный экран (десктоп: панель слева + карта справа в рамке на дубовой
   подложке; телефон: одна колонка — шапка, карта 300px, тело; вкладки
