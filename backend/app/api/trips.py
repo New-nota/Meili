@@ -12,7 +12,7 @@ from app.models.trip import Trip, TripStop, TripDay
 from app.models.user import User
 from app.schemas.trips import TripCreate, TripDetailResponse, TripUpdate, TripResponse
 from app.models.social import TripLike
-from app.api.days import day_to_response
+from app.api.days import days_to_response
 from app.api.stops import get_trip_readable
 from app.schemas.route import RouteLeg, RouteRead
 from app.services.budget import compute_budget
@@ -106,7 +106,7 @@ async def get_trip(
         )
     )).scalars().all()
     owner = trip.user_id == current_user.id
-    days = [await day_to_response(db, d, owner) for d in day_rows]
+    days = await days_to_response(db, list(day_rows), owner)
     trip.stops_count = sum(d["stops_count"] for d in days)
     _mark_draft(trip)
     trip.planned_total = (await compute_budget(db, trip)).planned_total

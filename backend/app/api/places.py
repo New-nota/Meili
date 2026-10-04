@@ -67,17 +67,22 @@ async def update_place(
 
 @router.get("/", response_model=list[PlaceResponse])
 async def search_places(
-    city: str = Query(None),
-    category: str = Query(None),
+    city: str = Query(None, max_length=300),
+    category: str = Query(None, max_length=50),
+    # ревью (профиль): без лимита ручка отдавала весь каталог — 19,5 тыс. мест,
+    # 8 МБ JSON одним ответом любому залогиненному (нагрузка + скрейпинг)
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=100_000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    # поиск по городу и категории пока из дб
     query = select(Place)
     if city:
         query = query.where(Place.city == city)
     if category:
         query = query.where(Place.category == category)
+    # стабильный порядок — иначе страницы перекрываются
+    query = query.order_by(Place.name, Place.id).limit(limit).offset(offset)
     result = await db.execute(query)
     places = result.scalars().all()
     return [place_to_dict(p) for p in places]

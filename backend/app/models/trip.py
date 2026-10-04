@@ -10,7 +10,7 @@ class Trip(Base):
     __tablename__ = "trips"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     city: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -48,7 +48,7 @@ class TripLocation(Base):
     __tablename__ = "trip_locations"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
+    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
     lat: Mapped[float] = mapped_column(nullable=False)
@@ -66,7 +66,7 @@ class TripExpense(Base):
     __tablename__ = "trip_expenses"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
+    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
     day_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trip_days.id", ondelete="SET NULL"), nullable=True)
     category: Mapped[str] = mapped_column(String, nullable=False)  # lodging|transport|food|other
     title: Mapped[str] = mapped_column(String, nullable=False)
@@ -123,8 +123,8 @@ class TripStop(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
-    place_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("places.id"), nullable=False)
+    trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    place_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("places.id"), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     visit_time: Mapped[time | None] = mapped_column(TIME, nullable=True)
     # S16: длительность визита есть всегда (дефолт из place, иначе 60)
