@@ -1,27 +1,33 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Check, Flag, House, MapPin, Search, X } from 'lucide-react'
 import { addLocation, type TripLocation } from '../api/days'
 import { apiErrorMessage } from '../utils/apiError'
 import { geocodeOblast, isAbort, type GeocodeHit } from '../utils/geocode'
 
-// Выбор локации дня (S8 WP-3): существующие локации поездки + добавление
-// новой через автодополнение Nominatim (сырой fetch, без наших credentials).
+// Старт/финиш дня (S8 WP-3; редизайн «Лес» — строка списка вместо select с «+»).
+// Свёрнуто: «Старт в 09:00 · Отель …» + «Задать место». Развёрнуто: сохранённые
+// места поездки (история отелей/вокзалов) и поиск нового адреса Nominatim.
 // QA: поиск — в границах области (отель в Париже давал «день вне покрытия»),
 // ошибки геокодера и сохранения видны, устаревшие ответы отменяются.
 interface Props {
     tripId: string
-    label: string           // "Старт" | "Финиш"
+    kind: 'start' | 'finish'
+    label: string               // «Старт в 09:00» | «Финиш около 14:07»
     value: TripLocation | null
     locations: TripLocation[]
+    columns: string             // сетка строки стопа (режим правки) — иконка встаёт под номер
     onSelect: (locationId: string) => void
     onLocationAdded: () => void
 }
 
+const locName = (l: TripLocation) => l.name || l.address || `${l.lat.toFixed(3)}, ${l.lon.toFixed(3)}`
+
 export default function LocationPicker({
-    tripId, label, value, locations, onSelect, onLocationAdded,
+    tripId, kind, label, value, locations, columns, onSelect, onLocationAdded,
 }: Props) {
     const { t, i18n } = useTranslation()
-    const [adding, setAdding] = useState(false)
+    const [open, setOpen] = useState(false)
     const [query, setQuery] = useState('')
     const [hits, setHits] = useState<GeocodeHit[]>([])
     const [status, setStatus] = useState<'idle' | 'loading' | 'empty' | 'error'>('idle')
@@ -47,7 +53,7 @@ export default function LocationPicker({
         return () => { clearTimeout(timer); ctrl.abort() }
     }, [query, i18n.language])
 
-    const close = () => { setAdding(false); setQuery(''); setHits([]); setError(null) }
+    const close = () => { setOpen(false); setQuery(''); setHits([]); setError(null) }
 
     const pickHit = async (hit: GeocodeHit) => {
         if (saving) return
@@ -70,47 +76,70 @@ export default function LocationPicker({
         }
     }
 
-    const hint = (text: string, accent = false) => (
-        <div style={{ fontSize: 12, color: accent ? 'var(--accent)' : 'var(--text-muted)', padding: '4px 2px' }}>{text}</div>
+    const Icon = kind === 'start' ? House : Flag
+    const hint = (text: string, danger = false) => (
+        <p style={{ fontSize: 13, color: danger ? 'var(--danger)' : 'var(--ink-3)', padding: '6px 2px 0' }}>{text}</p>
     )
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}:</span>
-            <select
-                value={value?.id ?? ''}
-                onChange={e => e.target.value && onSelect(e.target.value)}
-                style={{ flex: 1, minWidth: 120, padding: 4, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--surface-raised)' }}
-            >
-                <option value="">{t('common.notSet')}</option>
-                {locations.map(l => (
-                    <option key={l.id} value={l.id}>
-                        {l.name || l.address || `${l.lat.toFixed(3)}, ${l.lon.toFixed(3)}`}
-                    </option>
-                ))}
-            </select>
-            <button onClick={() => (adding ? close() : setAdding(true))} title={t('place.addLocation')}
-                aria-label={t('place.addLocation')} aria-expanded={adding}
-                style={{ border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '2px 8px' }}>
-                {adding ? '✕' : '+'}
-            </button>
-            {adding && (
-                <div style={{ width: '100%' }}>
-                    <input value={query} onChange={e => setQuery(e.target.value)} autoFocus maxLength={200}
-                        onKeyDown={e => { if (e.key === 'Escape') close() }}
-                        placeholder={t('place.locationPlaceholder')}
-                        style={{ width: '100%', padding: 6, border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+        <div>
+            <div style={{ display: 'grid', gridTemplateColumns: columns, columnGap: 10, alignItems: 'center', padding: '8px 8px' }}>
+                <span style={{ gridColumn: 2, justifySelf: 'center',
+                    width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center',
+                    border: value ? '2px solid var(--wood)' : '2px dashed var(--birch-2)',
+                    color: value ? 'var(--wood)' : 'var(--ink-3)' }}>
+                    <Icon size={15} />
+                </span>
+                <div style={{ minWidth: 0, gridColumn: 3 }}>
+                    <div style={{ fontSize: 14.5, color: 'var(--ink-2)' }}>{label}</div>
+                    <div style={{ fontSize: 13.5, color: value ? 'var(--ink)' : 'var(--ink-3)', fontWeight: value ? 600 : 400,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {value ? locName(value) : t('planner.placeNotSet')}
+                    </div>
+                </div>
+                <button type="button" onClick={() => (open ? close() : setOpen(true))} aria-expanded={open}
+                    className="btn btn-sm btn-pill" style={{ gridColumn: '4 / 6', justifySelf: 'end' }}>
+                    {open ? <X /> : null}
+                    {open ? t('common.close') : value ? t('planner.changePlace') : t('planner.setPlace')}
+                </button>
+            </div>
+
+            {open && (
+                <div style={{ margin: '2px 8px 10px', padding: 12, background: 'var(--surface)', borderRadius: 'var(--radius-lg)' }}>
+                    {locations.length > 0 && (
+                        <div style={{ display: 'grid', gap: 2, marginBottom: 10 }}>
+                            <div className="field-label" style={{ padding: '0 2px 4px' }}>{t('planner.savedPlaces')}</div>
+                            {locations.map(l => (
+                                <button key={l.id} type="button" className="menu-item" aria-checked={value?.id === l.id}
+                                    onClick={() => { close(); if (value?.id !== l.id) onSelect(l.id) }}>
+                                    {value?.id === l.id ? <Check /> : <MapPin />}
+                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{locName(l)}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <label className="searchbox" style={{ background: 'var(--raised)', height: 44 }}>
+                        <Search />
+                        <input value={query} onChange={e => setQuery(e.target.value)} autoFocus maxLength={200}
+                            aria-label={t('place.addLocation')}
+                            onKeyDown={e => { if (e.key === 'Escape') close() }}
+                            placeholder={t('place.locationPlaceholder')} />
+                    </label>
                     {active && status === 'loading' && hint(t('common.search'))}
                     {active && status === 'empty' && hint(t('place.searchNothing'))}
                     {active && status === 'error' && hint(t('place.searchFailed'), true)}
                     {error && hint(error, true)}
-                    {active && hits.map(h => (
-                        <div key={h.place_id} onClick={() => pickHit(h)} role="button" tabIndex={0}
-                            onKeyDown={e => { if (e.key === 'Enter') pickHit(h) }}
-                            style={{ padding: '6px 8px', fontSize: 12, cursor: saving ? 'wait' : 'pointer', borderBottom: '1px solid var(--surface)' }}>
-                            {h.display_name.split(',').slice(0, 3).join(',')}
+                    {active && hits.length > 0 && (
+                        <div style={{ display: 'grid', gap: 2, marginTop: 6 }}>
+                            {hits.map(h => (
+                                <button key={h.place_id} type="button" className="menu-item" disabled={saving}
+                                    onClick={() => pickHit(h)}>
+                                    <MapPin />
+                                    <span style={{ flex: 1 }}>{h.display_name.split(',').slice(0, 3).join(',')}</span>
+                                </button>
+                            ))}
                         </div>
-                    ))}
+                    )}
                 </div>
             )}
         </div>

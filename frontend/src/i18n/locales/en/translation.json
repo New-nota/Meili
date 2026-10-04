@@ -72,7 +72,7 @@
     "publicTitle": "Public route",
     "publicHint": "Other users will see your route and can copy it",
     "saveError": "Failed to save",
-    "setDatesHint": "Set trip dates in settings ⚙ to get days with per-day optimization",
+    "setDatesHint": "Set trip dates in settings — days will appear, each with its own optimization",
     "noDayGroup": "No day:",
     "recommendedTitle": "Similar travellers choose",
     "recommendedLoading": "Loading recommendations...",
@@ -113,13 +113,13 @@
     "title": "Day {{num}}",
     "stopsCount_one": "{{count}} stop",
     "stopsCount_other": "{{count}} stops",
-    "start": "🏁 Start",
-    "finish": "🏁 Finish",
+    "start": "Start",
+    "finish": "Finish",
     "at": "at {{time}}",
-    "empty": "No stops — add one via search with this day selected",
-    "notFit": "Didn't fit the day:",
-    "optimize": "✨ Optimize day",
-    "optimizing": "⏳...",
+    "empty": "No places in this day yet — search above or tap the map",
+    "notFit": "Didn't fit the day",
+    "optimize": "Optimize day",
+    "optimizing": "Optimizing…",
     "modeFull": "All places",
     "modeSelective": "Max within time",
     "moveToDay": "Move to day",
@@ -138,12 +138,12 @@
   },
   "place": {
     "searchPlaceholder": "Find a place...",
-    "addToRoute": "+ Add to route",
-    "addShort": "+ Add",
-    "startPoint": "📍 Start point",
+    "addToRoute": "Add to route",
+    "addShort": "Add",
+    "startPoint": "Start point",
     "startPlaceholder": "Where do you start from?",
     "home": "Home",
-    "durationMin": "⏱ {{count}} min",
+    "durationMin": "{{count}} min",
     "addLocation": "Add location",
     "locationPlaceholder": "Hotel or station address...",
     "notFitLabel": "Didn't fit the day",
@@ -157,7 +157,7 @@
     "startUpdated": "Day start updated"
   },
   "booking": {
-    "backToRoute": "← Back to route",
+    "backToRoute": "Back to route",
     "bookVia": "Book via:",
     "hintViator": "tours & activities",
     "hintOpentable": "restaurants",
@@ -167,11 +167,11 @@
     "confirmHint": "Booked? Enter your confirmation number:",
     "refPlaceholder": "Booking ref (optional)",
     "amountPlaceholder": "Amount (optional)",
-    "confirm": "✓ Confirm",
+    "confirm": "Confirm",
     "cancel": "Cancel",
     "createError": "Failed to create booking",
     "confirmError": "Failed to confirm booking",
-    "confirmed": "✅ Booked",
+    "confirmed": "Booked",
     "refLabel": "Booking ref:",
     "viaProvider": "via {{provider}}",
     "cancelBooking": "Cancel booking",
@@ -230,7 +230,10 @@
     "backToAuto": "back to auto",
     "refreshEstimates": "Refresh estimates",
     "invalidAmount": "Amount must be a number from 0 to 99,999,999.99 with at most 2 decimals",
-    "fillExpense": "Fill in the item title and amount"
+    "fillExpense": "Fill in the item title and amount",
+    "of": "of",
+    "nothingYet": "No expenses yet",
+    "category": "Category"
   },
   "profile": {
     "title": "Profile",
@@ -295,7 +298,8 @@
       "likedBy_other": "liked by {{count}} travellers",
       "stops": "stops"
     },
-    "oldPasswordRequired": "Enter your current password"
+    "oldPasswordRequired": "Enter your current password",
+    "saved": "Saved"
   },
   "export": {
     "pdf": "Download PDF",
@@ -395,7 +399,11 @@
     "timeout": "The model is taking too long — try a shorter question",
     "providerAuth": "Assistant unavailable: the AI provider rejected access to the model (key or plan). Retrying will not help until it is reconfigured",
     "turnInProgress": "Meili is still answering the previous message — please wait",
-    "messageInvalid": "The message is empty or too long (up to 4000 characters)"
+    "messageInvalid": "The message is empty or too long (up to 4000 characters)",
+    "starter1": "What to see with a child on day one?",
+    "starter2": "How long does the day take on foot?",
+    "starter3": "Find a café near the first stop",
+    "startersLabel": "You could start with"
   },
   "planner": {
     "day": {
@@ -407,16 +415,50 @@
       "walking": "on foot",
       "driving": "by car",
       "transit": "by transit",
-      "unavailable": "The day route can't be built right now"
+      "unavailable": "The day route can't be built right now",
+      "change": "Change mode"
     },
     "stop": {
       "onSite": "{{duration}} on site",
-      "editDuration": "Change time on site"
+      "editDuration": "Change time on site",
+      "priority": "Priority",
+      "details": "Details and booking",
+      "more": "Place actions"
     },
     "error": {
       "rename": "Could not rename the day",
       "transport": "Could not change transport",
       "duration": "Could not change the time"
+    },
+    "searchForDay": "Find a place for day {{num}}",
+    "startAt": "Start at {{time}}",
+    "finishAround": "Finish around {{time}}",
+    "finish": "Finish",
+    "placeNotSet": "place not set",
+    "setPlace": "Set place",
+    "changePlace": "Change",
+    "savedPlaces": "Places in this trip",
+    "onTheWay": "on the way",
+    "noRoute": "no route yet",
+    "noPrices": "no prices yet",
+    "withoutPrice": "+ {{count}} unpriced",
+    "allPriced": "all priced",
+    "allShort": "All",
+    "daysLabel": "Trip days",
+    "overviewHint": "All routes on the map. Pick a day to edit it.",
+    "optimizeMode": "Optimization mode",
+    "timeBudget": "Time budget",
+    "priority": {
+      "p0": "Normal",
+      "p1": "Important",
+      "p2": "Must-visit",
+      "tag1": "important",
+      "tag2": "must-visit"
+    },
+    "map": {
+      "gestureWindows": "Use Ctrl + scroll to zoom the map",
+      "gestureMac": "Use ⌘ + scroll to zoom the map",
+      "gestureMobile": "Use two fingers to move the map"
     }
   },
   "fields": {

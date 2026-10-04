@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { createConversation, getMeiliMessages, streamMessage, type TripDraft } from '../../api/meili'
 import { useMeiliStore } from '../../store/meiliStore'
 import { renderChatText } from '../../utils/chatText'
+import { CircleAlert, LoaderCircle, SendHorizontal } from 'lucide-react'
 import Logo from '../Logo'
 import PlanPreview from './PlanPreview'
 import PlanEditor from './PlanEditor'
@@ -96,43 +97,62 @@ export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Pr
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12 }}>
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px 20px 18px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 6 }}>
                 {messages.length === 0 && (
-                    <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '8px 4px' }}>
-                        {t('meili.intro')}
-                    </p>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '4px 0' }}>
+                        <span style={{ flexShrink: 0, display: 'flex', marginTop: 2 }}><Logo size={22} /></span>
+                        <div>
+                            <p style={{ fontSize: 15, color: 'var(--ink-2)', lineHeight: 1.5 }}>{t('meili.intro')}</p>
+                            {/* в открытой поездке — готовые вопросы: заполняют поле, но не отправляют */}
+                            {tripId && !input && (
+                                <div style={{ marginTop: 14 }}>
+                                    <div style={{ fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>{t('meili.startersLabel')}</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                        {(['starter1', 'starter2', 'starter3'] as const).map(k => (
+                                            <button key={k} type="button" className="chip" onClick={() => setInput(t(`meili.${k}`))}
+                                                style={{ height: 'auto', minHeight: 34, padding: '7px 14px', textAlign: 'left', fontWeight: 500 }}>
+                                                {t(`meili.${k}`)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
                 {messages.map(m => (
                     <div key={m.id} style={{
                         alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                        maxWidth: '85%',
-                        display: 'flex', alignItems: 'flex-end', gap: 6,
+                        maxWidth: '88%',
+                        display: 'flex', alignItems: 'flex-end', gap: 8,
                     }}>
                         {/* знак-M — аватар ассистента Meili (ТЗ-rename, шаг 4) */}
                         {m.role === 'assistant' && (
-                            <span style={{ flexShrink: 0, display: 'flex' }} title="Meili">
-                                <Logo size={18} />
+                            <span style={{ flexShrink: 0, display: 'flex', marginBottom: 4 }} title="Meili">
+                                <Logo size={20} />
                             </span>
                         )}
-                        <div style={{
-                            background: m.role === 'user' ? 'var(--accent)' : 'var(--surface-raised)',
-                            color: m.role === 'user' ? 'var(--surface)' : 'var(--text-primary)',
-                            border: m.role === 'user' ? 'none' : '1px solid var(--border)',
-                            borderRadius: 10, padding: '8px 10px', fontSize: 13,
+                        <div role={m.error ? 'alert' : undefined} style={{
+                            display: m.error ? 'flex' : undefined, gap: 8, alignItems: 'flex-start',
+                            background: m.role === 'user' ? 'var(--moss)' : m.error ? 'var(--danger-wash)' : 'var(--surface)',
+                            color: m.role === 'user' ? 'var(--raised)' : m.error ? 'var(--danger)' : 'var(--ink)',
+                            borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                            padding: '9px 13px', fontSize: 14.5, lineHeight: 1.45,
                             whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                         }}>
                             {/* ревью: модель отвечает markdown'ом — разбираем
                                 ** и заголовки узлами, не печатаем звёздочками */}
+                            {m.error && <CircleAlert size={17} style={{ flexShrink: 0, marginTop: 2 }} />}
                             {m.content
-                                ? (m.role === 'assistant' ? renderChatText(m.content) : m.content)
+                                ? (m.role === 'assistant' && !m.error ? renderChatText(m.content) : m.content)
                                 : (streaming ? '…' : '')}
                         </div>
                     </div>
                 ))}
                 {stepLabel && (
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                        ⋯ {stepLabel}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: 'var(--ink-3)', marginLeft: 28 }}>
+                        <LoaderCircle size={15} className="spin" />{stepLabel}
                     </div>
                 )}
 
@@ -158,24 +178,20 @@ export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Pr
                 <div ref={bottomRef} />
             </div>
 
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <input
+                    className="input"
                     value={input}
                     maxLength={4000}
                     placeholder={t('meili.placeholder')}
+                    aria-label={t('meili.placeholder')}
                     disabled={streaming}
                     onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && send()}
-                    style={{
-                        flex: 1, padding: 8, border: '1px solid var(--border)',
-                        borderRadius: 8, fontSize: 13,
-                    }} />
-                <button onClick={send} disabled={streaming || !input.trim()} style={{
-                    padding: '8px 14px', background: 'var(--accent)', color: 'var(--surface)',
-                    border: 'none', borderRadius: 8, fontSize: 13,
-                    cursor: streaming ? 'wait' : 'pointer',
-                }}>
-                    {streaming ? '…' : t('meili.send')}
+                    onKeyDown={e => e.key === 'Enter' && send()} />
+                <button type="button" onClick={send} disabled={streaming || !input.trim()}
+                    className="btn btn-accent" aria-label={t('meili.send')} title={t('meili.send')}
+                    style={{ width: 48, padding: 0, flexShrink: 0, cursor: streaming ? 'wait' : undefined }}>
+                    {streaming ? <LoaderCircle className="spin" /> : <SendHorizontal />}
                 </button>
             </div>
         </div>

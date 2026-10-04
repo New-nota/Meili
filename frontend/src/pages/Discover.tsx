@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { User } from "lucide-react"
+import { Plus, Trash2, User } from "lucide-react"
 import { RecommendedTrips } from "../components/RecommendedTrips"
 import { apiFetch, ApiError } from "../api/client"
 import { apiErrorMessage } from "../utils/apiError"
@@ -54,94 +54,74 @@ export default function Discover() {
             setDeletingId(null)
         }
     }
-    return (<div className="discover-page" style={{padding: 32, maxWidth: 800, margin: '0 auto'}}>
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
-            <span style={{display: 'flex', alignItems: 'center', gap: 14}}>
-                <HermodLogo size={30} withWordmark />
-                <h2 style={{margin: 0, fontSize: 20}}>{t('nav.myTrips')}</h2>
-            </span>
-            <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-                <button onClick={() => setIsCreating(true)} style={{padding: '8px 16px', background: 'var(--accent)',
-                color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14}}>
-                    {t('nav.planTrip')}
+    return (
+        <div className="page">
+            <header className="page-head">
+                <HermodLogo size={30} />
+                <h1>{t('nav.myTrips')}</h1>
+                <button type="button" onClick={() => setIsCreating(true)} className="btn btn-primary page-cta">
+                    <Plus />{t('nav.planTrip')}
                 </button>
                 {/* S18: вход в профиль — только иконка-силуэт; язык и выход переехали внутрь */}
-                <button onClick={() => navigate('/profile')}
-                aria-label={t('nav.profile')} title={t('nav.profile')}
-                style={{width: 36, height: 36, padding: 0, background: 'none', color: 'var(--text-primary)',
-                border: '1px solid var(--border)', borderRadius: '50%', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                    <User size={18} />
+                <button type="button" onClick={() => navigate('/profile')} className="icon-btn filled"
+                    aria-label={t('nav.profile')} title={t('nav.profile')}>
+                    <User />
                 </button>
+            </header>
+            {loadError != null && <p className="error-text" role="alert" style={{ marginBottom: 12 }}>{apiErrorMessage(loadError, t, t('trip.loadError'))}</p>}
+            {error && <p className="error-text" role="alert" style={{ marginBottom: 12 }}>{error}</p>}
+            {/* S11: мастер создания — модалка со всеми полями.
+                S17: из мастера можно уйти обсуждать поездку с Meili */}
+            {isCreating && (
+                <CreateTripModal
+                    onClose={() => setIsCreating(false)}
+                    onCreated={trip => navigate(`/trips/${trip.id}`)}
+                    onPlanWithMeili={(text, fields) => {
+                        setIsCreating(false); setMeiliDraft(text); setMeiliDraftFields(fields)
+                    }} />
+            )}
+            {/* S17: чат с Meili прямо с Discover — поездки ещё нет, её создаст план */}
+            {meiliDraft !== null && (
+                <MeiliChatModal
+                    initialInput={meiliDraft || undefined}
+                    draft={meiliDraftFields}
+                    onClose={() => { setMeiliDraft(null); setMeiliDraftFields(null) }}
+                    onTripCreated={id => { setMeiliDraft(null); setMeiliDraftFields(null); navigate(`/trips/${id}`) }} />
+            )}
+
+            {/* S17: свои поездки — сеткой, крестик в углу ячейки */}
+            <div className="trip-grid">
+                {trips.map(trip => (
+                    <TripGridCard key={trip.id} trip={trip}
+                        onOpen={id => navigate(`/trips/${id}`)}
+                        onDelete={setDeletingId} />
+                ))}
             </div>
-        </div>
-        {loadError != null && <p style={{color: 'var(--accent)', fontSize: 13, marginBottom: 12}}>{apiErrorMessage(loadError, t, t('trip.loadError'))}</p>}
-        {error && <p style={{color: 'var(--accent)', fontSize: 13, marginBottom: 12}}>{error}</p>}
-        {/* S11: мастер создания — модалка со всеми полями.
-            S17: из мастера можно уйти обсуждать поездку с Meili */}
-        {isCreating && (
-            <CreateTripModal
-                onClose={() => setIsCreating(false)}
-                onCreated={trip => navigate(`/trips/${trip.id}`)}
-                onPlanWithMeili={(text, fields) => {
-                    setIsCreating(false); setMeiliDraft(text); setMeiliDraftFields(fields)
-                }} />
-        )}
-        {/* S17: чат с Meili прямо с Discover — поездки ещё нет, её создаст план */}
-        {meiliDraft !== null && (
-            <MeiliChatModal
-                initialInput={meiliDraft || undefined}
-                draft={meiliDraftFields}
-                onClose={() => { setMeiliDraft(null); setMeiliDraftFields(null) }}
-                onTripCreated={id => { setMeiliDraft(null); setMeiliDraftFields(null); navigate(`/trips/${id}`) }} />
-        )}
-
-                    {/* S17: свои поездки — сеткой, крестик в углу ячейки */}
-                    <div className="trip-grid">
-                        {trips.map(trip => (
-                            <TripGridCard key={trip.id} trip={trip}
-                                onOpen={id => navigate(`/trips/${id}`)}
-                                onDelete={setDeletingId} />
-                        ))}
-                    </div>
-                    {trips.length === 0 && (
-                        <div style={{textAlign: 'center', color: 'var(--text-muted)', padding: 48}}>
-                            {t('trip.noTripsYet')}
+            {trips.length === 0 && loadError == null && (
+                <div style={{ padding: '24px', background: 'var(--surface)', borderRadius: 'var(--radius-xl)' }}>
+                    <p style={{ fontSize: 17, fontWeight: 650 }}>{t('trip.noTripsYet')}</p>
+                    <p style={{ fontSize: 14.5, color: 'var(--ink-2)', marginTop: 4 }}>{t('profile.myTrips.empty.subtitle')}</p>
+                </div>
+            )}
+            {deletingId && (
+                <div className="modal-scrim" onClick={() => setDeletingId(null)}>
+                    <div className="modal-sheet" role="alertdialog" aria-modal="true" aria-labelledby="del-title"
+                        onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <h2 id="del-title" style={{ fontSize: 21, marginBottom: 6 }}>{t('trip.deleteTitle')}</h2>
+                        <p style={{ color: 'var(--ink-2)', fontSize: 15, marginBottom: 22 }}>{t('trip.deleteWarning')}</p>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button type="button" onClick={() => setDeletingId(null)} className="btn btn-ghost">{t('common.cancel')}</button>
+                            <button type="button" onClick={() => deleteTrip(deletingId)} disabled={deleting} className="btn btn-danger-solid">
+                                <Trash2 />{t('common.delete')}
+                            </button>
                         </div>
-                    )}
-                    <div>
-                        {deletingId && (
-                            <div style={{
-                                position: 'fixed', inset: 0, background: 'color-mix(in srgb, var(--text-primary) 50%, transparent)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
-
-                            <div style={{background: 'var(--surface-raised)', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%'}}>
-                            <h3 style={{margin: '0 0 8px'}}>{t('trip.deleteTitle')}</h3>
-                            <p style={{color: 'var(--text-muted)', fontSize: 14, margin: '0 0 20px'}}>{t('trip.deleteWarning')}</p>
-                            <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
-                                <button onClick={()=> setDeletingId(null)} style={{
-                                    padding: '8px 16px', background: 'var(--surface-raised)', color: 'var(--text-primary)',
-                                    border: '1px solid var(--border)', borderRadius:6, cursor: 'pointer'
-                                }}>{t('common.cancel')}</button>
-                                <button onClick={()=> deleteTrip(deletingId)} disabled={deleting} style={{
-                                    padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
-                                    border: 'none', borderRadius: 6, cursor: 'pointer'
-                                }}>{t('common.delete')}</button>
-                            </div>
-                        </div>
-                    </div>
-
-                           
-                        )}
-                    </div>
-                    {/* S17: нижняя часть страницы отсекается линией с подписью;
-                        без city: бэкенд отдаёт рекомендации по всем городам */}
-                    <div style={{
-                        borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 8,
-                    }}>
-                        <RecommendedTrips />
                     </div>
                 </div>
-                
-        )
+            )}
+            {/* без city: бэкенд отдаёт рекомендации по всем городам */}
+            <div style={{ marginTop: 44 }}>
+                <RecommendedTrips />
+            </div>
+        </div>
+    )
 }

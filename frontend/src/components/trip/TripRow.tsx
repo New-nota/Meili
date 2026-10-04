@@ -1,16 +1,16 @@
 import { useTranslation } from 'react-i18next'
 import type { Trip } from '../../types'
 import { getTripStatus, type TripStatus } from '../../utils/tripStatus'
-import { formatMoney } from '../../utils/money'
+import { formatMoneyCompact } from '../../utils/money'
 import { formatDateRange, metaStyle, rowGrid, tripDaysCount } from './tripRowUtils'
 
 // S16 §2.2: строка маршрута в профиле — без окантовки, во всю ширину блока.
 // Grid: точка статуса | название+мета+описание | бюджет | пилюля.
 
 const DOT_COLOR: Record<TripStatus, string> = {
-    completed: 'var(--accent)',        // терракота
-    draft: 'var(--text-muted)',        // нейтральный серый
-    active: '#6E8F5E',                 // зелёный: поездка живая
+    completed: 'var(--wood)',          // дерево: поездка позади
+    draft: 'var(--birch-2)',           // берёза: ещё не расписана
+    active: 'var(--moss)',             // мох: поездка живая
 }
 
 /** Однострочное описание с многоточием; пустое — не рендерится вовсе. */
@@ -46,16 +46,14 @@ export default function TripRow({ trip, onOpen }: Props) {
     // бюджет: 0/null не рисуем совсем
     const planned = trip.planned_total ? parseFloat(trip.planned_total) : 0
     const budgetLabel = planned > 0
-        ? formatMoney(trip.planned_total!, trip.currency, i18n.language)
+        ? formatMoneyCompact(trip.planned_total!, trip.currency, i18n.language)
         : null
 
     return (
         <button
             onClick={() => onOpen(trip.id)}
             className="trip-row"
-            style={rowGrid}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface)'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+            style={rowGrid}>
             {/* точка статуса — по базовой линии заголовка */}
             <span aria-hidden="true" style={{
                 width: 8, height: 8, borderRadius: '50%', marginTop: 6,
@@ -89,8 +87,8 @@ export default function TripRow({ trip, onOpen }: Props) {
 
             {status !== 'active' && (
                 <span style={{
-                    fontSize: 12, padding: '2px 10px', borderRadius: 12,
-                    background: 'var(--surface)', color: 'var(--text-muted)',
+                    fontSize: 12.5, padding: '3px 10px', borderRadius: 999,
+                    background: 'var(--birch)', color: 'var(--ink-2)',
                     whiteSpace: 'nowrap',
                 }}>
                     {t(`profile.status.${status}`)}

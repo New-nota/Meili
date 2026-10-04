@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { House, MapPin } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { apiErrorMessage } from "../utils/apiError";
 import { geocodeOblast, isAbort, type GeocodeHit } from "../utils/geocode";
@@ -68,29 +69,27 @@ export default function StartPoint({ tripId, initialAddress, initialTime }: Prop
         }
     }
     return (
-        <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border)'}}>
-            <div style={{fontSize: 12, color: 'var(--text-muted)', marginBottom: 6}}>
-                {t('place.startPoint')}
-            </div>
-            <div style={{display: 'flex', gap: 8}}>
+        <div className="field">
+            <span className="field-label">{t('place.startPoint')}</span>
+            <label className="searchbox">
+                <House />
                 <input value={address} onChange={e => { setAddress(e.target.value); setError(null) }}
-                placeholder={t('place.startPlaceholder')} maxLength={200}
-                style={{flex: 1, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13}}/>
-            </div>
+                    aria-label={t('place.startPoint')}
+                    placeholder={t('place.startPlaceholder')} maxLength={200} />
+            </label>
             {searching && suggestions.length > 0 && (
-                <div style={{marginTop: 4, border: '1px solid var(--border)', borderRadius:6, overflow: 'hidden'}}>
+                <div style={{ background: 'var(--raised)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-1)', padding: 4 }}>
                     {suggestions.map(s => (
-                        <div key={s.place_id}
-                            onClick={()=> save(parseFloat(s.lat), parseFloat(s.lon), s.display_name.split(',').slice(0,2).join(','))}
-                            style={{padding: '6px 10px',fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--surface)', backgroundColor:'var(--surface-raised)'}}
-                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--surface)')}
-                            onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--surface-raised)')}>
-                                {s.display_name.split(',').slice(0,2).join(',')} </div>
+                        <button key={s.place_id} type="button" className="menu-item"
+                            onClick={()=> save(parseFloat(s.lat), parseFloat(s.lon), s.display_name.split(',').slice(0,2).join(','))}>
+                            <MapPin />
+                            <span style={{ flex: 1 }}>{s.display_name.split(',').slice(0,2).join(',')}</span>
+                        </button>
                     ))}
-                    </div>
+                </div>
             )}
-            {isSaving && <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 4}}>{t('common.saving')}</div>}
-            {error && <div style={{fontSize: 12, color: 'var(--accent)', marginTop: 4}}>{error}</div>}
+            {isSaving && <span className="field-hint">{t('common.saving')}</span>}
+            {error && <span className="error-text" role="alert">{error}</span>}
         </div>
     )
 }

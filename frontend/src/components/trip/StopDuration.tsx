@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Stop } from '../../types'
+import { formatDuration } from '../../utils/format'
 
-// S16 §4.2: «≈ 60 мин на месте». Знак ≈ только пока duration_is_custom=false
+// S16 §4.2: «≈ 1 ч на месте». Знак ≈ только пока duration_is_custom=false
 // (значение подставлено из места). Как только юзер задал время руками, ≈
 // исчезает навсегда — флаг ставит сервер, фронт его не шлёт.
 
@@ -31,42 +32,40 @@ export default function StopDuration({ stop, readOnly, onSave }: Props) {
 
     if (editing) {
         return (
-            <input
-                type="number" min={MIN} max={MAX} step={STEP} autoFocus
-                aria-label={t('planner.stop.editDuration')}
-                value={value}
-                onChange={e => setValue(e.target.value)}
-                onClick={e => e.stopPropagation()}
-                onBlur={commit}
-                onKeyDown={e => {
-                    if (e.key === 'Enter') { e.preventDefault(); commit() }
-                    if (e.key === 'Escape') {
-                        e.preventDefault()
-                        setValue(String(stop.duration_minutes))
-                        setEditing(false)
-                    }
-                }}
-                style={{
-                    width: 70, padding: '1px 4px', fontSize: 12,
-                    border: '1px solid var(--accent)', borderRadius: 4,
-                    background: 'var(--surface-raised)',
-                }} />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                    type="number" min={MIN} max={MAX} step={STEP} autoFocus
+                    className="input input-sm"
+                    aria-label={t('planner.stop.editDuration')}
+                    value={value}
+                    onChange={e => setValue(e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    onBlur={commit}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); commit() }
+                        if (e.key === 'Escape') {
+                            e.preventDefault()
+                            setValue(String(stop.duration_minutes))
+                            setEditing(false)
+                        }
+                    }}
+                    style={{ width: 84, height: 30 }} />
+                <span>{t('common.min')}</span>
+            </span>
         )
     }
 
     const label = t('planner.stop.onSite', {
-        duration: `${stop.duration_is_custom ? '' : '≈ '}${stop.duration_minutes} ${t('common.min')}`,
+        duration: `${stop.duration_is_custom ? '' : '≈ '}${formatDuration(stop.duration_minutes * 60, t)}`,
     })
 
+    if (readOnly) return <span>{label}</span>
     return (
         <button
-            onClick={e => { e.stopPropagation(); if (!readOnly) { setValue(String(stop.duration_minutes)); setEditing(true) } }}
-            title={readOnly ? undefined : t('planner.stop.editDuration')}
-            style={{
-                background: 'none', border: 'none', padding: 0, font: 'inherit',
-                fontSize: 12, color: 'var(--text-muted)',
-                cursor: readOnly ? 'default' : 'pointer',
-            }}>
+            type="button"
+            onClick={e => { e.stopPropagation(); setValue(String(stop.duration_minutes)); setEditing(true) }}
+            title={t('planner.stop.editDuration')}
+            className="inline-edit">
             {label}
         </button>
     )

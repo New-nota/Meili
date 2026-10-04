@@ -89,7 +89,7 @@ test('мастер создания поездки открывает плани
   await expect(page.getByRole('heading', { name: 'Новая поездка' })).toBeVisible()
   await page.getByPlaceholder('Название поездки').fill('E2E-поездка')
   await page.getByPlaceholder('Начните вводить город…').fill('Калининград')
-  await page.getByText('📍 Калининград').click()
+  await page.getByRole('option', { name: 'Калининград' }).click()
   const dates = page.locator('input[type="date"]')
   await dates.first().fill(futureDate(1))
   await dates.nth(1).fill(futureDate(2))
@@ -97,8 +97,8 @@ test('мастер создания поездки открывает плани
 
   // планировщик открылся сразу с днями (даты обязательны в мастере)
   await expect(page).toHaveURL(/\/trips\/[0-9a-f-]+/)
-  await expect(page.getByRole('button', { name: 'Маршрут' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Бюджет' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Маршрут' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Бюджет' })).toBeVisible()
   await expect(page.getByText(/День 1/).first()).toBeVisible()
 })
 

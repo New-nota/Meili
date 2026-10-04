@@ -3,19 +3,24 @@ import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import {
+    ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, Settings2, X,
+} from 'lucide-react'
 import type { Stop } from '../types/index'
 import { getStops, getDayRoute, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
 import { addLocation, getDays, getLocations, updateDay, reorderDays, type TripDay, type TripLocation } from '../api/days'
-import DayCard from '../components/DayCard'
+import DayPlan from '../components/trip/DayPlan'
+import DaySwatches from '../components/trip/DaySwatches'
 import BudgetPanel from '../components/BudgetPanel'
 import PreviewBudget from '../components/PreviewBudget'
 import { formatPlaceLabel, type ClickedPoint, type NominatimReverseResult } from '../utils/mapPoint'
 import { markerPopupContent } from '../utils/mapPopup'
-import { applyPaperStyle, DAY_HEX } from '../utils/mapStyle'
+import { applyMapStyle, DAY_HEX, ROUTE_CASING_HEX, ROUTE_HEX } from '../utils/mapStyle'
+import { dayLabel } from '../utils/dayLabel'
+import { formatMoneyCompact } from '../utils/money'
 import HermodLogo from '../components/HermodLogo'
-import DayPill from '../components/DayPill'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { type DragEndEvent } from '@dnd-kit/core'
+import { arrayMove } from '@dnd-kit/sortable'
 import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
 import StopDetailPanel from '../components/StopDetailPanel'
@@ -31,12 +36,29 @@ import type { Place } from '../types/index'
 // после загрузки камера подстраивается через fitBounds
 const DEFAULT_MAP_CENTER: [number, number] = [20.5114, 54.7104]
 const DEFAULT_MAP_ZOOM = 13
-// S11: ресайз панели — дефолт 400, мин 320, макс min(640, 50vw); память в localStorage
-const PANEL_MIN = 320
-const PANEL_DEFAULT = 400
+// S11: ресайз панели — память в localStorage; редизайн «Лес»: дефолт 460, мин 380
+const PANEL_MIN = 380
+const PANEL_DEFAULT = 460
 const PANEL_KEY = 'hermod:panelWidth'
 const panelMax = () => Math.min(640, window.innerWidth * 0.5)
 const clampPanel = (w: number) => Math.max(PANEL_MIN, Math.min(panelMax(), w))
+const MOBILE_QUERY = '(max-width: 768px)'
+// поля кадра под маршрут: справа зум, снизу значок атрибуции — метки не прячутся
+const fitPadding = () => window.matchMedia(MOBILE_QUERY).matches
+    ? { top: 36, right: 56, bottom: 44, left: 36 }
+    : { top: 70, right: 80, bottom: 70, left: 70 }
+
+// значки старта/финиша/дома в метках карты — статичная разметка (lucide house/flag)
+const ICON_HOUSE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
+const ICON_FLAG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>'
+
+type TripInfo = {
+    title?: string, start_lat?: number, start_lon?: number, start_address?: string, start_time?: string,
+    adults_count?: number, children_count?: number, currency?: string, city_lat?: number | null,
+    city_lon?: number | null, liked_by_me?: boolean, start_date?: string | null, end_date?: string | null,
+    budget_total?: string | null,
+}
+
 export default function TripPlanner({ readOnly = false }: { readOnly?: boolean } = {}) {
     const { t, i18n } = useTranslation()
     const {tripId} = useParams<{tripId: string}>()
@@ -47,19 +69,18 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     const [error, setError] = useState<string | null>(null)
     // ошибки загрузки — объектом, перевод при рендере (см. Discover)
     const [loadError, setLoadError] = useState<{ e: unknown, fallback: string } | null>(null)
-    // QA: чужая/удалённая/кривая поездка — раньше пустой планировщик и
-    // необработанный промис; теперь честный экран «не найдена»
+    // QA: чужая/удалённая/кривая поездка — честный экран «не найдена»
     const [notFoundId, setNotFoundId] = useState<string | null>(null)
     const notFound = notFoundId !== null && notFoundId === tripId
-    // S12: реордер дней — активация после 5px, чтобы клик по грипу не путался
-    // с toggle аккордеона; сам drag висит на грипе в шапке DayCard
-    const daySensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-    const [trip, setTrip] = useState<{title?: string, start_lat?: number, start_lon?: number, start_address?: string, start_time?: string, adults_count?: number, children_count?: number, currency?: string, city_lat?: number | null, city_lon?: number | null, liked_by_me?: boolean} | null>(null)
+    const [trip, setTrip] = useState<TripInfo | null>(null)
     const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
-    // S8 WP-3: мульти-день
+    // S8 WP-3: мульти-день; null = режим «Все дни»
     const [days, setDays] = useState<TripDay[]>([])
     const [locations, setLocations] = useState<TripLocation[]>([])
     const [expandedDayId, setExpandedDayId] = useState<string | null>(null)
+    // дни какой поездки уже пришли: до этого не рисуем ветку «без дат» —
+    // иначе её поиск подменялся поиском дня и набранный текст терялся
+    const [daysFor, setDaysFor] = useState<string | null>(null)
     const [panelTab, setPanelTab] = useState<'route' | 'budget' | 'meili'>('route')
     // S9 WP-E: карточка точки на карте (toggle, Esc, «сделать точкой старта»)
     const [clickedPoint, setClickedPoint] = useState<ClickedPoint | null>(null)
@@ -75,6 +96,13 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         i18nRef.current = i18n
     })
     const pinRef = useRef<maplibregl.Marker | null>(null)
+    // карта прошла 'load': дальше рисуем сразу. isStyleLoaded() для этого не
+    // годится — он бывает false уже после 'load', пока догружается источник,
+    // и once('load') тогда не срабатывал никогда (маршрут не рисовался)
+    const mapReadyRef = useRef(false)
+    const whenMapReady = (map: maplibregl.Map, fn: () => void) => {
+        if (mapReadyRef.current) fn(); else map.once('load', fn)
+    }
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     // S11: ширина панели (ресайз тягой за границу), помним в localStorage
@@ -83,18 +111,6 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         return saved ? clampPanel(saved) : PANEL_DEFAULT
     })
     const [resizing, setResizing] = useState(false)
-    // S11: реальная ширина панели (для «спрессовывания» шапки) — учитывает и
-    // ресайз, и мобильную раскладку (там панель во всю ширину)
-    const panelElRef = useRef<HTMLDivElement>(null)
-    const [panelPx, setPanelPx] = useState(PANEL_DEFAULT)
-    useEffect(() => {
-        const el = panelElRef.current
-        if (!el) return
-        const ro = new ResizeObserver(entries => setPanelPx(entries[0].contentRect.width))
-        ro.observe(el)
-        return () => ro.disconnect()
-    }, [])
-    const compactHeader = panelPx < 380
 
     const startResize = (e: React.PointerEvent) => {
         e.preventDefault()
@@ -111,10 +127,11 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         window.addEventListener('pointerup', onUp)
     }
 
-    // карта (WebGL-канвас) должна пересчитаться под новую ширину контейнера
-    useEffect(() => { mapRef.current?.resize() }, [panelWidth])
+    // карта (WebGL-канвас) должна пересчитаться под новую ширину контейнера;
+    // на телефоне карта прячется на вкладках «Бюджет»/Meili — после показа тоже
+    useEffect(() => { mapRef.current?.resize() }, [panelWidth, panelTab])
 
-    // S15: отметки «посещено» — бейджи ✓ в днях (в превью не показываем)
+    // S15: отметки «посещено» (в превью не показываем)
     const { data: visitedList } = useQuery({
         queryKey: ['visited'], queryFn: getVisitedPlaces, enabled: !readOnly,
     })
@@ -126,15 +143,13 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     }, [tripId, readOnly])
 
     // S11: центрируем карту на выбранном городе — только для пустой поездки
-    // (есть стопы -> fitBounds по ним главнее)
     useEffect(() => {
         const map = mapRef.current
         if (!map || trip?.city_lat == null || trip?.city_lon == null) return
         const hasPoints = stops.length > 0 || days.some(d => d.stops.length > 0)
         if (hasPoints) return
         const center: [number, number] = [trip.city_lon, trip.city_lat]
-        const go = () => map.jumpTo({ center, zoom: DEFAULT_MAP_ZOOM })
-        if (map.isStyleLoaded()) go(); else map.once('load', go)
+        whenMapReady(map, () => map.jumpTo({ center, zoom: DEFAULT_MAP_ZOOM }))
     }, [trip, stops, days])
 
     // S13: превью — лайк (оптимистично) и копирование в свою редактируемую поездку
@@ -162,7 +177,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         const [d, l] = await Promise.all([getDays(tripId!), getLocations(tripId!)])
         setDays(d)
         setLocations(l)
-        // по умолчанию раскрыт первый день
+        // по умолчанию открыт первый день
         setExpandedDayId(prev => prev ?? (d[0]?.id ?? null))
         return d
     }
@@ -175,6 +190,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             if (cancelled) return
             setDays(d)
             setLocations(l)
+            setDaysFor(tripId ?? null)
             setExpandedDayId(prev => prev ?? (d[0]?.id ?? null))
         }).catch(() => {})
         return () => { cancelled = true }
@@ -199,13 +215,23 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
 
     useEffect(()=> {
         if(!mapContainer.current) return
+        const mobile = window.matchMedia(MOBILE_QUERY).matches
         const map = new maplibregl.Map({
             container: mapContainer.current,
             style: 'https://tiles.openfreemap.org/styles/liberty',
             center: DEFAULT_MAP_CENTER,
-            zoom: DEFAULT_MAP_ZOOM
+            zoom: DEFAULT_MAP_ZOOM,
+            // редизайн «Лес»: на телефоне карта — блок в скроллящейся странице,
+            // одним пальцем листаем страницу, двумя — карту
+            cooperativeGestures: mobile,
+            attributionControl: { compact: true },
+            locale: {
+                'CooperativeGesturesHandler.WindowsHelpText': i18nRef.current.t('planner.map.gestureWindows'),
+                'CooperativeGesturesHandler.MacHelpText': i18nRef.current.t('planner.map.gestureMac'),
+                'CooperativeGesturesHandler.MobileHelpText': i18nRef.current.t('planner.map.gestureMobile'),
+            },
         })
-        map.addControl( new maplibregl.NavigationControl())
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }))
         mapRef.current = map
         // QA: клик — сразу, а не по 'load': пока внешний сервер тайлов грузит
         // стиль (секунды, а то и «никогда»), клик по карте молча не работал
@@ -219,9 +245,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 return
             }
             const {lng, lat} = e.lngLat
-            // Fix 3: addressdetails+namedetails для формата «улица дом» / POI.
-            // QA: геокодер лёг/429 — раньше необработанный промис и клик «в
-            // пустоту»; теперь карточка всё равно открывается с координатами
+            // QA: геокодер лёг/429 — карточка всё равно открывается с координатами
             let data: NominatimReverseResult = {}
             try {
                 const res = await fetch(
@@ -238,26 +262,35 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             })
         })
         map.on('load',() => {
-        // S10: приглушённая «бумага» — насыщенным остаётся только маршрут
-        applyPaperStyle(map)
+        mapReadyRef.current = true
+        // компактная атрибуция MapLibre стартует раскрытой и закрывает низ карты
+        mapContainer.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
+        // «Лес»: тихая тёплая карта — насыщенным остаётся только маршрут
+        applyMapStyle(map)
         map.addSource('route', {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates: []}, properties: {}}
         })
-        // слои режима «Все дни»: приглушённые тона палитры дней (S10)
+        // слои режима «Все дни»: природная палитра дней
         DAY_HEX.forEach((hex, i) => {
             map.addSource(`route-day-${i}`, {type: 'geojson', data: {type: 'Feature', geometry: {type: 'LineString', coordinates: []}, properties: {}}})
             map.addLayer({
                 id: `route-day-line-${i}`, type: 'line', source: `route-day-${i}`,
                 layout: {'line-join': 'round', 'line-cap': 'round'},
-                paint: {'line-color': hex, 'line-width': 3, 'line-opacity': 0.75},
+                paint: {'line-color': hex, 'line-width': 3.5, 'line-opacity': 0.85},
             })
         })
+        // маршрут дня — дерево, со светлой «обводкой», чтобы читался поверх дорог
         map.addLayer({
-            id: 'route-line', type: 'line', source: 'route', 
+            id: 'route-casing', type: 'line', source: 'route',
             layout: {'line-join': 'round', 'line-cap': 'round'},
-            paint: {'line-color': '#B04A24', 'line-width': 4.5, 'line-opacity': 0.9}
+            paint: {'line-color': ROUTE_CASING_HEX, 'line-width': 9}
+        })
+        map.addLayer({
+            id: 'route-line', type: 'line', source: 'route',
+            layout: {'line-join': 'round', 'line-cap': 'round'},
+            paint: {'line-color': ROUTE_HEX, 'line-width': 4.5}
         })
         })
-        return () => map.remove()
+        return () => { mapReadyRef.current = false; map.remove() }
     }, [])
 
     // Esc закрывает карточку точки (S9 WP-E)
@@ -275,7 +308,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         pinRef.current = null
         const map = mapRef.current
         if (map && clickedPoint) {
-            pinRef.current = new maplibregl.Marker({ color: 'var(--accent)' })
+            pinRef.current = new maplibregl.Marker({ color: ROUTE_HEX })
                 .setLngLat([clickedPoint.lng, clickedPoint.lat])
                 .addTo(map)
         }
@@ -298,21 +331,24 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
 
     useEffect(() => {
     const map = mapRef.current
-    // QA: раньше при пустом маршруте эффект выходил сразу — удалил последний
-    // стоп в режиме «все дни», а его маркер и линия так и висели на карте.
-    // Теперь пустой маршрут тоже рисуется (= очищается).
+    // QA: пустой маршрут тоже рисуется (= очищается) — иначе висели «призраки»
     if (!map) return
-    // QA: отрисовка асинхронная (маршрут каждого дня — отдельный запрос). Без
-    // отмены прогон по устаревшему состоянию доезжал ПОСЛЕ свежего и
-    // дорисовывал свои маркеры поверх — дубли и «призраки» удалённых стопов
+    // QA: отрисовка асинхронная — устаревший прогон отменяем, иначе дубли меток
     let cancelled = false
+    const markEl = (cls: string, content: string, color?: string) => {
+        const el = document.createElement('div')
+        el.className = `map-mark ${cls}`
+        if (color) el.style.background = color
+        el.textContent = content
+        return el
+    }
     const drawRoute = async () => {
         const emptyLine = {type: 'Feature' as const, geometry: {type: 'LineString' as const, coordinates: [] as number[][]}, properties: {}}
         const clearDayLayers = () => DAY_HEX.forEach((_, i) => {
             (map.getSource(`route-day-${i}`) as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine)
         })
 
-        // S10: режим «Все дни» — маршруты приглушёнными тонами --day-1…6
+        // режим «Все дни» — маршруты в природной палитре дней
         if (!activeDay && days.length > 0) {
             const paintOverview = async () => {
                 if (cancelled) return
@@ -331,11 +367,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     if (cancelled) return
                     ;(map.getSource(`route-day-${i % DAY_HEX.length}`) as maplibregl.GeoJSONSource | undefined)
                         ?.setData({type: 'Feature', geometry: {type: 'LineString', coordinates: coords}, properties: {}})
-                    // номерные бейджи цвета дня
                     dayStops.forEach((st, idx) => {
-                        const el = document.createElement('div')
-                        el.style.cssText = `width:24px;height:24px;background:var(--day-${(i % 12) + 1});border:2px solid var(--surface-raised);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--surface-raised);font-weight:bold;font-size:11px;cursor:pointer;`
-                        el.textContent = String(idx + 1)
+                        const el = markEl('', String(idx + 1), DAY_HEX[i % DAY_HEX.length])
+                        el.style.width = el.style.height = '26px'
+                        el.style.fontSize = '12px'
                         markersRef.current.push(
                             new maplibregl.Marker({element: el})
                                 .setLngLat([st.place_lon!, st.place_lat!]).addTo(map)
@@ -346,12 +381,11 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 if (lons.length > 1) {
                     map.fitBounds(
                         [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-                        {padding: 80},
+                        {padding: fitPadding()},
                     )
                 }
             }
-            if (map.isStyleLoaded()) paintOverview()
-            else map.once('load', paintOverview)
+            whenMapReady(map, paintOverview)
             return
         }
 
@@ -363,141 +397,80 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 .then(r => legsToCoordinates(r.legs)).catch(() => [])
             : []
         if (cancelled) return
-        // ждем карту
         const updateMap = () => {
             if (cancelled) return
             markersRef.current.forEach(m => m.remove())
             markersRef.current = []
             clearDayLayers()
-            const source = map.getSource('route') as maplibregl.GeoJSONSource
-
-            // обновляем данные источника линии перестраиваются автоматически
-            source?.setData ({
-                type: 'Feature',
-                geometry: {
-                    type: 'LineString',
-                    coordinates
-                },
-                properties: {}
+            ;(map.getSource('route') as maplibregl.GeoJSONSource | undefined)?.setData({
+                type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: {},
             })
-            // маркеры: включённые — синие с номером; «не влезло» (S8 WP-4) —
-            // приглушённые серые, вне линии маршрута
+            // метки: включённые — дерево с номером (обязательные крупнее);
+            // «не влезло» (S8 WP-4) — приглушённые, вне линии маршрута
             const droppedStops = routeStops.filter(s => s.included_in_route === false)
             includedStops.forEach((stop, index) => {
                 if(!stop.place_lat || !stop.place_lon) return
-                const el = document.createElement('div')
-                el.style.cssText = `
-                    width: 32px;
-                    height: 32px;
-                    background: var(--accent);
-                    border: 2px solid var(--surface-raised);
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: var(--surface);
-                    font-weight: bold;
-                    font-size: 14px;
-                    cursor: pointer;
-                    box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
-                `
-                el.textContent = String(index + 1)
-
-                // появится при клике на маркер (setDOMContent, не setHTML —
-                // имя места это пользовательский ввод, см. utils/mapPopup)
+                const el = markEl(stop.priority === 2 ? 'must' : '', String(index + 1))
+                // setDOMContent, не setHTML — имя места это пользовательский ввод (utils/mapPopup)
                 const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
                     markerPopupContent(
                         stop.place_name || t('common.untitled'),
                         stop.duration_minutes ? t('place.durationMin', {count: stop.duration_minutes}) : null,
-                        'margin: 4px 0 0',
+                        'margin: 4px 0 0; color: var(--ink-3)',
                     ))
-                
-                const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
-                markersRef.current.push(marker)
+                markersRef.current.push(
+                    new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map))
             })
-            // приглушённые маркеры исключённых стопов (S8 WP-4)
             droppedStops.forEach(stop => {
                 if(!stop.place_lat || !stop.place_lon) return
-                const el = document.createElement('div')
-                el.style.cssText = `
-                    width: 26px; height: 26px; background: var(--border);
-                    border: 2px solid var(--surface-raised); border-radius: 50%;
-                    display: flex; align-items: center; justify-content: center;
-                    color: var(--text-muted); font-size: 12px; cursor: pointer;
-                    opacity: 0.65; box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 20%, transparent);
-                `
-                el.textContent = '✕'
+                const el = markEl('dropped', '×')
                 const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
                     markerPopupContent(
                         stop.place_name || t('common.untitled'),
                         t('place.notFitLabel'),
-                        'margin: 4px 0 0; font-size: 12px; color: var(--text-muted)',
+                        'margin: 4px 0 0; font-size: 12px; color: var(--ink-3)',
                     ))
-                const marker = new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map)
-                markersRef.current.push(marker)
+                markersRef.current.push(
+                    new maplibregl.Marker({element: el}).setLngLat([stop.place_lon, stop.place_lat]).setPopup(popup).addTo(map))
             })
-            // депо активного дня: 🏁 старт и финиш (S8 WP-3)
-            const depotMarker = (loc: {lat: number, lon: number, name?: string | null}, label: string) => {
-                const el = document.createElement('div')
-                el.style.cssText = `
-                    width: 32px; height: 32px; background: var(--accent); border: 2px solid var(--surface-raised);
-                    border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                    font-size: 16px; box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
-                `
-                el.textContent = '🏁'
+            // депо активного дня: старт и финиш (S8 WP-3)
+            const depotMarker = (loc: {lat: number, lon: number, name?: string | null}, label: string, icon: string) => {
+                const el = markEl('depot', '')
+                el.innerHTML = icon   // статичная разметка значка, без пользовательских данных
                 const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
-                    markerPopupContent(label, loc.name, 'font-size: 12px; color: var(--text-muted)'))
-                const m = new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map)
-                markersRef.current.push(m)
+                    markerPopupContent(label, loc.name, 'font-size: 12px; color: var(--ink-3)'))
+                markersRef.current.push(
+                    new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map))
             }
             // S13: депо старта/финиша и «дом» в превью не рисуем (Q9)
-            if (!readOnlyRef.current && activeDay?.start_location) depotMarker(activeDay.start_location, t('day.startOfDay'))
-            if (!readOnlyRef.current && activeDay?.end_location) depotMarker(activeDay.end_location, t('day.endOfDay'))
+            if (!readOnlyRef.current && activeDay?.start_location) depotMarker(activeDay.start_location, t('day.startOfDay'), ICON_HOUSE)
+            if (!readOnlyRef.current && activeDay?.end_location) depotMarker(activeDay.end_location, t('day.endOfDay'), ICON_FLAG)
             if (!readOnlyRef.current && !activeDay && trip?.start_lat && trip?.start_lon) {
-                const el = document.createElement('div')
-                el.style.cssText = `
-                    width: 32px; height: 32px; background: var(--accent); border: 2px solid var(--surface-raised);
-                    border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                    font-size: 16px; box-shadow: 0 2px 4px color-mix(in srgb, var(--text-primary) 30%, transparent);
-                `
-                el.textContent = '🏠'
-                const popup = new maplibregl.Popup({offset: 20}).setDOMContent(
-                    markerPopupContent(t('place.home'), trip.start_address, 'font-size: 12px; color: var(--text-muted)'))
-                // QA: маркер «дом» не попадал в markersRef и не снимался —
-                // каждая перерисовка добавляла ещё один поверх
-                markersRef.current.push(
-                    new maplibregl.Marker ( {element: el }).setLngLat([trip.start_lon, trip.start_lat]).setPopup(popup).addTo(map))
+                depotMarker({ lat: trip.start_lat, lon: trip.start_lon, name: trip.start_address }, t('place.home'), ICON_HOUSE)
             }
             // выравниваем по узлам дня (депо + стопы), чтобы всё было видно
-                const lons = routeStops.filter(s => s.place_lon).map(s => s.place_lon!)
-                const lats = routeStops.filter(s => s.place_lat).map( s => s.place_lat!)
-                if (!readOnlyRef.current && activeDay?.start_location) { lons.push(activeDay.start_location.lon); lats.push(activeDay.start_location.lat) }
-                if (!readOnlyRef.current && activeDay?.end_location) { lons.push(activeDay.end_location.lon); lats.push(activeDay.end_location.lat) }
-                
-                if (lons.length > 1) {
-                    
-                    map.fitBounds(
-                        [
-                            [Math.min(...lons), Math.min(...lats)],
-                            [Math.max(...lons), Math.max(...lats)]
-                        ],
-                        { padding: 80}
-                    )
-                }
-            }
-            if (map.isStyleLoaded()) {
-                updateMap()
-            } else {
-                map.once('load', updateMap)
+            const lons = routeStops.filter(s => s.place_lon).map(s => s.place_lon!)
+            const lats = routeStops.filter(s => s.place_lat).map( s => s.place_lat!)
+            if (!readOnlyRef.current && activeDay?.start_location) { lons.push(activeDay.start_location.lon); lats.push(activeDay.start_location.lat) }
+            if (!readOnlyRef.current && activeDay?.end_location) { lons.push(activeDay.end_location.lon); lats.push(activeDay.end_location.lat) }
+            // дорога может уходить дальше точек (объезд по проспекту) — её тоже в кадр
+            for (const [x, y] of coordinates) { lons.push(x); lats.push(y) }
+            if (lons.length > 1) {
+                map.fitBounds(
+                    [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+                    { padding: fitPadding(), maxZoom: 16 },
+                )
             }
         }
-        drawRoute()
-        return () => { cancelled = true }
+        whenMapReady(map, updateMap)
+    }
+    drawRoute()
+    return () => { cancelled = true }
 
     // activeDay/routeStops — производные от days/expandedDayId/stops со
     // стабильными ссылками; t — подписи попапов при смене языка
     }, [stops, trip, days, expandedDayId, activeDay, routeStops, tripId, t])
-    
+
     // S16 §1.5: реордер дней — новый порядок id; сервер переставляет содержимое
     // по фиксированному пулу дат и возвращает дни уже в новом порядке
     const handleDaysDragEnd = async (event: DragEndEvent) => {
@@ -519,7 +492,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             setError(apiErrorMessage(e, t))
         }
     }
-     const reloadStops = async () => {
+    const reloadStops = async () => {
         const fresh = await getStops(tripId!)
         setStops(fresh)
         // выбранная остановка могла измениться (например, is_booked)
@@ -529,13 +502,13 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         // сводка бюджета пересчитывается вживую (S9 WP-A)
         queryClient.invalidateQueries({ queryKey: ['budget', tripId] })
     }
-    // S16 §3.2: оптимистичное переименование дня (откат делает DayHeader)
+    // S16 §3.2: оптимистичное переименование дня (откат делает DayPlan)
     const renameDayLocally = (dayId: string, title: string | null) =>
         setDays(prev => prev.map(d => d.id === dayId ? { ...d, title } : d))
 
     // S9 WP-E: действия карточки точки
-    // QA: «добавить в маршрут» при свёрнутых днях слало day_id: null → 422
-    // и безликое «не удалось». Нет раскрытого дня — кладём в первый.
+    // QA: «добавить в маршрут» в режиме «Все дни» слало day_id: null → 422.
+    // Нет открытого дня — кладём в первый.
     const targetDayId = expandedDayId ?? days[0]?.id ?? null
     const addClickedToRoute = async () => {
         if (!clickedPoint) return
@@ -583,115 +556,156 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     }
 
     if (!tripId || notFound) return (
-        <div style={{padding: 48, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center'}}>
-            <HermodLogo size={40} withWordmark vertical />
-            <p style={{color: 'var(--text-muted)', margin: 0}}>{t('trip.notFound')}</p>
-            <button onClick={() => navigate('/discover')} style={{padding: '8px 16px', background: 'var(--accent)',
-                color: 'var(--surface)', border: 'none', borderRadius: 6, cursor: 'pointer'}}>
+        <div className="page" style={{ display: 'grid', justifyItems: 'center', gap: 16, paddingTop: 96, textAlign: 'center' }}>
+            <HermodLogo size={44} withWordmark vertical />
+            <p style={{ color: 'var(--ink-2)', fontSize: 16 }}>{t('trip.notFound')}</p>
+            <button type="button" className="btn btn-primary" onClick={() => navigate('/discover')}>
                 {t('nav.myTrips')}
             </button>
         </div>
     )
+
+    // мета поездки: «13–15 октября · 2 взрослых, 1 ребёнок · 45 000 ₽»
+    const dateRange = (() => {
+        if (!trip?.start_date) return null
+        const f = new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'long' })
+        const a = new Date(trip.start_date + 'T00:00:00')
+        const b = new Date((trip.end_date ?? trip.start_date) + 'T00:00:00')
+        return a.getTime() === b.getTime() ? f.format(a) : f.formatRange(a, b)
+    })()
+    const meta = [
+        dateRange,
+        trip?.adults_count ? [
+            t('profile.meta.adults', { count: trip.adults_count }),
+            trip.children_count ? t('profile.meta.children', { count: trip.children_count }) : null,
+        ].filter(Boolean).join(', ') : null,
+        !readOnly && trip?.budget_total ? formatMoneyCompact(trip.budget_total, trip.currency, i18n.language) : null,
+    ].filter(Boolean).join(' · ')
+
+    const tabs = readOnly ? (['route', 'budget'] as const) : (['route', 'budget', 'meili'] as const)
+    const tabLabel = (tab: 'route' | 'budget' | 'meili') =>
+        tab === 'route' ? t('trip.route') : tab === 'budget' ? t('budget.title') : t('meili.title')
+
     return (
-        <div className="planner-layout"
+        <div className={`planner${panelTab === 'meili' ? ' is-chat' : ''}`}
             style={{
                 ['--panel-w' as string]: `${panelWidth}px`,
                 ...(resizing ? { cursor: 'col-resize', userSelect: 'none' } : {}),
             } as React.CSSProperties}>
-            {/*Left pannel — на мобильных уезжает под карту (см. index.css)*/}
-            <div className="planner-panel" ref={panelElRef}>
-                {/* Заголовок */}
-                {readOnly ? (
-                    /* S13: превью-шапка — назад · название · ❤ · ⧉ + вкладки Маршрут/Бюджет */
-                    <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border)'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10}}>
-                            <button onClick={() => navigate('/discover')} title={t('common.back')}
-                                style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-muted)'}}>←</button>
-                            <strong style={{flex: 1, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                                {trip?.title ?? ''}
-                            </strong>
-                            <button onClick={toggleLike} title={t('preview.like')}
-                                style={{background: 'none', border: '1px solid var(--border)', borderRadius: 6,
-                                    cursor: 'pointer', fontSize: 15, padding: '4px 8px',
-                                    color: trip?.liked_by_me ? 'var(--accent)' : 'var(--text-muted)'}}>
-                                {trip?.liked_by_me ? '❤' : '🤍'}
-                            </button>
-                            <button onClick={copyTrip} title={t('preview.copy')}
-                                style={{background: 'var(--accent)', color: 'var(--surface)', border: 'none',
-                                    borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '5px 10px', whiteSpace: 'nowrap'}}>
-                                ⧉ {t('trip.clone')}
-                            </button>
-                        </div>
-                        <div style={{display: 'flex', gap: 4}}>
-                            {(['route', 'budget'] as const).map(tab => (
-                                <button key={tab} onClick={() => setPanelTab(tab)} style={{
-                                    padding: '4px 10px', fontSize: 13, cursor: 'pointer', border: 'none', borderRadius: 6,
-                                    background: panelTab === tab ? 'var(--accent)' : 'transparent',
-                                    color: panelTab === tab ? 'var(--surface)' : 'var(--text-primary)',
-                                }}>
-                                    {tab === 'route' ? t('trip.route') : t('budget.title')}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                ) : (
-                <div style={{padding: compactHeader ? '12px' : '16px', borderBottom: '1px solid var(--border)'}}>
-                {/* S11: flex-wrap — при нехватке ширины кластеры переносятся на 2-ю строку,
-                    а не обрезаются за полосой ресайза; отступы ужимаются */}
-                <div style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between',
-                    alignItems: 'center', gap: 8, marginBottom: 12}}>
-                    <span style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                        <span onClick={() => navigate('/discover')} style={{cursor: 'pointer', display: 'flex'}}>
-                            <HermodLogo size={26} withWordmark={!compactHeader} />
-                        </span>
-                        <button onClick={() => navigate(`/trips/${tripId}/settings`)} style={{background: 'none', border: 'none',cursor: 'pointer', fontSize: 18, color:'var(--text-muted)'}}>&#9881;</button>
+            <header className="planner-head">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <button type="button" className="icon-btn filled sm" onClick={() => navigate('/discover')}
+                        title={t('nav.myTrips')} aria-label={t('nav.myTrips')}>
+                        <ArrowLeft />
+                    </button>
+                    <span style={{ marginRight: 'auto', display: 'flex' }}>
+                        <HermodLogo size={28} withWordmark />
                     </span>
-                <div style={{display: 'flex', gap: 4}}>
-                    {(['route', 'budget', 'meili'] as const).map(tab => {
-                        // S11: при узкой панели вкладки схлопываются в иконки
-                        const label = tab === 'route' ? t('trip.route') : tab === 'budget' ? t('budget.title') : t('meili.title')
-                        const icon = tab === 'route' ? '🗺' : tab === 'budget' ? '💰' : '✨'
-                        return (
-                        <button key={tab} onClick={() => setPanelTab(tab)} title={compactHeader ? label : undefined} style={{
-                            padding: compactHeader ? '4px 8px' : '4px 10px', fontSize: 13, cursor: 'pointer',
-                            border: 'none', borderRadius: 6,
-                            background: panelTab === tab ? 'var(--accent)' : 'transparent',
-                            color: panelTab === tab ? 'var(--surface)' : 'var(--text-primary)',
-                        }}>
-                            {compactHeader ? icon : label}
+                    {readOnly ? (
+                        <>
+                            <button type="button" className="icon-btn" onClick={toggleLike}
+                                aria-pressed={!!trip?.liked_by_me} title={t('preview.like')} aria-label={t('preview.like')}
+                                style={trip?.liked_by_me ? { color: 'var(--danger)' } : undefined}>
+                                <Heart fill={trip?.liked_by_me ? 'currentColor' : 'none'} />
+                            </button>
+                            <button type="button" className="btn btn-sm btn-primary btn-pill" onClick={copyTrip} title={t('preview.copy')}>
+                                <Copy />{t('trip.clone')}
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            {/* экспорт (S9 WP-B) */}
+                            <button type="button" className="icon-btn" title={t('export.pdf')} aria-label={t('export.pdf')}
+                                onClick={() => downloadExport(tripId, 'pdf').catch(() => setError(t('export.error')))}>
+                                <FileDown />
+                            </button>
+                            <button type="button" className="icon-btn" title={t('export.ics')} aria-label={t('export.ics')}
+                                onClick={() => downloadExport(tripId, 'ics').catch(() => setError(t('export.error')))}>
+                                <CalendarPlus />
+                            </button>
+                            <button type="button" className="icon-btn" title={t('trip.settingsTitle')} aria-label={t('trip.settingsTitle')}
+                                onClick={() => navigate(`/trips/${tripId}/settings`)}>
+                                <Settings2 />
+                            </button>
+                        </>
+                    )}
+                </div>
+                {/* QA: в своей поездке название — клик ведёт в настройки */}
+                {readOnly ? (
+                    <h1 style={{ fontSize: 26, lineHeight: 1.12, letterSpacing: '-0.025em' }}>{trip?.title ?? ''}</h1>
+                ) : (
+                    <h1 style={{ fontSize: 26, lineHeight: 1.12, letterSpacing: '-0.025em' }}>
+                        <button type="button" className="dayname" style={{ whiteSpace: 'normal', cursor: 'pointer' }}
+                            onClick={() => navigate(`/trips/${tripId}/settings`)} title={t('trip.settingsTitle')}>
+                            {trip?.title ?? ''}
                         </button>
-                    )})}
-                </div>
-                <span style={{display: 'flex', gap: 4}}>
-                    {/* экспорт (S9 WP-B) — в компактном режиме без текста «PDF» */}
-                    <button title={t('export.pdf')} onClick={() => downloadExport(tripId, 'pdf').catch(() => setError(t('export.error')))}
-                        style={{border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
-                        {compactHeader ? '⬇' : '⬇ PDF'}
-                    </button>
-                    <button title={t('export.ics')} onClick={() => downloadExport(tripId, 'ics').catch(() => setError(t('export.error')))}
-                        style={{border: '1px solid var(--border)', background: 'var(--surface-raised)', borderRadius: 6, cursor: 'pointer', fontSize: 13, padding: '4px 8px'}}>
-                        📅
-                    </button>
-                </span>
-                </div>
-                {/* QA: в своей поездке названия не было нигде на экране — только
-                    в превью чужой. Одна строка с многоточием, клик — настройки */}
-                {trip?.title && (
-                    <div onClick={() => navigate(`/trips/${tripId}/settings`)} title={trip.title}
-                        style={{fontSize: 15, fontWeight: 600, cursor: 'pointer', marginTop: -4,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                        {trip.title}
-                    </div>
+                    </h1>
                 )}
+                {meta && <p style={{ color: 'var(--ink-2)', marginTop: 6, fontSize: 14.5 }}>{meta}</p>}
+                <div className="seg" role="tablist" style={{ marginTop: 16, marginBottom: 2 }}>
+                    {tabs.map(tab => (
+                        <button key={tab} type="button" role="tab" aria-selected={panelTab === tab}
+                            onClick={() => { setPanelTab(tab); setSelectedStop(null) }}>
+                            {tabLabel(tab)}
+                        </button>
+                    ))}
                 </div>
-                )}
+            </header>
+
+            {/* карта: десктоп — справа в рамке на дубовой подложке; телефон — блок под шапкой */}
+            <div className={`planner-mapcell${panelTab !== 'route' ? ' hidden-mobile' : ''}`}>
+                <div className="planner-mapframe">
+                    <div ref={mapContainer} className="planner-map" />
+                    {/* карточка точки (S9 WP-E) */}
+                    {clickedPoint && (
+                        <div style={{
+                            position: 'absolute', left: 12, bottom: 12, zIndex: 5, width: 'min(320px, calc(100% - 24px))',
+                            background: 'var(--raised)', borderRadius: 'var(--radius-lg)', padding: 14,
+                            boxShadow: 'var(--shadow-2)',
+                        }}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8}}>
+                                <strong style={{fontSize: 15.5, lineHeight: 1.25}}>{clickedPoint.label}</strong>
+                                <button type="button" className="icon-btn sm" onClick={() => setClickedPoint(null)}
+                                    aria-label={t('common.close')} style={{ margin: '-6px -6px 0 0' }}>
+                                    <X />
+                                </button>
+                            </div>
+                            {clickedPoint.address && (
+                                <p style={{fontSize: 13, color: 'var(--ink-3)', margin: '4px 0 10px'}}>
+                                    {clickedPoint.address.split(',').slice(0, 3).join(',')}
+                                </p>
+                            )}
+                            <div style={{display: 'grid', gap: 8}}>
+                                {/* QA: точка вне области ломала маршрут всего дня —
+                                    бэк её теперь не примет, предупреждаем заранее */}
+                                {!inRegion(clickedPoint.lat, clickedPoint.lng) && (
+                                    <span className="error-text">{t('errors.place_out_of_coverage')}</span>
+                                )}
+                                <button type="button" onClick={addClickedToRoute} className="btn btn-sm btn-accent"
+                                    disabled={!inRegion(clickedPoint.lat, clickedPoint.lng)}>
+                                    <Plus />{t('place.addToRoute')}
+                                </button>
+                                <button type="button" onClick={makeClickedStart} disabled={!activeDay} className="btn btn-sm"
+                                    title={!activeDay ? t('map.start_needs_day') : undefined}>
+                                    <Flag />{t('map.makeStart')}
+                                </button>
+                                {!activeDay && (
+                                    <span style={{fontSize: 12.5, color: 'var(--ink-3)'}}>{t('map.start_needs_day')}</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="planner-body">
                 {panelTab === 'meili' ? (
                     /* AI-ассистент (ТЗ-Meili): диалог привязан к открытой поездке */
-                    <div style={{flex: 1, overflowY: 'hidden'}}>
+                    <div className="planner-chat">
                         <MeiliChat tripId={tripId} onApplied={reloadStops} />
                     </div>
                 ) : panelTab === 'budget' ? (
-                    <div style={{flex: 1, overflowY: 'auto'}}>
+                    <div style={{ padding: '18px 24px 32px' }} className="planner-pad">
                         {/* S13: в превью — только активности из стопов, без owner-ручки бюджета */}
                         {readOnly
                             ? <PreviewBudget days={days} currency={trip?.currency} />
@@ -699,120 +713,91 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     </div>
                 ) : selectedStop && !readOnly ? (
                     /* Детали остановки + бронирование (Sprint 6) */
-                    <div style={{flex: 1, overflowY: 'auto'}}>
-                        {/* key: новый стоп — свежее состояние панели (подтверждение
-                            удаления, ошибки, поля брони), без ручных сбросов */}
-                        <StopDetailPanel
-                            key={selectedStop.id}
-                            stop={selectedStop}
-                            trip={trip}
-                            // S16: дата визита приходит от дня стопа
-                            dayDate={days.find(d => d.id === selectedStop.day_id)?.date ?? null}
-                            onClose={() => setSelectedStop(null)}
-                            onChanged={reloadStops}
-                        />
-                    </div>
+                    <StopDetailPanel
+                        key={selectedStop.id}
+                        stop={selectedStop}
+                        trip={trip}
+                        // S16: дата визита приходит от дня стопа
+                        dayDate={days.find(d => d.id === selectedStop.day_id)?.date ?? null}
+                        onClose={() => setSelectedStop(null)}
+                        onChanged={reloadStops}
+                    />
                 ) : (
-                <>
-                {/* S13: в превью старт-точка и поиск мест недоступны */}
-                {!readOnly && days.length === 0 && <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>}
-                {!readOnly && <PlaceSearch tripId={tripId} dayId={targetDayId} onPlaceAdded={reloadStops}/>}
-                {/*Сприсок остановок скролится  */}
-                <div style={{flex: 1, overflowY: 'auto', padding: 16}}>
-                {loadError && <p style={{color: 'var(--accent)', fontSize:13}}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>}
-                {error && <p style={{color: 'var(--accent)', fontSize:13}}>{error}</p>}
-                {/* S16: стоп всегда живёт в дне — веток «без дня» больше нет */}
-                {days.length > 0 ? (
-                    /* S8 WP-3: по-дневная панель — аккордеон дней; S12: DnD-реордер дней */
-                    <DndContext sensors={daySensors} collisionDetection={closestCenter} onDragEnd={handleDaysDragEnd}>
-                        <SortableContext items={days.map(d => d.id)} strategy={verticalListSortingStrategy}>
-                        {days.map(day => (
-                            <DayCard
-                                key={day.id}
-                                tripId={tripId}
-                                day={day}
-                                allDays={days}
-                                locations={locations}
-                                currency={trip?.currency}
-                                expanded={expandedDayId === day.id}
-                                onToggle={() => setExpandedDayId(prev => prev === day.id ? null : day.id)}
-                                onChanged={reloadStops}
-                                onSelectStop={setSelectedStop}
-                                onDayRenamed={renameDayLocally}
-                                readOnly={readOnly}
-                                visitedPlaceIds={visitedPlaceIds}
-                            />
-                        ))}
-                        </SortableContext>
-                    </DndContext>
-                ) : (
-                    <p style={{fontSize: 12, color: 'var(--text-muted)'}}>
-                        {/* QA: зрителю чужой поездки подсказка «задай даты в
-                            настройках ⚙» бессмысленна — настроек у него нет */}
-                        {readOnly ? t('preview.noDays') : t('trip.setDatesHint')}
-                    </p>
-                )}
-                </div>
-                </>
-                )}
-                </div>
-                {/* S11: полоса ресайза (на мобилке скрыта через CSS) */}
-                <div className={`panel-resize-handle${resizing ? ' dragging' : ''}`}
-                    onPointerDown={startResize} title={t('trip.resizePanel')} />
-                {/* Карта все остальное место займет*/}
-                <div style={{position: 'relative', flex: 1, minHeight: 0, display: 'flex'}}>
-                    <div ref={mapContainer} className="planner-map" style={{flex: 1}} />
-                    {/* мобильная пилюля дней (S10) — то же activeDayId, что и аккордеон */}
-                    <DayPill days={days} activeDayId={expandedDayId}
-                        onSelect={id => setExpandedDayId(id)} />
-                    {/* карточка точки (S9 WP-E) */}
-                    {clickedPoint && (
-                        <div style={{
-                            position: 'absolute', left: 12, bottom: 20, zIndex: 5,
-                            background: 'var(--surface-raised)', borderRadius: 10, padding: 12,
-                            boxShadow: '0 4px 16px color-mix(in srgb, var(--text-primary) 18%, transparent)', minWidth: 220, maxWidth: 300,
-                        }}>
-                            <div style={{display: 'flex', justifyContent: 'space-between', gap: 8}}>
-                                <strong style={{fontSize: 14}}>{clickedPoint.label}</strong>
-                                <button onClick={() => setClickedPoint(null)} style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 0}}>✕</button>
+                    <div style={{ padding: '18px 24px 32px' }} className="planner-pad">
+                        {loadError && <p className="error-text" role="alert" style={{ marginBottom: 12 }}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>}
+                        {error && (
+                            <div role="alert" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12, padding: '10px 12px',
+                                background: 'var(--danger-wash)', color: 'var(--danger)', borderRadius: 'var(--radius)', fontSize: 14 }}>
+                                <span style={{ flex: 1 }}>{error}</span>
+                                <button type="button" className="icon-btn sm" onClick={() => setError(null)} aria-label={t('common.close')}
+                                    style={{ color: 'inherit', margin: -4 }}><X /></button>
                             </div>
-                            {clickedPoint.address && (
-                                <p style={{fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 8px'}}>
-                                    {clickedPoint.address.split(',').slice(0, 3).join(',')}
+                        )}
+                        {days.length > 0 ? (
+                            <>
+                                <DaySwatches days={days} activeDayId={expandedDayId} readOnly={readOnly}
+                                    onSelect={setExpandedDayId} onDragEnd={handleDaysDragEnd} />
+                                <div style={{ marginTop: 14 }}>
+                                    {activeDay ? (
+                                        <DayPlan
+                                            key={activeDay.id}
+                                            tripId={tripId}
+                                            day={activeDay}
+                                            allDays={days}
+                                            locations={locations}
+                                            currency={trip?.currency}
+                                            onChanged={reloadStops}
+                                            onSelectStop={setSelectedStop}
+                                            onDayRenamed={renameDayLocally}
+                                            readOnly={readOnly}
+                                            visitedPlaceIds={visitedPlaceIds}
+                                        />
+                                    ) : (
+                                        <DaysOverview days={days} onSelect={setExpandedDayId} />
+                                    )}
+                                </div>
+                            </>
+                        ) : daysFor === tripId && (
+                            <>
+                                {/* без дат дней нет: старт поездки и подсказка задать даты */}
+                                {!readOnly && <StartPoint tripId={tripId} initialAddress={trip?.start_address ?? undefined} initialTime={trip?.start_time}/>}
+                                {!readOnly && <div style={{ marginTop: 14 }}><PlaceSearch tripId={tripId} dayId={targetDayId} onPlaceAdded={reloadStops}/></div>}
+                                <p style={{ fontSize: 14.5, color: 'var(--ink-2)', marginTop: 16 }}>
+                                    {/* QA: зрителю чужой поездки подсказка про настройки бессмысленна */}
+                                    {readOnly ? t('preview.noDays') : t('trip.setDatesHint')}
                                 </p>
-                            )}
-                            <div style={{display: 'flex', flexDirection: 'column', gap: 6}}>
-                                {/* QA: точка вне области ломала маршрут всего дня —
-                                    бэк её теперь не примет, предупреждаем заранее */}
-                                {!inRegion(clickedPoint.lat, clickedPoint.lng) && (
-                                    <span style={{fontSize: 12, color: 'var(--accent)'}}>{t('errors.place_out_of_coverage')}</span>
-                                )}
-                                <button onClick={addClickedToRoute}
-                                    disabled={!inRegion(clickedPoint.lat, clickedPoint.lng)} style={{
-                                    padding: '6px 12px', background: inRegion(clickedPoint.lat, clickedPoint.lng) ? 'var(--accent)' : 'var(--text-muted)',
-                                    color: 'var(--surface)',
-                                    border: 'none', borderRadius: 6, cursor: inRegion(clickedPoint.lat, clickedPoint.lng) ? 'pointer' : 'not-allowed', fontSize: 13}}>
-                                    {t('place.addToRoute')}
-                                </button>
-                                <button onClick={makeClickedStart} disabled={!activeDay}
-                                    title={!activeDay ? t('map.start_needs_day') : undefined}
-                                    style={{
-                                        padding: '6px 12px', background: activeDay ? 'var(--surface-raised)' : 'var(--surface)',
-                                        color: activeDay ? 'var(--text-primary)' : 'var(--text-muted)',
-                                        border: '1px solid var(--border)', borderRadius: 6,
-                                        cursor: activeDay ? 'pointer' : 'not-allowed', fontSize: 13}}>
-                                    🏁 {t('map.makeStart')}
-                                </button>
-                                {!activeDay && (
-                                    <span style={{fontSize: 11, color: 'var(--text-muted)'}}>{t('map.start_needs_day')}</span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-                </div>
-            
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* S11: полоса ресайза (на мобилке скрыта через CSS) */}
+            <div className={`panel-resize-handle${resizing ? ' dragging' : ''}`}
+                onPointerDown={startResize} title={t('trip.resizePanel')} />
+        </div>
     )
-    }
+}
+
+// Режим «Все дни»: оглавление поездки — он же легенда цветов маршрутов на карте.
+function DaysOverview({ days, onSelect }: { days: TripDay[], onSelect: (id: string) => void }) {
+    const { t, i18n } = useTranslation()
+    const fmt = new Intl.DateTimeFormat(i18n.language, { weekday: 'short', day: 'numeric', month: 'long' })
+    return (
+        <div>
+            <p style={{ fontSize: 14.5, color: 'var(--ink-2)', marginBottom: 8 }}>{t('planner.overviewHint')}</p>
+            {days.map((d, i) => (
+                <button key={d.id} type="button" onClick={() => onSelect(d.id)} className="overview-row">
+                    <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', background: DAY_HEX[i % DAY_HEX.length] }} />
+                    <span style={{ minWidth: 0 }}>
+                        <b style={{ display: 'block', fontSize: 16, fontWeight: 650 }}>{dayLabel(d, t)}</b>
+                        <span style={{ fontSize: 13.5, color: 'var(--ink-3)' }}>
+                            {fmt.format(new Date(d.date + 'T00:00:00'))} · {t('profile.meta.stops', { count: d.stops.length })}
+                        </span>
+                    </span>
+                    <ChevronRight size={18} style={{ color: 'var(--ink-3)' }} />
+                </button>
+            ))}
+        </div>
+    )
+}

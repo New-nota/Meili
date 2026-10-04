@@ -68,7 +68,7 @@ export const useMeiliStore = create<MeiliState>((set) => ({
             ...s.messages.filter(m => !(
                 m.role === 'assistant' && m.id.startsWith('local-')
             )),
-            localMessage('assistant', `⚠ ${detail}`),
+            { ...localMessage('assistant', detail), error: true },
         ],
     })),
 

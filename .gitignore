@@ -27,3 +27,12 @@ frontend/dev-dist/
 # дизайн-скиллы: бинарник impeccable (14 МБ, лаунчер докачает сам) и локальный конфиг
 .claude/skills/impeccable/scripts/bin/
 .impeccable/config.local.json
+
+# дизайн-скилл: прототипы, макеты раундов выбора и скриншоты ревью — рабочие
+# файлы (десятки МБ), в репо только DESIGN.md, design.json, surfaces/, config.json
+.impeccable/proto/
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/questions/
+.impeccable/hook.cache.json
+.impeccable/decision-round-*.json

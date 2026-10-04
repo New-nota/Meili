@@ -149,115 +149,100 @@ export default function Auth() {
         }
     }
 
-    const inputStyle: React.CSSProperties = {
-        padding: 8, width: 280, maxWidth: '85vw',
-        borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-        background: 'var(--surface-raised)',
-    }
+    const shell = (children: React.ReactNode) => (
+        <div className="auth">
+            <div style={{ position: 'absolute', top: 16, right: 16 }}>
+                <LanguageSwitcher />
+            </div>
+            <div className="auth-col">
+                <HermodLogo size={56} withWordmark vertical />
+                {children}
+            </div>
+        </div>
+    )
 
     // --- Экран ввода кода (S14) ---------------------------------------------
     if (mode === 'verify') {
-        return (
-            <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80, gap: 12}}>
-                <div style={{position: 'absolute', top: 16, right: 16}}>
-                    <LanguageSwitcher />
-                </div>
-                <HermodLogo size={64} withWordmark vertical />
-                <h2>{t('auth.verifyTitle')}</h2>
-                <p style={{fontSize: 13, color: 'var(--text-muted)', margin: 0, maxWidth: 300, textAlign: 'center'}}>
+        return shell(
+            <>
+                <h1 className="auth-title">{t('auth.verifyTitle')}</h1>
+                <p style={{ fontSize: 15, color: 'var(--ink-2)', textAlign: 'center' }}>
                     {t('auth.codeSentTo', { email })}
                 </p>
 
-                <input placeholder="••••••" value={code} inputMode="numeric" autoFocus
+                <input placeholder="••••••" value={code} inputMode="numeric" autoFocus className="input"
+                    aria-label={t('auth.codeSixDigits')} autoComplete="one-time-code"
                     onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     onKeyDown={e => e.key === 'Enter' && handleVerify()}
-                    style={{...inputStyle, textAlign: 'center', letterSpacing: 8,
-                        fontSize: 20, fontVariantNumeric: 'tabular-nums', width: 200}} />
+                    style={{ textAlign: 'center', letterSpacing: '0.4em', fontSize: 22, height: 56, fontWeight: 600 }} />
 
-                {error && <p style={{color: 'var(--accent)', fontSize: 13}}>{error}</p>}
+                {error && <p role="alert" className="error-text">{error}</p>}
 
-                <button onClick={handleVerify} disabled={busy}
-                    style={{padding: '8px 24px', background: busy ? 'var(--text-muted)' : 'var(--accent)',
-                        color: 'var(--surface)', border: 'none', borderRadius: 'var(--radius)',
-                        cursor: busy ? 'wait' : 'pointer', fontWeight: 500}}>
+                <button type="button" onClick={handleVerify} disabled={busy} className="btn btn-primary btn-lg btn-block">
                     {t('auth.confirm')}
                 </button>
 
-                <button onClick={handleResend} disabled={resendIn > 0}
-                    style={{background: 'none', border: 'none',
-                        cursor: resendIn > 0 ? 'default' : 'pointer',
-                        color: resendIn > 0 ? 'var(--text-muted)' : 'var(--accent)',
-                        fontSize: 13, padding: 0}}>
-                    {resendIn > 0
-                        ? t('auth.resendIn', { s: resendIn })
-                        : t('auth.resend')}
-                </button>
-
-                <button onClick={() => switchMode('register')}
-                    style={{background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--text-muted)', fontSize: 13, padding: 0}}>
-                    {t('common.back')}
-                </button>
-            </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                    <button type="button" onClick={() => switchMode('register')} className="link-btn" style={{ color: 'var(--ink-2)' }}>
+                        {t('common.back')}
+                    </button>
+                    <button type="button" onClick={handleResend} disabled={resendIn > 0} className="link-btn">
+                        {resendIn > 0 ? t('auth.resendIn', { s: resendIn }) : t('auth.resend')}
+                    </button>
+                </div>
+            </>,
         )
     }
 
-    return (
-        <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 80, gap: 12}}>
-            <div style={{position: 'absolute', top: 16, right: 16}}>
-                <LanguageSwitcher />
-            </div>
-            <HermodLogo size={64} withWordmark vertical />
-            <h2>{mode === 'login' ? t('auth.signIn') : t('auth.signUp')}</h2>
+    return shell(
+        <>
+            <h1 className="auth-title">{mode === 'login' ? t('auth.signIn') : t('auth.signUp')}</h1>
 
             {/* QA: настоящая <form> — Enter из любого поля, менеджеры паролей
                 и автозаполнение браузера (раньше Enter работал только в пароле) */}
-            <form onSubmit={handleSubmit} noValidate
-                style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12}}>
-                <input placeholder={t('auth.email')} value={email} type="email"
+            <form onSubmit={handleSubmit} noValidate style={{ display: 'grid', gap: 10, width: '100%' }}>
+                <input placeholder={t('auth.email')} value={email} type="email" className="input"
+                    aria-label={t('auth.email')}
                     name="email" autoComplete={mode === 'login' ? 'username' : 'email'}
-                    onChange={e => setEmail(e.target.value)} style={inputStyle} />
+                    onChange={e => setEmail(e.target.value)} />
                 {mode === 'register' && (
-                    <input placeholder={t('auth.nameOptional')} value={name}
+                    <input placeholder={t('auth.nameOptional')} value={name} className="input"
+                        aria-label={t('auth.nameOptional')}
                         name="name" autoComplete="name" maxLength={100}
-                        onChange={e => setName(e.target.value)} style={inputStyle} />
+                        onChange={e => setName(e.target.value)} />
                 )}
-                <input placeholder={t('auth.password')} type="password" value={password}
+                <input placeholder={t('auth.password')} type="password" value={password} className="input"
+                    aria-label={t('auth.password')}
                     name="password"
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                    onChange={e => setPassword(e.target.value)}
-                    style={inputStyle} />
+                    onChange={e => setPassword(e.target.value)} />
                 {mode === 'register' && (
-                    <p style={{fontSize: 12, color: 'var(--text-muted)', margin: 0}}>
-                        {t('auth.passwordMin')}
-                    </p>
+                    <p className="field-hint">{t('auth.passwordMin')}</p>
                 )}
 
-                {error && <p role="alert" style={{color: 'var(--accent)', fontSize: 13, margin: 0}}>{error}</p>}
+                {error && <p role="alert" className="error-text">{error}</p>}
 
-                <button type="submit" disabled={busy}
-                style={{padding: '8px 24px', background: busy ? 'var(--text-muted)' : 'var(--accent)',
-                    color: 'var(--surface)', border: 'none', borderRadius: 'var(--radius)',
-                    cursor: busy ? 'wait' : 'pointer', fontWeight: 500}}>
+                <button type="submit" disabled={busy} className="btn btn-primary btn-lg btn-block" style={{ marginTop: 4 }}>
                     {mode === 'login' ? t('auth.signIn') : t('auth.signUp')}
                 </button>
             </form>
 
-            {/* переключение вход <-> регистрация */}
-            <button onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
-                style={{background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--accent)', fontSize: 13, padding: 0}}>
-                {mode === 'login' ? t('auth.noAccount') : t('auth.haveAccount')}
-            </button>
-
             {/* Google OAuth (S7): бэкенд ответит 501, если ключи не настроены */}
-            <button onClick={() => { window.location.href = `${API_URL}/auth/google/login` }}
-            style={{padding: '8px 24px', background: 'var(--surface-raised)', color: 'var(--text-primary)',
-                border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 8}}>
-                <span style={{fontWeight: 'bold', color: 'var(--accent)'}}>G</span>
+            <button type="button" onClick={() => { window.location.href = `${API_URL}/auth/google/login` }}
+                className="btn btn-lg btn-block" style={{ background: 'var(--raised)', boxShadow: 'inset 0 0 0 1px var(--line)' }}>
+                <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
                 {t('auth.googleSignIn')}
             </button>
-        </div>
+
+            {/* переключение вход <-> регистрация */}
+            <button type="button" onClick={() => switchMode(mode === 'login' ? 'register' : 'login')} className="link-btn">
+                {mode === 'login' ? t('auth.noAccount') : t('auth.haveAccount')}
+            </button>
+        </>,
     )
 }

@@ -7,9 +7,10 @@ import {
 import { apiFetch } from '../../api/client'
 import { costText, planTotal } from '../../utils/planCost'
 import { formatMoney } from '../../utils/money'
+import { Banknote, Check, Dot, Luggage, MapPin, MapPinOff, Pencil, Route as RouteIcon, Wallet, X } from 'lucide-react'
 
 // Карточка превью плана Meili (ТЗ-Meili M3.4):
-// [ ✕ закрыть | ✎ изменить руками | ✔ применить ]
+// [ закрыть | изменить руками | применить ]
 // «Применить» — единственная кнопка, ведущая к записи в БД (M4).
 interface Props {
     plan: PlanEvent
@@ -18,9 +19,9 @@ interface Props {
     onApplied: (tripId: string | null) => void
 }
 
-const ICONS: Record<string, string> = {
-    create_trip: '🧳', add_stop: '📍', remove_stop: '✂️',
-    set_budget: '💰', set_stop_cost: '💶', optimize: '🧭',
+const ICONS: Record<string, typeof MapPin> = {
+    create_trip: Luggage, add_stop: MapPin, remove_stop: MapPinOff,
+    set_budget: Wallet, set_stop_cost: Banknote, optimize: RouteIcon,
 }
 
 export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Props) {
@@ -101,60 +102,50 @@ export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Pr
 
     return (
         <div style={{
-            border: '1px solid var(--accent)', borderRadius: 10, padding: 10,
-            margin: '8px 0', background: 'var(--surface)',
+            borderRadius: 'var(--radius-lg)', padding: 14, margin: '6px 0',
+            background: 'var(--raised)', boxShadow: 'var(--shadow-1)',
         }}>
-            <div style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 6 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
                 {plan.plan_json.summary}
             </div>
-            {rows.map(({ a, cost }, i) => (
-                <div key={i} style={{ fontSize: 13, padding: '2px 0', display: 'flex', gap: 6 }}>
-                    <span>{ICONS[a.type] ?? '•'}</span>
-                    <span style={{ flex: 1 }}>{actionLine(a)}</span>
-                    {cost && (
-                        <span style={{
-                            fontVariantNumeric: 'tabular-nums',
-                            color: cost.estimate ? 'var(--text-muted)' : 'var(--text-primary)',
-                        }}>
-                            {cost.text}
-                        </span>
-                    )}
-                </div>
-            ))}
+            {rows.map(({ a, cost }, i) => {
+                const Icon = ICONS[a.type] ?? Dot
+                return (
+                    <div key={i} style={{ fontSize: 14, padding: '5px 0', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <Icon size={16} style={{ color: 'var(--moss)', marginTop: 2 }} />
+                        <span style={{ flex: 1 }}>{actionLine(a)}</span>
+                        {cost && (
+                            <span style={{ color: cost.estimate ? 'var(--ink-3)' : 'var(--ink)', whiteSpace: 'nowrap' }}>
+                                {cost.text}
+                            </span>
+                        )}
+                    </div>
+                )
+            })}
             {total && (
                 <div style={{
-                    fontSize: 12, marginTop: 6, paddingTop: 6,
-                    borderTop: '1px dashed var(--border)',
-                    color: total.hasEstimate ? 'var(--text-muted)' : 'var(--text-primary)',
-                    fontVariantNumeric: 'tabular-nums',
+                    fontSize: 13.5, marginTop: 8, paddingTop: 8,
+                    borderTop: '1px solid var(--line)',
+                    color: total.hasEstimate ? 'var(--ink-2)' : 'var(--ink)',
                 }}>
-                    {t('meili.planTotal')}: {total.hasEstimate ? '≈ ' : ''}
+                    {t('meili.planTotal')}: <b>{total.hasEstimate ? '≈ ' : ''}
                     {total.min === total.max
                         ? formatMoney(total.min, total.currency, i18n.language)
-                        : `${formatMoney(total.min, total.currency, i18n.language)}–${formatMoney(total.max, total.currency, i18n.language)}`}
+                        : `${formatMoney(total.min, total.currency, i18n.language)}–${formatMoney(total.max, total.currency, i18n.language)}`}</b>
                     {total.hasEstimate && ` · ${t('meili.containsEstimates')}`}
                 </div>
             )}
-            {error && <p style={{ color: 'var(--accent)', fontSize: 12, margin: '6px 0 0' }}>{error}</p>}
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                <button onClick={handleDiscard} disabled={busy} style={{
-                    padding: '6px 10px', background: 'none', color: 'var(--text-muted)',
-                    border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12,
-                }}>
-                    ✕ {t('meili.closeBtn')}
+            {error && <p className="error-text" role="alert" style={{ marginTop: 8 }}>{error}</p>}
+            <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+                <button type="button" onClick={handleDiscard} disabled={busy} className="btn btn-sm btn-ghost">
+                    <X />{t('meili.closeBtn')}
                 </button>
-                <button onClick={onEdit} disabled={busy} style={{
-                    padding: '6px 10px', background: 'var(--surface-raised)', color: 'var(--text-primary)',
-                    border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 12,
-                }}>
-                    ✎ {t('meili.editBtn')}
+                <button type="button" onClick={onEdit} disabled={busy} className="btn btn-sm">
+                    <Pencil />{t('meili.editBtn')}
                 </button>
-                <button onClick={handleApply} disabled={busy} style={{
-                    flex: 1, padding: '6px 10px', background: 'var(--accent)', color: 'var(--surface)',
-                    border: 'none', borderRadius: 6, fontSize: 12,
-                    cursor: busy ? 'wait' : 'pointer', fontWeight: 'bold',
-                }}>
-                    ✔ {busy ? '…' : t('meili.applyBtn')}
+                <button type="button" onClick={handleApply} disabled={busy} className="btn btn-sm btn-primary"
+                    style={{ flex: 1, cursor: busy ? 'wait' : undefined }}>
+                    <Check />{busy ? '…' : t('meili.applyBtn')}
                 </button>
             </div>
         </div>

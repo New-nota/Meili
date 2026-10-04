@@ -1,6 +1,7 @@
 // Состав группы поездки — показывается в панели бронирования,
 // чтобы пользователь бронировал на нужное число человек.
 import { useTranslation } from 'react-i18next'
+import { Users } from 'lucide-react'
 
 interface Props {
     adults: number
@@ -12,12 +13,9 @@ export default function GroupSummary({ adults, children }: Props) {
     const parts = [t('booking.adults', { count: adults })]
     if (children > 0) parts.push(t('booking.children', { count: children }))
     return (
-        <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 13, color: 'var(--text-primary)', padding: '6px 0',
-        }}>
-            <span>👥</span>
-            <span>{parts.join(' · ')}</span>
-        </div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Users size={16} style={{ color: 'var(--ink-3)' }} />
+            {parts.join(', ')}
+        </span>
     )
 }

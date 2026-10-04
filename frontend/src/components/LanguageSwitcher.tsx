@@ -11,10 +11,9 @@ export default function LanguageSwitcher() {
             value={current}
             onChange={e => i18n.changeLanguage(e.target.value)}
             title="Language"
-            style={{
-                padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6,
-                fontSize: 13, background: 'var(--surface-raised)', cursor: 'pointer',
-            }}
+            aria-label="Language"
+            className="select input-sm"
+            style={{ width: 'auto' }}
         >
             {SUPPORTED_LANGUAGES.map(l => (
                 <option key={l.code} value={l.code}>{l.label}</option>

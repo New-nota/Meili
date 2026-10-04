@@ -34,7 +34,8 @@ describe('meiliStore', () => {
         store().startTurn('q')
         store().failTurn('всё сломалось')
         const msgs = store().messages
-        expect(msgs.at(-1)?.content).toBe('⚠ всё сломалось')
+        expect(msgs.at(-1)?.content).toBe('всё сломалось')
+        expect(msgs.at(-1)?.error).toBe(true)
         expect(msgs.filter(m => m.role === 'assistant')).toHaveLength(1)
         expect(store().streaming).toBe(false)
     })
@@ -45,7 +46,7 @@ describe('meiliStore', () => {
         store().appendToken('**Зе')
         store().failTurn('всё сломалось')
         const msgs = store().messages
-        expect(msgs.map(m => m.content)).toEqual(['q', '⚠ всё сломалось'])
+        expect(msgs.map(m => m.content)).toEqual(['q', 'всё сломалось'])
     })
 
     it('failTurn не трогает историю, пришедшую с сервера', () => {
@@ -55,7 +56,7 @@ describe('meiliStore', () => {
         store().startTurn('q')
         store().failTurn('сбой')
         expect(store().messages.map(m => m.content))
-            .toEqual(['старый ответ', 'q', '⚠ сбой'])
+            .toEqual(['старый ответ', 'q', 'сбой'])
     })
 
     it('reset очищает привязку к поездке и план', () => {

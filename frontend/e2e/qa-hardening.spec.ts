@@ -43,10 +43,12 @@ async function mockNominatim(page: Page) {
   })
 }
 
-// кнопка «+ Добавить» именно в строке нужного результата поиска
+// кнопка «Добавить» именно в строке нужного результата поиска (редизайн «Лес»:
+// строка = иконка | название + адрес | кнопка)
 async function addFromSearch(page: Page, name: string) {
-  await page.getByText(name, { exact: false }).first()
-    .locator('xpath=..').getByRole('button', { name: '+ Добавить' }).click()
+  await page.locator('div').filter({ has: page.getByText(name, { exact: true }) })
+    .filter({ has: page.getByRole('button', { name: 'Добавить', exact: true }) })
+    .last().getByRole('button', { name: 'Добавить', exact: true }).click()
 }
 
 async function login(page: Page, email = EMAIL) {
@@ -64,8 +66,8 @@ async function createTrip(page: Page, title: string) {
   const geocoded = page.waitForResponse(r => r.url().includes('nominatim') && r.url().includes('limit=6'))
   await page.getByPlaceholder('Начните вводить город…').fill('калининград')
   await geocoded
-  // подсказка в выпадашке мастера (на Discover «📍 Калининград» есть и в карточках поездок)
-  await expect(page.getByText('📍 Калининград', { exact: true }).last()).toBeVisible()
+  // подсказка в выпадашке мастера (на Discover «Калининград» есть и в карточках поездок)
+  await expect(page.getByRole('option', { name: 'Калининград' })).toBeVisible()
   const dates = page.locator('input[type="date"]')
   await dates.nth(0).fill(futureDate(5))
   await dates.nth(1).fill(futureDate(7))
@@ -122,22 +124,22 @@ test('планировщик: поиск → добавить → оптимиз
   // название поездки видно в собственной шапке
   await expect(page.getByText('E2E планировщик')).toBeVisible()
 
-  const search = page.getByPlaceholder('Найти место...')
+  const search = page.getByPlaceholder(/^Найти место/)
   for (const name of ['Кафедральный собор', 'Музей Мирового океана']) {
     await search.fill('калининград ' + name.split(' ')[0])
     await addFromSearch(page, name)
-    await expect(page.getByText(name, { exact: true })).toBeVisible()
+    await expect(page.locator('.stop-row').getByText(name, { exact: true })).toBeVisible()
   }
 
   // раньше без старта/финиша дня — отказ day_locations_missing
-  const optimize = page.getByRole('button', { name: '✨ Оптимизировать день' })
+  const optimize = page.getByRole('button', { name: 'Оптимизировать день' })
   const optimized = page.waitForResponse(r => r.url().includes('/optimize'))
   await optimize.click()
   expect((await optimized).status()).toBe(200)
   await expect(page.getByText('У дня не заданы точки старта/финиша')).toHaveCount(0)
 
   // удалить место из маршрута — кнопки раньше не было вовсе
-  await page.getByText('Музей Мирового океана', { exact: true }).click()
+  await page.locator('.stop-row').getByText('Музей Мирового океана', { exact: true }).click()
   await page.getByRole('button', { name: 'Удалить из маршрута' }).click()
   await page.getByRole('button', { name: 'Удалить', exact: true }).click()
   await expect(page.getByText('Музей Мирового океана', { exact: true })).toHaveCount(0)
@@ -149,7 +151,7 @@ test('бюджет: сумма с запятой принимается, мус�
   await mockNominatim(page)
   await login(page)
   await createTrip(page, 'E2E бюджет')
-  await page.getByRole('button', { name: 'Бюджет' }).click()
+  await page.getByRole('tab', { name: 'Бюджет' }).click()
   await page.getByPlaceholder('Название').fill('Отель')
   const amount = page.getByPlaceholder('Сумма')
   await amount.fill('abc')
@@ -165,9 +167,9 @@ test('настройки: перенос поездки на другие дат
   await mockNominatim(page)
   await login(page)
   await createTrip(page, 'E2E перенос')
-  await page.getByPlaceholder('Найти место...').fill('калининград собор')
+  await page.getByPlaceholder(/^Найти место/).fill('калининград собор')
   await addFromSearch(page, 'Кафедральный собор')
-  await expect(page.getByText('Кафедральный собор', { exact: true })).toBeVisible()
+  await expect(page.locator('.stop-row').getByText('Кафедральный собор', { exact: true })).toBeVisible()
 
   const url = page.url()
   await page.goto(url + '/settings')
@@ -228,7 +230,7 @@ test('Meili: карточка плана → «Применить» пишет �
         + `event: done\ndata: {"message_id": "${'0'.repeat(8)}-0000-0000-0000-000000000000"}\n\n`,
     })
   })
-  await page.getByRole('button', { name: 'Meili' }).click()
+  await page.getByRole('tab', { name: 'Meili' }).click()
   await page.getByPlaceholder('Спросите Meili…').fill('Добавь что-нибудь в первый день')
   await page.getByPlaceholder('Спросите Meili…').press('Enter')
   await expect(page.getByText('E2E план Meili')).toBeVisible()
@@ -238,9 +240,9 @@ test('Meili: карточка плана → «Применить» пишет �
   await page.getByRole('button', { name: /Применить/ }).click()
   expect((await applied).status()).toBe(200)
 
-  await page.getByRole('button', { name: 'Маршрут' }).click()
+  await page.getByRole('tab', { name: 'Маршрут' }).click()
   await expect(page.getByText(place, { exact: true }).first()).toBeVisible()
-  await page.getByRole('button', { name: 'Бюджет' }).click()
+  await page.getByRole('tab', { name: 'Бюджет' }).click()
   await expect(page.getByText(/20\s?000,00/).first()).toBeVisible()
 })
 
@@ -273,9 +275,9 @@ test('день: переименование, сброс пробелами, т�
   await login(page)
   await createTrip(page, 'E2E день')
   for (const name of ['Кафедральный собор', 'Музей Мирового океана']) {
-    await page.getByPlaceholder('Найти место...').fill('калининград ' + name.split(' ')[0])
+    await page.getByPlaceholder(/^Найти место/).fill('калининград ' + name.split(' ')[0])
     await addFromSearch(page, name)
-    await expect(page.getByText(name, { exact: true })).toBeVisible()
+    await expect(page.locator('.stop-row').getByText(name, { exact: true })).toBeVisible()
   }
   // переименование дня переживает перезагрузку
   await page.getByRole('button', { name: 'Переименовать день' }).first().click()
@@ -316,8 +318,8 @@ test('клик по карте: карточка точки → «Добавит
   }))
   await login(page)
   await createTrip(page, 'E2E карта')
-  // сворачиваем раскрытый день: раньше без раскрытого дня уходил day_id: null → 422
-  await page.getByRole('button', { name: /ост\. ▲/ }).click()
+  // режим «Все дни» (ни один день не открыт): раньше уходил day_id: null → 422
+  await page.getByRole('button', { name: 'Все дни' }).click()
   const map = page.locator('.planner-map canvas')
   await expect(map).toBeVisible()
   await page.waitForTimeout(1500)  // стиль карты догружается
@@ -325,6 +327,7 @@ test('клик по карте: карточка точки → «Добавит
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
   await expect(page.getByRole('button', { name: 'Добавить в маршрут' })).toBeVisible()
   await page.getByRole('button', { name: 'Добавить в маршрут' }).click()
-  // точка легла в первый день, и он раскрылся
-  await expect(page.getByText('1 ост. ▲')).toBeVisible()
+  // точка легла в первый день, и он открылся
+  await expect(page.getByRole('button', { name: 'Переименовать день' })).toHaveText('День 1')
+  await expect(page.locator('.stop-row')).toHaveCount(1)
 })

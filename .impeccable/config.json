@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          ".impeccable/proto/d-skandi.html"
+        ],
+        "createdAt": "2026-10-03T14:32:33.768Z",
+        "reason": "Claude: ink-tinted elevation shadows with y-offset and blur on a light (#F1F4F3/#FFF) page; detector misreads page as dark"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          ".impeccable/proto/e-saga.html"
+        ],
+        "createdAt": "2026-10-03T17:13:07.192Z",
+        "reason": "Claude: throwaway decision-round prototype the user rejected (round 2 «Сага»); not shipping code"
+      }
+    ]
+  }
+}

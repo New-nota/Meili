@@ -36,21 +36,12 @@ class ErrorBoundaryInner extends Component<Props, State> {
         const { t } = this.props
         if (!this.state.error) return this.props.children
         return (
-            <div role="alert" style={{
-                padding: 48, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                gap: 12, textAlign: 'center', color: 'var(--text-primary)',
-            }}>
-                <h2 style={{ margin: 0 }}>{t('errors.crashTitle')}</h2>
-                <p style={{ margin: 0, color: 'var(--text-muted)', maxWidth: 420 }}>{t('errors.crashText')}</p>
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => window.location.reload()} style={{
-                        padding: '8px 16px', background: 'var(--accent)', color: 'var(--surface)',
-                        border: 'none', borderRadius: 6, cursor: 'pointer',
-                    }}>{t('errors.reload')}</button>
-                    <button onClick={() => { window.location.href = '/discover' }} style={{
-                        padding: '8px 16px', background: 'none', color: 'var(--text-primary)',
-                        border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
-                    }}>{t('nav.myTrips')}</button>
+            <div role="alert" className="page" style={{ display: 'grid', justifyItems: 'center', gap: 12, textAlign: 'center', paddingTop: 96 }}>
+                <h1 style={{ fontSize: 26 }}>{t('errors.crashTitle')}</h1>
+                <p style={{ color: 'var(--ink-2)', maxWidth: 420, fontSize: 15.5 }}>{t('errors.crashText')}</p>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>{t('errors.reload')}</button>
+                    <button type="button" className="btn" onClick={() => { window.location.href = '/discover' }}>{t('nav.myTrips')}</button>
                 </div>
             </div>
         )

@@ -32,7 +32,7 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   `wanderown_test` (схема из моделей через `create_all`, TRUNCATE после каждого
   теста, скип всего пакета если БД недоступна). Фикстуры `client` (httpx→ASGI,
   подмена `get_db`) и `auth_headers` — в `tests/integration/conftest.py`.
-- Фронт: `npm run test:unit` (vitest, 47), `npm run test:e2e` (Playwright, 22;
+- Фронт: `npm run test:unit` (vitest, 53), `npm run test:e2e` (Playwright, 22;
   `e2e/qa-hardening.spec.ts` — сценарии QA-прогона, Meili там без LLM: план
   замораживается в БД, SSE подменяется;
   сам поднимает dev-сервер, нужен запущенный docker-стек; **спеки написаны по
@@ -205,19 +205,24 @@ plan | done | error`. Контекст хода: системный промпт
 
 ## Фронтенд (`frontend/src/`) — Vite + React + TS
 
-- `pages/`: Auth, Discover (публичные поездки, рекомендации), **TripPlanner** —
-  главный экран (карта MapLibre + сайдбар: дни/стопы | таб «Бюджет» | таб
-  «Meili» | панель стопа), TripSettings, Profile.
-- `components/`: DayCard (аккордеон дня: стопы, оптимизация), StopDetailPanel
-  (детали стопа: бронь, оценка стоимости), BudgetPanel, PlaceSearch,
-  LocationPicker, StartPoint…
+- `pages/`: Auth, Discover («Мои поездки» + рекомендации), **TripPlanner** —
+  главный экран (десктоп: панель слева + карта справа в рамке на дубовой
+  подложке; телефон: одна колонка — шапка, карта 300px, тело; вкладки
+  «Маршрут | Бюджет | Meili», панель стопа), TripSettings, Profile.
+- `components/trip/`: **DayPlan** (открытый день целиком: блок дня с–по/км/₽,
+  поиск в день, старт → места с перегонами → финиш, «не влезло», оптимизация;
+  время прибытия — `utils/daySchedule`), **DaySwatches** (дни-образцы вместо
+  аккордеона, DnD-реордер, «Все дни»), LegRow, StopDuration. `components/ui/`:
+  **Menu** (единое всплывающее меню: портал + fixed), Stepper. Плюс
+  StopDetailPanel (бронь, оценка стоимости), BudgetPanel, PlaceSearch,
+  LocationPicker (строка старта/финиша дня), StartPoint…
 - `api/`: тонкие типизированные клиенты над `apiFetch` (client.ts: access-токен
   в памяти, авторефреш по cookie — **single-flight**, для `/auth/*` не
   рефрешится). Типы домена — `types/index.ts`.
 - **Ошибки API → текст только через `utils/apiError.apiErrorMessage`**
   (машинный код `errors.<code>` → 422 с полями → по статусу → fallback). Новые
   машинные коды бэка — сразу в `errors.*` ru+en. Действия с сетью оборачивать
-  в try/catch с показом ошибки (паттерн `safely` в DayCard/StopDetailPanel) —
+  в try/catch с показом ошибки (паттерн `safely` в DayPlan/StopDetailPanel) —
   голый `await` в onClick = «кнопка молча не работает».
 - Геокодер — только `utils/geocode.geocodeOblast` (bbox области, res.ok,
   отмена устаревших запросов); числовые поля с границами — `IntInput`, потолки
@@ -227,13 +232,23 @@ plan | done | error`. Контекст хода: системный промпт
   (перезагружает стопы, дни, выбранный стоп и инвалидирует `['budget', tripId]`);
   TanStack Query используется точечно (бюджет, рекомендации); Zustand — только
   чат Meili (`store/meiliStore.ts`).
-- **Стили инлайновые** с CSS-токенами из `styles/tokens.css` (акцент-сиена,
-  «бумажные» поверхности; тёмная тема через `data-theme="dark"` — черновая).
-  Суммы — `fontVariantNumeric: 'tabular-nums'`, формат через `Intl.NumberFormat`
-  в валюте поездки.
-- i18n (`i18n/locales/*/translation.json`, **отступ 2 пробела**): все пять
-  языков полные; `src/i18n/locales.test.ts` падает, если ключ есть в en, но
-  нет в каком-то языке, или потерян плейсхолдер `{{…}}`. Новые строки — сразу
+- **Дизайн-система «Лес»** (редизайн 2026-10, `DESIGN.md` в корне): интерфейс
+  зелёный (мох `--moss`), поверхности берёза/дуб, главная кнопка — орех
+  (`--walnut`), маршрут и метки на карте — дерево (`--wood`, хекс в
+  `utils/mapStyle.ROUTE_HEX`), ошибки — брусника (`--danger`, НЕ `--accent`:
+  он теперь зелёный). Шрифт Onest, иконки только `lucide-react` — эмодзи и
+  глифы-иконки (✨🏁📍✕→) в UI не используем. Стили инлайновые на токенах +
+  общие классы в `index.css` (`.btn .btn-primary/.btn-accent/.btn-ghost`,
+  `.icon-btn`, `.input/.select/.textarea`, `.field`, `.searchbox`, `.seg`,
+  `.chip`, `.switch`, `.modal-scrim/.modal-sheet`, `.page/.page-head`) — новые
+  кнопки и поля берут их, а не пишут свои. Тёмная тема (`data-theme="dark"`) —
+  черновая. Суммы — табличные цифры, `utils/money.formatMoney`; в сводках —
+  `formatMoneyCompact` (без «,00»). Продуктовый контекст — `PRODUCT.md`,
+  рабочие файлы дизайн-скилла — `.impeccable/`.
+- i18n (`i18n/locales/*/translation.json`, **отступ 2 пробела**): ключи есть во
+  всех пяти, но ~40% строк de/fr/es пока английские (фолбэк-копии);
+  `src/i18n/locales.test.ts` падает, если ключ есть в en, но нет в каком-то
+  языке, или потерян плейсхолдер `{{…}}`. Новые строки — сразу
   во все пять.
 
 ## Доменные правила (не ломать)

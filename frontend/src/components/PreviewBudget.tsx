@@ -24,26 +24,23 @@ export default function PreviewBudget({ days, currency }: Props) {
     const fmt = (v: number) => formatMoney(String(v.toFixed(2)), cur, i18n.language)
 
     const row: React.CSSProperties = {
-        display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '2px 0',
+        display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14.5, padding: '7px 0',
+        borderBottom: '1px solid var(--line)',
     }
 
     return (
-        <div style={{ padding: 16 }}>
-            <div style={row}>
-                <span>{t('budget.activities')}</span>
-                <strong style={{ fontVariantNumeric: 'tabular-nums' }}>≈ {fmt(total)}</strong>
-            </div>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
-                {t('preview.budgetHint')}
-            </p>
+        <div>
+            <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>{t('budget.activities')}</div>
+            <b style={{ display: 'block', fontSize: 30, fontWeight: 750, letterSpacing: '-0.02em', marginTop: 2 }}>≈ {fmt(total)}</b>
+            <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: '4px 0 16px' }}>{t('preview.budgetHint')}</p>
             {days.filter(d => daySum(d) > 0).map(d => (
                 <div key={d.id} style={row}>
                     <span>{dayLabelShort(d, t)}</span>
-                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>≈ {fmt(daySum(d))}</span>
+                    <span style={{ fontWeight: 600 }}>≈ {fmt(daySum(d))}</span>
                 </div>
             ))}
             {total === 0 && (
-                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('preview.noBudget')}</p>
+                <p style={{ fontSize: 14, color: 'var(--ink-3)' }}>{t('preview.noBudget')}</p>
             )}
         </div>
     )

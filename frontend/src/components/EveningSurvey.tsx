@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ArrowLeft, X } from 'lucide-react'
 import type { Stop } from '../types/index'
 import { getDays } from '../api/days'
 import { getVisitedPlaces, markVisited } from '../api/visited'
@@ -152,65 +153,49 @@ export default function EveningSurvey() {
     if (!current) return null
 
     return (
-        <div style={{
-            position: 'fixed', inset: 0, zIndex: 1100,
-            background: 'color-mix(in srgb, var(--text-primary) 45%, transparent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-        }}>
+        <div className="modal-scrim" style={{ zIndex: 1100 }}>
             <div
+                role="dialog" aria-modal="true" aria-label={t('visited.surveyTitle')}
+                className="modal-sheet"
                 onPointerDown={onPointerDown}
                 style={{
-                    background: 'var(--surface-raised)', borderRadius: 14, padding: 20,
-                    maxWidth: 360, width: '100%', touchAction: 'pan-y',
+                    maxWidth: 380, touchAction: 'pan-y',
                     transform: `translateX(${dragX}px) rotate(${dragX / 40}deg)`,
-                    transition: dragging ? 'none' : 'transform .15s',
+                    transition: dragging ? 'none' : 'transform .15s ease-out',
                     opacity: 1 + dragX / 300,
-                    boxShadow: '0 8px 32px color-mix(in srgb, var(--text-primary) 25%, transparent)',
                 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                    <strong style={{ fontSize: 15 }}>{t('visited.surveyTitle')}</strong>
-                    <span style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                            {t('visited.surveyLeft', { count: queue.length })}
-                        </span>
-                        <button onClick={dismissAll} title={t('visited.notToday')} aria-label={t('visited.notToday')}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer',
-                                color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 0 }}>✕</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <strong style={{ fontSize: 17, flex: 1 }}>{t('visited.surveyTitle')}</strong>
+                    <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>
+                        {t('visited.surveyLeft', { count: queue.length })}
                     </span>
+                    <button type="button" onClick={dismissAll} title={t('visited.notToday')} aria-label={t('visited.notToday')}
+                        className="icon-btn sm" style={{ marginRight: -6 }}>
+                        <X />
+                    </button>
                 </div>
-                <p style={{ margin: '0 0 10px', fontSize: 14 }}>
+                <p style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>
                     {current.place_name || t('common.untitled')}
                 </p>
 
-                <RatingStars value={rating} onChange={setRating} size={28} />
+                <RatingStars value={rating} onChange={setRating} size={30} />
                 <textarea placeholder={t('visited.commentPlaceholder')} value={comment}
+                    aria-label={t('visited.commentPlaceholder')} className="textarea"
                     onChange={e => setComment(e.target.value)} rows={2} maxLength={2000}
-                    style={{
-                        width: '100%', boxSizing: 'border-box', marginTop: 8, padding: 6,
-                        border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
-                        background: 'var(--surface)', resize: 'vertical', fontFamily: 'inherit',
-                    }} />
+                    style={{ marginTop: 10, minHeight: 72 }} />
 
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'space-between' }}>
-                    <button onClick={skip} style={{
-                        padding: '6px 14px', background: 'none', color: 'var(--text-muted)',
-                        border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-                    }}>
-                        ← {t('visited.skip')}
+                <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'space-between' }}>
+                    <button type="button" onClick={skip} className="btn btn-ghost">
+                        <ArrowLeft />{t('visited.skip')}
                     </button>
-                    <button onClick={save} disabled={rating === 0} style={{
-                        padding: '6px 14px', border: 'none', borderRadius: 6, fontSize: 13,
-                        background: 'var(--accent)', color: 'var(--surface)',
-                        cursor: rating === 0 ? 'not-allowed' : 'pointer',
-                        opacity: rating === 0 ? 0.5 : 1,
-                    }}>
+                    <button type="button" onClick={save} disabled={rating === 0} className="btn btn-primary">
                         {t('common.save')}
                     </button>
                 </div>
                 {saveError && (
-                    <p role="alert" style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--accent)' }}>{t('common.error')}</p>
+                    <p role="alert" className="error-text" style={{ marginTop: 8 }}>{t('common.error')}</p>
                 )}
-                <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
+                <p style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-3)', textAlign: 'center' }}>
                     {t('visited.swipeHint')}
                 </p>
             </div>

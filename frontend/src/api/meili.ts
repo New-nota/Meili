@@ -15,6 +15,7 @@ export interface MeiliMessage {
     role: 'user' | 'assistant'
     content: string
     created_at: string
+    error?: boolean     // локальное сообщение об ошибке хода (рисуется брусникой со значком)
 }
 
 // План появляется в M3; тип объявлен здесь, чтобы SSE-клиент был полным
