@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from '../utils/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
-    ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, Settings2, X,
+    ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, RefreshCw, Settings2, X,
 } from 'lucide-react'
 import type { Stop } from '../types/index'
 import { getStops, getDayRoute, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
@@ -73,6 +73,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     const [error, setError] = useState<string | null>(null)
     // ошибки загрузки — объектом, перевод при рендере (см. Discover)
     const [loadError, setLoadError] = useState<{ e: unknown, fallback: string } | null>(null)
+    // ревью: ошибка загрузки говорила «попробуйте ещё раз», а кнопки не было —
+    // только перезагрузка вкладки. Счётчик попыток перезапускает загрузки
+    const [loadAttempt, setLoadAttempt] = useState(0)
+    const retryLoad = () => { setLoadError(null); setLoadAttempt(n => n + 1) }
     // QA: чужая/удалённая/кривая поездка — честный экран «не найдена»
     const [notFoundId, setNotFoundId] = useState<string | null>(null)
     const notFound = notFoundId !== null && notFoundId === tripId
@@ -208,7 +212,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             setExpandedDayId(prev => prev ?? (d[0]?.id ?? null))
         }).catch(() => {})
         return () => { cancelled = true }
-    }, [tripId])
+    }, [tripId, loadAttempt])
 
     useEffect(()=> {
         const load = async () => {
@@ -225,7 +229,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         }
     load()
     // tripId в deps: при переходе между поездками роутер переиспользует компонент
-    }, [tripId] )
+    }, [tripId, loadAttempt] )
 
     useEffect(()=> {
         if(!mapContainer.current) return
@@ -337,7 +341,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             }
         }
         load()
-    }, [tripId])
+    }, [tripId, loadAttempt])
 
     // S8 WP-3: активный день — его стопы и депо; без дней — все стопы поездки
     const activeDay = days.find(d => d.id === expandedDayId) ?? null
@@ -739,7 +743,12 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     />
                 ) : (
                     <div style={{ padding: '18px 24px 32px' }} className="planner-pad">
-                        {loadError && <p className="error-text" role="alert" style={{ marginBottom: 12 }}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>}
+                        {loadError && (
+                            <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                                <p className="error-text" style={{ margin: 0 }}>{apiErrorMessage(loadError.e, t, t(loadError.fallback))}</p>
+                                <button type="button" onClick={retryLoad} className="btn btn-sm"><RefreshCw />{t('common.retry')}</button>
+                            </div>
+                        )}
                         {error && (
                             <div role="alert" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 12, padding: '10px 12px',
                                 background: 'var(--danger-wash)', color: 'var(--danger)', borderRadius: 'var(--radius)', fontSize: 14 }}>
