@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
-import maplibregl from 'maplibre-gl'
+import maplibregl from '../utils/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
     ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, Settings2, X,

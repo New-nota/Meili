@@ -40,7 +40,6 @@ from app.schemas.auth import (
     RegisterResponse,
     ResendRequest,
     TokenResponse,
-    UserResponse,
     VerifyRequest,
 )
 from app.services.email import send_registration_code

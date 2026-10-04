@@ -1,7 +1,7 @@
 """Хеширование паролей и JWT-токены (app/core/security.py)."""
 from datetime import timedelta
 
-from jose import jwt
+import jwt
 
 from app.core import security
 from app.core.security import (

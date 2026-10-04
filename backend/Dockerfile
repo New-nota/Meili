@@ -16,7 +16,9 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# ревью: pip/setuptools базового образа сами с CVE — обновляем до установки
+RUN pip install --no-cache-dir --upgrade pip setuptools \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

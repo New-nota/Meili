@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import structlog
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,15 +40,15 @@ def decode_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
-    except JWTError:
+    except PyJWTError:
         return None
 
 def decode_refresh_token(token: str) -> dict:
     """Проверяет подпись, exp и type == 'refresh'; иначе RefreshTokenError."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError as e:
-        raise RefreshTokenError(f"invalid refresh token: {e}")
+    except PyJWTError as e:
+        raise RefreshTokenError(f"invalid refresh token: {e}") from e
     if payload.get("type") != "refresh":
         raise RefreshTokenError("token is not a refresh token")
     if not payload.get("sub") or not payload.get("jti"):

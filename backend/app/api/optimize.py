@@ -13,7 +13,7 @@ from app.api.days import _day_or_404
 from app.api.stops import get_trip_or_404
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.trip import Trip, TripStop
+from app.models.trip import TripStop
 from app.models.user import User
 from app.schemas.optimize import OptimizeRequest, OptimizeResponse
 from app.services.optimizer import (

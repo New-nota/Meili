@@ -1,6 +1,5 @@
 """Pydantic-схемы диалога Meili (ТЗ-Meili M1.2)."""
 from datetime import date, datetime
-from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 

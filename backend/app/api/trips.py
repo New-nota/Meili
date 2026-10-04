@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select, delete as sql_delete
+from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.orm import selectinload
 from uuid import UUID
 from sqlalchemy.exc import IntegrityError
