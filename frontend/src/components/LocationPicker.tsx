@@ -3,13 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { Check, Flag, House, MapPin, Search, X } from 'lucide-react'
 import { addLocation, type TripLocation } from '../api/days'
 import { apiErrorMessage } from '../utils/apiError'
-import { geocodeOblast, isAbort, type GeocodeHit } from '../utils/geocode'
+import { geocode, isAbort, type GeocodeHit } from '../utils/geocode'
+import { useSearchArea } from '../utils/searchArea'
 
 // Старт/финиш дня (S8 WP-3; редизайн «Лес» — строка списка вместо select с «+»).
 // Свёрнуто: «Старт в 09:00 · Отель …» + «Задать место». Развёрнуто: сохранённые
 // места поездки (история отелей/вокзалов) и поиск нового адреса Nominatim.
-// QA: поиск — в границах области (отель в Париже давал «день вне покрытия»),
-// ошибки геокодера и сохранения видны, устаревшие ответы отменяются.
+// QA: поиск — сначала в округе города поездки (одноимённая улица в другой
+// стране не всплывает первой), ошибки геокодера и сохранения видны,
+// устаревшие ответы отменяются.
 interface Props {
     tripId: string
     kind: 'start' | 'finish'
@@ -27,6 +29,7 @@ export default function LocationPicker({
     tripId, kind, label, value, locations, columns, onSelect, onLocationAdded,
 }: Props) {
     const { t, i18n } = useTranslation()
+    const near = useSearchArea()
     const [open, setOpen] = useState(false)
     const [query, setQuery] = useState('')
     const [hits, setHits] = useState<GeocodeHit[]>([])
@@ -41,7 +44,7 @@ export default function LocationPicker({
         const timer = setTimeout(async () => {
             setStatus('loading')
             try {
-                const list = await geocodeOblast(query, { lang: i18n.language, limit: 5, signal: ctrl.signal })
+                const list = await geocode(query, { lang: i18n.language, limit: 5, signal: ctrl.signal, near })
                 setHits(list)
                 setStatus(list.length ? 'idle' : 'empty')
             } catch (e) {
@@ -51,7 +54,7 @@ export default function LocationPicker({
             }
         }, 300)
         return () => { clearTimeout(timer); ctrl.abort() }
-    }, [query, i18n.language])
+    }, [query, i18n.language, near])
 
     const close = () => { setOpen(false); setQuery(''); setHits([]); setError(null) }
 

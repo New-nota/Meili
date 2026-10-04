@@ -14,6 +14,7 @@
 триграммному сходству ИЛИ вхождению подстроки, а результаты ранжируются по
 близости к названию. Пустой ответ теперь означает «действительно нет».
 """
+import logging
 import re
 from datetime import datetime
 
@@ -26,8 +27,16 @@ from geoalchemy2.shape import to_shape
 
 from app.models.place import Place
 from app.services.meili.pricing import resolve_price
-from app.services.places.geo import REGION_CITIES, haversine_m
+from app.services.places.catalog import (
+    CityRef,
+    GeocoderUnavailable,
+    ensure_city_catalog,
+    resolve_city,
+)
+from app.services.places.geo import haversine_m
 from app.services.places.opening import is_open_at
+
+logger = logging.getLogger("meili.search")
 
 MAX_RESULTS = 8
 # запрос к БД берём с запасом: дубли и сам ориентир отсеиваются после
@@ -43,6 +52,10 @@ MAX_WORDS = 6
 
 # радиус поиска вокруг ориентира по умолчанию — «пешком рядом»
 NEAR_PLACE_RADIUS_M = 1500
+# в городе ничего — смотрим окрестности (раньше «вся база» = вся область;
+# в мировом каталоге «вся база» дала бы Калининград на запрос про Париж)
+WIDE_RADIUS_FACTOR = 4
+MIN_WIDE_RADIUS_M, MAX_WIDE_RADIUS_M = 50_000, 100_000
 
 # QA: слово-тип места — это категория, а не кусок названия. По подстроке
 # «кафе» находился «КАФЕдральный собор», «бар» — «БАРбарис»: строгий проход
@@ -70,32 +83,30 @@ def _category_from_words(words: list[str]) -> tuple[str | None, str | None, list
     return None, None, words
 
 
-def _region_city(name: str | None) -> str | None:
-    """Город области по названию (без регистра) или None."""
-    if not name:
-        return None
-    key = name.strip().lower()
-    for city, _, _ in REGION_CITIES:
-        if city.lower() == key:
-            return city
-    return None
+def _wide_radius(city: CityRef) -> int:
+    return max(MIN_WIDE_RADIUS_M, min(city.radius_m * WIDE_RADIUS_FACTOR, MAX_WIDE_RADIUS_M))
 
 
-async def _resolve_anchor(db: AsyncSession, name: str) -> dict | None:
+def _within(lat: float, lon: float, meters: int):
+    # geography-каст: радиус в метрах, не в градусах
+    point = ST_SetSRID(ST_MakePoint(lon, lat), 4326)
+    return ST_DWithin(cast(Place.location, Geography), cast(point, Geography), meters)
+
+
+async def _resolve_anchor(db: AsyncSession, name: str, around: CityRef | None = None) -> dict | None:
     """QA: ориентир по названию → координаты. Факт считает система (§0):
-    модель знает «Рыбная деревня», но не её координаты. Сначала город
-    области, потом место из базы — все слова названия, ближайшее по имени."""
-    for city, lat, lon in REGION_CITIES:
-        if city.lower() == name.strip().lower():
-            return {"lat": lat, "lon": lon, "name": city}
+    модель знает «Рыбная деревня», но не её координаты. Место из базы — все
+    слова названия, ближайшее по имени. (Города сюда не доходят: их раньше
+    разбирает resolve_city.) Ревью (по миру): при известном городе ищем
+    ориентир рядом с ним — «собор» в Париже не должен найтись в Калининграде."""
     words = _words(name)
     if not words:
         return None
+    stmt = select(Place).where(and_(*(_word_matches(w) for w in words)), Place.location.is_not(None))
+    if around is not None:
+        stmt = stmt.where(_within(around.lat, around.lon, _wide_radius(around)))
     anchor = (await db.execute(
-        select(Place)
-        .where(and_(*(_word_matches(w) for w in words)), Place.location.is_not(None))
-        .order_by(func.similarity(cast(Place.name, String), " ".join(words)).desc())
-        .limit(1)
+        stmt.order_by(func.similarity(cast(Place.name, String), " ".join(words)).desc()).limit(1)
     )).scalar_one_or_none()
     if anchor is None:
         return None
@@ -154,24 +165,40 @@ async def search_places(
 
     # QA: «кафе рядом с Рыбной деревней» — модель клала район в city, город
     # не находился, и поиск уходил «вне запрошенного города» с ответом «там
-    # ничего нет». Не-город области в city — это ориентир, а не город.
-    if city and not _region_city(city) and not near_place:
-        near_place, city = city, None
+    # ничего нет». Не-город в city — это ориентир, а не город.
+    # Ревью (по миру): «город» — не справочник области, а то, что знает
+    # каталог или геокодер. Геокодер лёг — фильтруем по названию, как раньше.
+    city_ref: CityRef | None = None
+    if city:
+        try:
+            city_ref = await resolve_city(db, city)
+        except GeocoderUnavailable:
+            pass
+        else:
+            if city_ref is None and not near_place:
+                near_place, city = city, None
+    if city_ref is not None and not (near and "lat" in near and "lon" in near):
+        # новый город — каталог вокруг пуст: один раз подтягиваем места из OSM
+        try:
+            await ensure_city_catalog(city_ref)
+        except Exception:  # noqa: BLE001 — без автозаполнения ищем по тому, что есть
+            logger.exception("автозаполнение каталога для %s упало", city_ref.name)
     anchor = None
     if near_place and not (near and "lat" in near and "lon" in near):
-        anchor = await _resolve_anchor(db, near_place)
+        anchor = await _resolve_anchor(db, near_place, around=city_ref)
         if anchor is not None:
             near = {"lat": anchor["lat"], "lon": anchor["lon"]}
             radius = radius or NEAR_PLACE_RADIUS_M
     if near and "lat" in near and "lon" in near:
         # QA: точка/ориентир точнее города — фильтр по городу при ней только
         # теряет места без адреса (из 6 парков у собора оставался один)
-        city = None
+        city, city_ref = None, None
     if radius is not None:
         # модель иногда шлёт радиус в километрах или 0 — держим в разумных рамках
         radius = max(100, min(int(radius), 50_000))
 
-    def build(with_city: bool, word_mode: str):
+    def build(scope: str, word_mode: str):
+        """scope: city — в городе; wide — окрестности (или вся база без центра)."""
         stmt = select(Place)
         if words and word_mode == "all":
             # строгий проход: «рыбный ресторан» это не любой ресторан
@@ -189,22 +216,23 @@ async def search_places(
                 Place.category == soft_category,
                 and_(Place.category.is_(None), Place.name.op("~*")(whole_word)),
             ))
-        if with_city and city:
+        if scope == "city" and city:
             # город в каталоге пишут по-разному (Калининград/Kaliningrad),
             # поэтому нестрого; заодно ловим адрес — POI часто без city
             # QA: в адресе — только ЦЕЛЫМ словом: «%Калининград%» совпадал с
             # «Калининградская область» в адресе любого места области, и в
             # «музеях Калининграда» оказывались Кауп и Багратионовск
+            # Ревью (по миру): и просто радиус от центра — у мест из OSM город
+            # бывает на языке страны («Paris», а модель пишет «Париж»)
             city_word = rf"\m{re.escape(city.strip())}\M"
-            stmt = stmt.where(or_(
-                Place.city.ilike(f"%{city.strip()}%"), Place.address.op("~*")(city_word)
-            ))
+            in_city = [Place.city.ilike(f"%{city.strip()}%"), Place.address.op("~*")(city_word)]
+            if city_ref is not None:
+                in_city.append(_within(city_ref.lat, city_ref.lon, city_ref.radius_m))
+            stmt = stmt.where(or_(*in_city))
+        elif scope == "wide" and city_ref is not None:
+            stmt = stmt.where(_within(city_ref.lat, city_ref.lon, _wide_radius(city_ref)))
         if near and "lat" in near and "lon" in near:
-            # geography-каст: радиус в метрах, не в градусах
-            point = ST_SetSRID(ST_MakePoint(near["lon"], near["lat"]), 4326)
-            stmt = stmt.where(ST_DWithin(
-                cast(Place.location, Geography), cast(point, Geography), radius or 1000,
-            ))
+            stmt = stmt.where(_within(near["lat"], near["lon"], radius or 1000))
         if words and word_mode != "none":
             # QA: сначала — сколько слов запроса буквально есть в названии
             # («Кант» → «Иммануил Кант», а не похожее по буквам «Кано»),
@@ -229,22 +257,22 @@ async def search_places(
     # заключала «в базе ничего нет» и шла выдумывать. Поэтому: сузили — ничего
     # не нашли — отпускаем по одному ограничению за раз, помечая, что именно
     # ослабили. Пустой ответ теперь действительно значит «нет ничего».
-    attempts: list[tuple[bool, str]] = [(True, "all")]
+    attempts: list[tuple[str, str]] = [("city", "all")]
     if len(words) > 1:
-        attempts.append((True, "any"))
+        attempts.append(("city", "any"))
     if category or soft_category or near:
         # запрос не лёг, но категория/точка сами по себе осмысленны
-        attempts.append((True, "none"))
+        attempts.append(("city", "none"))
     if city:
-        attempts += [(False, "all")] + ([(False, "any")] if len(words) > 1 else [])
+        attempts += [("wide", "all")] + ([("wide", "any")] if len(words) > 1 else [])
         if category or soft_category or near:
-            attempts.append((False, "none"))
+            attempts.append(("wide", "none"))
 
     places, widened, relaxed = [], False, False
-    for with_city, word_mode in attempts:
-        places = (await db.execute(build(with_city, word_mode))).scalars().all()
+    for scope, word_mode in attempts:
+        places = (await db.execute(build(scope, word_mode))).scalars().all()
         if places:
-            widened = not with_city and bool(city)
+            widened = scope == "wide" and bool(city)
             relaxed = bool(words) and word_mode != "all"
             break
 
@@ -283,8 +311,8 @@ async def search_places(
             "address": p.address,
             # город места — не города поездки: см. widened ниже
             "city": p.city,
-            # true = в запрошенном городе не нашлось, это находка из другого
-            # города региона. Скажи об этом пользователю, не выдавай за местное
+            # true = в запрошенном городе не нашлось, это находка из
+            # окрестностей. Скажи об этом пользователю, не выдавай за местное
             **({"outside_requested_city": True} if widened else {}),
             # true = точный запрос не дал ничего, показываем по категории
             **({"loose_match": True} if relaxed else {}),

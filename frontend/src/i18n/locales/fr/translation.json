@@ -88,7 +88,7 @@
       "name": "Titre",
       "city": "Ville",
       "cityPlaceholder": "Commencez à saisir une ville…",
-      "region": "Oblast de Kaliningrad",
+      "cityHint": "N’importe quelle ville ou localité dans le monde",
       "adults": "Adultes",
       "children": "Enfants",
       "ages": "Âge des enfants",
@@ -106,7 +106,7 @@
       "errRange": "La date de fin précède la date de début",
       "errTooLong": "Le voyage dépasse {{max}} jours",
       "errBudget": "Budget : nombre de 0 à 99 999 999,99, deux décimales au maximum",
-      "cityNotFound": "Rien trouvé dans la région de Kaliningrad",
+      "cityNotFound": "Aucune localité de ce nom",
       "cityLookupFailed": "Recherche de ville indisponible — réessayez"
     }
   },
@@ -149,7 +149,7 @@
     "addLocation": "Ajouter une adresse",
     "locationPlaceholder": "Adresse de l’hôtel ou de la gare...",
     "notFitLabel": "N’a pas tenu dans la journée",
-    "searchNothing": "Rien trouvé dans la région de Kaliningrad",
+    "searchNothing": "Aucun résultat",
     "searchFailed": "Recherche de lieux indisponible — réessayez",
     "pickDayFirst": "Indiquez d’abord les dates — les lieux sont ajoutés aux jours"
   },
@@ -344,7 +344,7 @@
     "stop_not_found": "Étape introuvable",
     "apply_failed": "Impossible d’appliquer le plan",
     "place_not_yours": "Ce lieu ne peut pas être modifié",
-    "place_out_of_coverage": "Le lieu est hors de la région de Kaliningrad — les itinéraires n’y sont pas calculés",
+    "place_out_of_coverage": "Les itinéraires ne sont pas encore calculés ici — le point est hors de notre couverture",
     "too_many_login_attempts": "Trop de tentatives de connexion échouées — réessayez dans 15 minutes",
     "crashTitle": "Un problème est survenu sur cette page",
     "crashText": "Vos données sont en sécurité sur le serveur. Rechargez la page ou revenez à vos voyages.",

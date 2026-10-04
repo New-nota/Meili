@@ -143,6 +143,8 @@ class TripResponse(BaseModel):
     end_date: Optional[date] = None
     budget_total: Optional[Decimal] = None
     currency: str = "EUR"
+    # IANA-таймзона поездки — по координатам города (geo.timezone_at)
+    timezone: str = "UTC"
     # S13: лайкнул ли текущий юзер эту поездку (для ❤ в превью); проставляется
     # только в GET /{trip_id}, в остальных ответах остаётся дефолтным
     liked_by_me: bool = False

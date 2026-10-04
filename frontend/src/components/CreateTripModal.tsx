@@ -8,11 +8,12 @@ import type { Trip } from '../types/index'
 import { apiErrorMessage } from '../utils/apiError'
 import IntInput from './IntInput'
 import { MAX_GROUP, MAX_MONEY, MONEY_RE } from '../utils/limits'
-import { geocodeOblast, isAbort } from '../utils/geocode'
+import { geocode, isAbort, placeContext } from '../utils/geocode'
 
 // S11: мастер создания поездки — одна модалка, один сабмит POST /trips/.
-// Город — автокомплит по геокодеру, ограниченный bbox Калининградской области
-// (единственное покрытие Valhalla). Вне bbox ничего не находится — честная граница.
+// Город — автокомплит по геокодеру. По миру: раньше поиск был зажат в bbox
+// Калининградской области, а страна всегда «Россия»; теперь любой населённый
+// пункт, страна — из геокодера, таймзону по координатам ставит бэкенд.
 
 const MAX_TRIP_DAYS = 60
 
@@ -48,6 +49,8 @@ interface CityHit {
     name: string
     lat: number
     lon: number
+    country?: string
+    context: string   // «Иль-де-Франс, Франция» — различает тёзок
 }
 
 const PLACE_TYPES = new Set(['city', 'town', 'village', 'hamlet', 'municipality'])
@@ -100,7 +103,7 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
         })
     }
 
-    // дебаунс-поиск города по геокодеру (bbox области, только населённые пункты)
+    // дебаунс-поиск города по геокодеру (по миру, только населённые пункты)
     const debounceRef = useRef<number | undefined>(undefined)
     useEffect(() => {
         if (city && cityQuery === city.name) return // выбор уже сделан
@@ -112,12 +115,16 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
         debounceRef.current = window.setTimeout(async () => {
             setCityStatus('loading')
             try {
-                const data = await geocodeOblast(cityQuery, {
+                const data = await geocode(cityQuery, {
                     lang: i18n.language, limit: 6, signal: ctrl.signal, addressDetails: true,
+                    featureType: 'settlement',
                 })
                 const hits = data
                     .filter(r => r.class === 'place' || PLACE_TYPES.has(r.addresstype ?? ''))
-                    .map(r => ({ name: r.name || r.display_name.split(',')[0], lat: +r.lat, lon: +r.lon }))
+                    .map(r => ({
+                        name: r.name || r.display_name.split(',')[0], lat: +r.lat, lon: +r.lon,
+                        country: r.address?.country, context: placeContext(r),
+                    }))
                 setCityHits(hits)
                 setCityOpen(true)
                 setCityStatus(hits.length ? 'idle' : 'empty')
@@ -200,7 +207,10 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
     /** S17: те же поля, что уйдут в POST /trips/, но фактами — для диалога. */
     const meiliDraftFields = (): TripDraft => ({
         ...(title.trim() ? { title: title.trim() } : {}),
-        ...(city ? { city: city.name, city_lat: city.lat, city_lon: city.lon, country: 'Россия' } : {}),
+        ...(city ? {
+            city: city.name, city_lat: city.lat, city_lon: city.lon,
+            ...(city.country ? { country: city.country } : {}),
+        } : {}),
         ...(startDate && endDate ? { start_date: startDate, end_date: endDate } : {}),
         adults_count: adults,
         children_count: children,
@@ -231,7 +241,7 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                     city: picked.name,
                     city_lat: picked.lat,
                     city_lon: picked.lon,
-                    country: 'Россия',
+                    country: picked.country ?? null,
                     adults_count: adults,
                     children_count: children,
                     children_ages: children > 0 ? ages : null,
@@ -280,7 +290,7 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                         {visibleStatus === 'loading' ? t('common.loading')
                             : visibleStatus === 'empty' ? t('trip.wizard.cityNotFound')
                             : visibleStatus === 'error' ? t('trip.wizard.cityLookupFailed')
-                            : t('trip.wizard.region')}
+                            : city?.context || t('trip.wizard.cityHint')}
                     </span>
                     {cityOpen && visibleHits.length > 0 && (
                         <div id="wizard-city-list" role="listbox" style={{
@@ -292,6 +302,11 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
                                 <button key={i} type="button" role="option" aria-selected={city?.name === hit.name}
                                     className="menu-item" onClick={() => pickCity(hit)}>
                                     <MapPin />{hit.name}
+                                    {hit.context && (
+                                        <span style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 13, color: 'var(--ink-3)' }}>
+                                            {hit.context}
+                                        </span>
+                                    )}
                                 </button>
                             ))}
                         </div>

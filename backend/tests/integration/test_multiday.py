@@ -198,7 +198,7 @@ async def test_day_optimize_without_locations_is_open_path(client, auth_headers,
     assert sorted(s["position"] for s in stops) == [1, 2, 3]
 
 
-async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):
+async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch, kaliningrad_coverage):
     async def fake_matrix(locations, costing="pedestrian"):
         n = len(locations)
         m = [[0 if i == j else 10 for j in range(n)] for i in range(n)]
@@ -212,7 +212,7 @@ async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):
         client, auth_headers, start_date=D1, end_date=D1
     )
     day = (await client.get(f"/trips/{trip['id']}/days", headers=auth_headers)).json()[0]
-    # старт в Париже, финиш в Бордо — вне покрытия Калининграда
+    # старт в Париже, финиш в Бордо — вне покрытия (тайлы только области)
     start = await _add_location(client, auth_headers, trip["id"], "Париж", 48.85, 2.35)
     end = await _add_location(client, auth_headers, trip["id"], "Бордо", 44.84, -0.58)
     await client.patch(
@@ -233,9 +233,9 @@ async def test_day_out_of_coverage_422(client, auth_headers, monkeypatch):
     assert r.json()["detail"] == "day_out_of_coverage"
 
 
-async def test_stop_outside_region_rejected_upfront(client, auth_headers):
+async def test_stop_outside_region_rejected_upfront(client, auth_headers, kaliningrad_coverage):
     """QA: место вне зоны тайлов ломало маршрут всего дня «на полпути» —
-    теперь отказ сразу при добавлении."""
+    теперь отказ сразу при добавлении. Зона — из ROUTING_COVERAGE."""
     trip = await _make_trip(client, auth_headers, start_date=D1, end_date=D1)
     day = (await client.get(f"/trips/{trip['id']}/days", headers=auth_headers)).json()[0]
     place = (await client.post(

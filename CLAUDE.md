@@ -2,7 +2,9 @@
 
 Планировщик путешествий. **Hermod** — сервис, **Meili** — ИИ-ассистент внутри
 (ТЗ-rename; бэкенд-техимена ассистента остались meili). Бывш. Meili, ранее
-WanderOwn / fastrip — в git-истории и БД `wanderown_*` это одно приложение. Регион MVP — Калининград (тайлы Valhalla).
+WanderOwn / fastrip — в git-истории и БД `wanderown_*` это одно приложение. Работает по всему
+миру; маршруты — только там, где есть тайлы Valhalla (`ROUTING_COVERAGE`, локально — Калининградская
+область и Москва с агломерацией).
 Пет-проект, формат работы — **активное программирование**: Claude пишет код сам.
 Учебный формат из PROGRESS.md (студент пишет руками) — устарел, игнорировать.
 Тон общения и комментарии в коде — неформальный русский; комментарии помечаются
@@ -19,7 +21,8 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 - Миграции: `docker compose exec backend alembic upgrade head`.
   **Правило проекта: не применять миграцию, не прочитав её.** Миграции пишутся
   читаемо руками (заготовка через `alembic revision -m "..."` в контейнере).
-- Сид POI: `docker compose exec backend python -m scripts.seed_places` (идемпотентен).
+- Сид POI Калининградской области: `docker compose exec backend python -m scripts.seed_places`
+  (идемпотентен). Другие города сид не нужен — Meili сам подтягивает места из OSM.
 - Секреты в `.env` (корень — креды Postgres для compose) и `backend/.env`
   (DATABASE_URL, SECRET_KEY, опции: Google OAuth, R2, SMTP, LLM_API_KEY —
   без них соответствующие фичи отвечают 501).
@@ -41,7 +44,8 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 ## Бэкенд (`backend/app/`) — FastAPI, SQLAlchemy 2 async
 
 Слои: `api/` (роутеры) → `services/` (логика) → `models/` (SQLAlchemy) +
-`schemas/` (Pydantic) + `core/` (config, database, security, redis, logging).
+`schemas/` (Pydantic) + `core/` (config, database, security, redis, logging,
+i18n).
 
 Модели и связи (`models/`):
 - `trip.py`: **Trip** (группа adults/children, `budget_total`+`currency` — одна
@@ -89,7 +93,10 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   Meili-executor'а (позиции в хвост дня, смыкание, авто-оценка ТЗ-E).
 - `overpass.py` — поиск POI (кэш 24ч в Redis); `places/` — пакет: get-or-create
   по osm_id (`__init__.py`) + `opening.py` (`is_open_at`: часы работы, дни
-  недели, интервалы через полночь; None = «не знаем»),
+  недели, интервалы через полночь; None = «не знаем») + `geo.py`
+  (`in_coverage`, `timezone_at` через tzfpy) + `catalog.py` (`resolve_city`:
+  каталог → Nominatim с кэшем; `ensure_city_catalog`: пустой город — один
+  раз тянем POI из Overpass, метка области в Redis на месяц),
   `booking.py`, `export_pdf.py` (WeasyPrint + Jinja2 из `templates/`),
   `export_ics.py`, `storage.py` (R2/boto3), `recommendations.py` (collaborative
   filtering), `email.py` (без SMTP — в лог).
@@ -187,9 +194,18 @@ plan | done | error`. Контекст хода: системный промпт
   `missing_value` / `invalid_reference`, 409 `conflict`; `httpx.HTTPError`
   внешних сервисов → 502 `upstream_unavailable`. Это сетка, а не валидация —
   правила всё равно пишем в схемах.
-- **Регион MVP:** `services/places/geo.REGION_BBOX` / `in_region` — стоп вне
-  зоны тайлов не добавляется (`place_out_of_coverage`, общая точка
-  `services/stops.add_stop`).
+- **Тексты для людей — только в `core/i18n.py`** (ru/en): PDF, .ics, письма.
+  Язык — зависимость `get_lang` (Accept-Language, его шлёт фронт из выбора в
+  дропдауне); de/fr/es → en, без заголовка → ru. Ошибки API — по-прежнему
+  машинные коды, их переводит фронт.
+- **Покрытие маршрутов — конфиг, не код:** `ROUTING_COVERAGE` (JSON-список
+  `[south, west, north, east]`, пусто = весь мир; локально задан в
+  docker-compose под калининградские тайлы). Стоп вне зоны не добавляется
+  (`place_out_of_coverage`, общая точка `services/stops.add_stop`), фронт
+  берёт зону из публичного `GET /meta`. Справочник городов области живёт
+  только у сид-скриптов (`scripts/kaliningrad.py`).
+- **Таймзона поездки** — по координатам города (`geo.timezone_at`), без них
+  UTC; Meili-executor сам находит координаты города через `resolve_city`.
 - Позиции стопов **1-based** везде (add/reorder/optimize/clone); оптимизация
   работает и без старта/финиша дня (виртуальное депо = открытый путь).
 - Превью чужой публичной поездки не отдаёт личное автора: старт/финиш дней,
@@ -224,8 +240,10 @@ plan | done | error`. Контекст хода: системный промпт
   машинные коды бэка — сразу в `errors.*` ru+en. Действия с сетью оборачивать
   в try/catch с показом ошибки (паттерн `safely` в DayPlan/StopDetailPanel) —
   голый `await` в onClick = «кнопка молча не работает».
-- Геокодер — только `utils/geocode.geocodeOblast` (bbox области, res.ok,
-  отмена устаревших запросов); числовые поля с границами — `IntInput`, потолки
+- Геокодер — только `utils/geocode.geocode` (по миру; внутри поездки —
+  сначала округа её города из `SearchAreaContext`, пусто — весь мир; res.ok,
+  отмена устаревших запросов). Покрытие маршрутов — `useRoutingCoverage()`
+  (`api/meta.ts`) + `inCoverage`; числовые поля с границами — `IntInput`, потолки
   — `utils/limits.ts` (зеркало `schemas/common.py`). Корень роутов обёрнут в
   `ErrorBoundary`.
 - Состояние: стопы/дни в TripPlanner — обычный `useState` + `reloadStops()`
@@ -246,10 +264,14 @@ plan | done | error`. Контекст хода: системный промпт
   `formatMoneyCompact` (без «,00»). Продуктовый контекст — `PRODUCT.md`,
   рабочие файлы дизайн-скилла — `.impeccable/`.
 - i18n (`i18n/locales/*/translation.json`, **отступ 2 пробела**): ключи есть во
-  всех пяти, но ~40% строк de/fr/es пока английские (фолбэк-копии);
+  всех пяти, de/fr/es переведены полностью (с en совпадают только
+  слова-двойники: Budget, Route, Transport, «{{count}} min»). de — на «du»,
+  fr — на «vous», es — на «tú» (испанский Испании). У fr/es в плюралах есть
+  `_many` (копия `_other`, CLDR-категория для миллионов).
   `src/i18n/locales.test.ts` падает, если ключ есть в en, но нет в каком-то
-  языке, или потерян плейсхолдер `{{…}}`. Новые строки — сразу
-  во все пять.
+  языке, или потерян плейсхолдер `{{…}}`. Новые строки — сразу во все пять.
+  Язык интерфейса уходит бэкенду в Accept-Language (`setRequestLanguage` в
+  `api/client.ts`, ставит `i18n/index.ts`) и в `<html lang>`.
 
 ## Доменные правила (не ломать)
 
@@ -295,7 +317,14 @@ plan | done | error`. Контекст хода: системный промпт
 - Деплой не решён; бронирование — deep-link, не API.
 - В `backend/.env` пустые `R2_ACCESS_KEY`/`R2_SECRET_KEY` — загрузка аватара
   выключена (`avatar_upload_enabled=false` в профиле, кнопка неактивна).
-- `valhalla_data/` — тяжёлые OSM-данные (не трогать без нужды);
-  `scripts/update_valhalla_tiles.sh` — ежемесячный cron.
+- `valhalla_data/` — тяжёлые OSM-данные (не трогать без нужды). Регионы тайлов —
+  `scripts/valhalla_regions.txt` (имя, источник, bbox, `cut` = вырезать
+  osmium'ом); `scripts/update_valhalla_tiles.sh` качает (`curl -z`), вырезает,
+  склеивает в один `regions.osm.pbf`, собирает в `valhalla_data/.build`,
+  проверяет временным сервисом и только потом подменяет живые тайлы
+  (ежемесячный cron). Положить pbf и рестартнуть НЕ работает: образ с
+  `use_tiles_ignore_pbf=True` игнорирует pbf, а хеширует имена, не содержимое.
+  Образ Valhalla зафиксирован на 3.9.0 (на 3.7.0 пешеходные маршруты по
+  Москве падали 500, valhalla#6288); сборка и рантайм — одним образом.
 - pgAdmin: `docker compose --profile tools up -d pgadmin` → :5050.
 - Swagger: http://localhost:8000/docs.

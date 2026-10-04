@@ -5,8 +5,9 @@ from tests.integration.conftest import D1
 async def _trip_with_stops(client, headers) -> str:
     r = await client.post(
         "/trips/",
+        # координаты города -> таймзона поездки Europe/Kaliningrad (timezone_at)
         json={"title": "Kaliningrad Trip", "start_date": D1,
-              "end_date": D1},
+              "end_date": D1, "city_lat": 54.71, "city_lon": 20.51},
         headers=headers,
     )
     trip_id = r.json()["id"]

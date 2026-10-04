@@ -4,9 +4,10 @@ import { MapPin, Plus, Search } from "lucide-react"
 import { apiFetch } from "../api/client"
 import type { Place } from "../types"
 import { apiErrorMessage } from "../utils/apiError"
-// QA: поиск в границах области (как мастер). Без bbox «собор» находил Ватикан
-// и Шартр — стоп добавлялся, а маршрут падал «вне покрытия карт»
-import { geocodeOblast, isAbort, type GeocodeHit } from "../utils/geocode"
+// QA: поиск — сначала в округе города поездки. Без границ «собор» находил
+// Ватикан и Шартр вместо собора в городе, где ты планируешь день
+import { geocode, isAbort, type GeocodeHit } from "../utils/geocode"
+import { useSearchArea } from "../utils/searchArea"
 
 type NominatimResult = GeocodeHit
 
@@ -19,6 +20,7 @@ interface Props {
 
 export default function PlaceSearch({tripId, dayId, placeholder, onPlaceAdded}: Props) {
     const { t, i18n } = useTranslation()
+    const near = useSearchArea()
     const [query, setQuery] = useState('')
     const [results, setResults] = useState<NominatimResult[]>([])
     const [isSearching, setIsSearching] = useState(false)
@@ -41,7 +43,7 @@ export default function PlaceSearch({tripId, dayId, placeholder, onPlaceAdded}: 
         const timer = setTimeout(async () => {
             setIsSearching(true)
             try {
-                const list = await geocodeOblast(q, { lang: i18n.language, limit: 8, signal: ctrl.signal })
+                const list = await geocode(q, { lang: i18n.language, limit: 8, signal: ctrl.signal, near })
                 setResults(list)
                 setStatus(list.length ? 'idle' : 'empty')
             } catch (e) {
@@ -53,7 +55,7 @@ export default function PlaceSearch({tripId, dayId, placeholder, onPlaceAdded}: 
             }
         }, 300)
         return () => { clearTimeout(timer); ctrl.abort() }
-    }, [query, i18n.language])
+    }, [query, i18n.language, near])
 
     const addPlace = async(result: NominatimResult) => {
         // стоп без дня невозможен (S16) — без выбранного дня кнопка не активна

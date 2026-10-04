@@ -477,7 +477,7 @@ async def test_apply_creates_trip_stops_atomically(client, auth_headers, monkeyp
     assert len([t for t in trips if t["title"] == "План от Meili"]) == 1
 
 
-async def test_apply_rolls_back_on_error(client, auth_headers, monkeypatch):
+async def test_apply_rolls_back_on_error(client, auth_headers, monkeypatch, kaliningrad_coverage):
     """M4.2 DoD: ошибка на 3-м action откатывает всё — поездка не создаётся."""
     p = await client.post("/places/", json={"name": "Ок", "lat": 54.71, "lon": 20.5},
                           headers=auth_headers)

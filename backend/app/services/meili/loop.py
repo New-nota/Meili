@@ -32,7 +32,7 @@ from app.services.meili.tools.registry import STEP_LABELS, TOOL_SCHEMAS, run_too
 
 logger = get_logger("meili.loop")
 
-DEFAULT_TZ = "Europe/Kaliningrad"
+DEFAULT_TZ = "UTC"  # ни tz клиента, ни поездки — нейтрально, не Калининград
 
 SYSTEM_PROMPT = (
     "Ты — Meili, ассистент планирования путешествий. Помогаешь собрать поездку: "

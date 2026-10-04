@@ -7,6 +7,10 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VALHALLA_URL=http://valhalla:8002
+      # зона тайлов valhalla ниже ([south, west, north, east], пусто = весь
+      # мир). Источник правды — scripts/valhalla_regions.txt; после правки
+      # регионов скрипт update_valhalla_tiles.sh печатает нужную строку
+      - ROUTING_COVERAGE=[[54.30,19.60,55.35,23.05],[55.35,36.95,56.05,38.15]]
     ports:
       - "8000:8000"
     volumes:
@@ -28,6 +32,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VALHALLA_URL=http://valhalla:8002
+      - ROUTING_COVERAGE=[[54.30,19.60,55.35,23.05],[55.35,36.95,56.05,38.15]]
     volumes:
       - ./backend:/app
     depends_on:
@@ -54,7 +59,11 @@ services:
       - "6379:6379"
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
   valhalla:
-    image: ghcr.io/valhalla/valhalla-scripted:latest
+    # версия зафиксирована: latest застрял на 3.7.0, где пешеходные маршруты
+    # по Москве падали 500 «GetTags: offset exceeds size of text list»
+    # (valhalla#6288, исправлено в 3.9.0). Тот же образ собирает тайлы —
+    # см. scripts/update_valhalla_tiles.sh
+    image: ghcr.io/valhalla/valhalla-scripted:3.9.0
     restart: unless-stopped
     ports:
       - "8002:8002"

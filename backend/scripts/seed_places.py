@@ -15,10 +15,7 @@ from app.models.place import Place
 from app.schemas.places import PlaceCreate
 from app.services.overpass import fetch_places_bbox
 from app.services.places import create_place
-from app.services.places.geo import nearest_city
-
-# bbox Калининградской области: (юг, запад, север, восток)
-KALININGRAD_BBOX = (54.30, 19.60, 55.35, 23.05)
+from scripts.kaliningrad import KALININGRAD_BBOX, nearest_city
 
 # (OSM key, OSM value | None=любое, наша категория)
 SEED_CATEGORIES = [

@@ -181,6 +181,14 @@ app.include_router(meili_router)
 async def health():
     return {"status":"ok"}
 
+
+@app.get("/meta")
+async def meta():
+    """Публичные факты о развёртывании для фронта. Покрытие маршрутов —
+    где Valhalla строит маршруты ([south, west, north, east], пусто = везде):
+    фронт предупреждает о точке вне зоны до того, как бэк её отклонит."""
+    return {"routing_coverage": [list(box) for box in settings.ROUTING_COVERAGE]}
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema

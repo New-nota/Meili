@@ -17,6 +17,7 @@ from app.api.stops import get_trip_readable
 from app.schemas.route import RouteLeg, RouteRead
 from app.services.budget import compute_budget
 from app.services.budget_estimate import recompute_auto_stops
+from app.services.places.geo import DEFAULT_TIMEZONE, timezone_at
 from app.services.trips import DayError, decorate_trip_rows, sync_trip_days
 from app.services.valhalla import RouteError, route_legs
 
@@ -64,6 +65,8 @@ async def create_trip(
     # exclude_none: не задан currency -> отработает server_default 'EUR'
     # (одна валюта на поездку, S11 мастер обычно шлёт валюту явно)
     trip = Trip(user_id=current_user.id, **data.model_dump(exclude_none=True))
+    # таймзона — из координат города: факт системы, клиент её не шлёт
+    trip.timezone = timezone_at(trip.city_lat, trip.city_lon) or DEFAULT_TIMEZONE
     db.add(trip)
     await db.flush()
     # диапазон дат задан -> генерируем trip_days (S8 WP-3)
@@ -137,6 +140,9 @@ async def update_trip(
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(trip, field, value)
+    # город переехал — таймзона за ним (без координат старую не трогаем)
+    if updates.keys() & {"city_lat", "city_lon"}:
+        trip.timezone = timezone_at(trip.city_lat, trip.city_lon) or trip.timezone
 
     # QA: группа проверяется по ИТОГОВОМУ состоянию. Схема видит только
     # присланные поля, и PATCH одного children_count оставлял возраста от

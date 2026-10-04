@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     # суммаризацию (Celery) и обрезает окно при сборке контекста
     MEILI_WINDOW_TOKENS: int = 2000
 
+    # Покрытие маршрутизатора: прямоугольники [south, west, north, east], где
+    # у Valhalla есть тайлы. Регион больше не зашит в код — он там, где карты:
+    # N городов = N прямоугольников, пусто = весь мир (планетные тайлы или
+    # внешний API). В env — JSON: ROUTING_COVERAGE='[[54.3,19.6,55.35,23.05]]'
+    ROUTING_COVERAGE: list[tuple[float, float, float, float]] = []
+    # геокодер для бэкенда (город для Meili, координаты городов поездок);
+    # публичный Nominatim требует User-Agent и ≤1 запроса/с — всё кэшируем
+    NOMINATIM_URL: str = "https://nominatim.openstreetmap.org"
+
     class Config:
         env_file = ".env"
 

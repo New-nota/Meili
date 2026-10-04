@@ -34,8 +34,9 @@ class Trip(Base):
     # S9 WP-A: бюджет — одна валюта на поездку, деньги только Numeric
     budget_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR", server_default="EUR")
-    # S9 WP-B: таймзона для времён в календарном экспорте
-    timezone: Mapped[str] = mapped_column(String, nullable=False, default="Europe/Kaliningrad", server_default="Europe/Kaliningrad")
+    # S9 WP-B: таймзона для времён в календарном экспорте. Ставится по
+    # координатам города (geo.timezone_at); без них — UTC, не Калининград
+    timezone: Mapped[str] = mapped_column(String, nullable=False, default="UTC", server_default="UTC")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
 

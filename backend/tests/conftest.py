@@ -34,3 +34,37 @@ def _no_real_smtp(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "SMTP_HOST", "")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_geo(monkeypatch):
+    """Тесты не ходят в Nominatim/Overpass и не зависят от env покрытия.
+
+    - покрытие маршрутов: весь мир (в контейнере ROUTING_COVERAGE задаёт
+      compose — тест не должен от этого меняться);
+    - геокодер города: «не знаю такого города» (как будто сети нет) —
+      города в тестах узнаются по каталогу, как и раньше по справочнику;
+    - автозаполнение каталога: no-op (оно пишет своей сессией в боевую БД
+      и метки в общий с dev Redis). Тесты каталога подменяют это явно.
+    """
+    from app.core.config import settings
+    from app.services.meili.tools import search_places as search_module
+    from app.services.places import catalog
+
+    async def no_city(name):
+        return None
+
+    async def no_fill(city):
+        return 0
+
+    monkeypatch.setattr(settings, "ROUTING_COVERAGE", [])
+    monkeypatch.setattr(catalog, "geocode_city", no_city)
+    monkeypatch.setattr(search_module, "ensure_city_catalog", no_fill)
+
+
+@pytest.fixture
+def kaliningrad_coverage(monkeypatch):
+    """Тайлы только Калининградской области — как в локальном compose."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ROUTING_COVERAGE", [(54.30, 19.60, 55.35, 23.05)])

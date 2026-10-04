@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import maplibregl from 'maplibre-gl'
@@ -27,15 +27,19 @@ import StopDetailPanel from '../components/StopDetailPanel'
 import MeiliChat from '../components/meili/MeiliChat'
 import { apiFetch, ApiError } from '../api/client'
 import { apiErrorMessage } from '../utils/apiError'
-import { inRegion } from '../utils/geocode'
+import { inCoverage } from '../utils/geocode'
+import { SearchAreaContext } from '../utils/searchArea'
+import { useRoutingCoverage } from '../api/meta'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getVisitedPlaces } from '../api/visited'
 import type { Place } from '../types/index'
 
-// стартовый вид карты до загрузки остановок (MVP-регион — Калининград);
-// после загрузки камера подстраивается через fitBounds
-const DEFAULT_MAP_CENTER: [number, number] = [20.5114, 54.7104]
-const DEFAULT_MAP_ZOOM = 13
+// стартовый вид карты до загрузки поездки — весь мир, без «родного» города:
+// дальше камера прыгает на город поездки (S11) или fitBounds по точкам
+const WORLD_CENTER: [number, number] = [15, 30]
+const WORLD_ZOOM = 1.5
+// зум города поездки, пока в ней нет точек
+const CITY_ZOOM = 13
 // S11: ресайз панели — память в localStorage; редизайн «Лес»: дефолт 460, мин 380
 const PANEL_MIN = 380
 const PANEL_DEFAULT = 460
@@ -73,6 +77,14 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
     const [notFoundId, setNotFoundId] = useState<string | null>(null)
     const notFound = notFoundId !== null && notFoundId === tripId
     const [trip, setTrip] = useState<TripInfo | null>(null)
+    // по миру: поиски внутри поездки — сначала в округе её города; объект
+    // мемоизирован, иначе каждый рендер перезапускал бы поиски-эффекты
+    const cityLat = trip?.city_lat, cityLon = trip?.city_lon
+    const searchArea = useMemo(
+        () => (cityLat != null && cityLon != null ? { lat: cityLat, lon: cityLon } : null),
+        [cityLat, cityLon],
+    )
+    const coverage = useRoutingCoverage()
     const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
     // S8 WP-3: мульти-день; null = режим «Все дни»
     const [days, setDays] = useState<TripDay[]>([])
@@ -149,7 +161,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         const hasPoints = stops.length > 0 || days.some(d => d.stops.length > 0)
         if (hasPoints) return
         const center: [number, number] = [trip.city_lon, trip.city_lat]
-        whenMapReady(map, () => map.jumpTo({ center, zoom: DEFAULT_MAP_ZOOM }))
+        whenMapReady(map, () => map.jumpTo({ center, zoom: CITY_ZOOM }))
     }, [trip, stops, days])
 
     // S13: превью — лайк (оптимистично) и копирование в свою редактируемую поездку
@@ -219,8 +231,8 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         const map = new maplibregl.Map({
             container: mapContainer.current,
             style: 'https://tiles.openfreemap.org/styles/liberty',
-            center: DEFAULT_MAP_CENTER,
-            zoom: DEFAULT_MAP_ZOOM,
+            center: WORLD_CENTER,
+            zoom: WORLD_ZOOM,
             // редизайн «Лес»: на телефоне карта — блок в скроллящейся странице,
             // одним пальцем листаем страницу, двумя — карту
             cooperativeGestures: mobile,
@@ -587,6 +599,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         tab === 'route' ? t('trip.route') : tab === 'budget' ? t('budget.title') : t('meili.title')
 
     return (
+        <SearchAreaContext.Provider value={searchArea}>
         <div className={`planner${panelTab === 'meili' ? ' is-chat' : ''}`}
             style={{
                 ['--panel-w' as string]: `${panelWidth}px`,
@@ -676,13 +689,13 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                                 </p>
                             )}
                             <div style={{display: 'grid', gap: 8}}>
-                                {/* QA: точка вне области ломала маршрут всего дня —
-                                    бэк её теперь не примет, предупреждаем заранее */}
-                                {!inRegion(clickedPoint.lat, clickedPoint.lng) && (
+                                {/* QA: точка вне зоны тайлов ломала маршрут всего дня —
+                                    бэк её не примет, предупреждаем заранее. Зона — с бэка (/meta) */}
+                                {!inCoverage(coverage, clickedPoint.lat, clickedPoint.lng) && (
                                     <span className="error-text">{t('errors.place_out_of_coverage')}</span>
                                 )}
                                 <button type="button" onClick={addClickedToRoute} className="btn btn-sm btn-accent"
-                                    disabled={!inRegion(clickedPoint.lat, clickedPoint.lng)}>
+                                    disabled={!inCoverage(coverage, clickedPoint.lat, clickedPoint.lng)}>
                                     <Plus />{t('place.addToRoute')}
                                 </button>
                                 <button type="button" onClick={makeClickedStart} disabled={!activeDay} className="btn btn-sm"
@@ -776,6 +789,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
             <div className={`panel-resize-handle${resizing ? ' dragging' : ''}`}
                 onPointerDown={startResize} title={t('trip.resizePanel')} />
         </div>
+        </SearchAreaContext.Provider>
     )
 }
 

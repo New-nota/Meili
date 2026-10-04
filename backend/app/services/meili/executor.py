@@ -26,6 +26,8 @@ from app.schemas.plan import (
 from app.services import stops as stops_service
 from app.services.budget_estimate import recompute_auto_stops
 from app.services.optimizer import apply_day_optimization
+from app.services.places.catalog import GeocoderUnavailable, resolve_city
+from app.services.places.geo import DEFAULT_TIMEZONE, timezone_at
 from app.services.trips import DayError, sync_trip_days
 
 logger = get_logger("meili.executor")
@@ -147,13 +149,26 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
                     # черновик — фолбэк; координаты только из черновика.
                     draft = conversation.draft_json or {}
                     currency = (action.currency or draft.get("currency") or "").upper()
+                    city_name = action.city or draft.get("city")
+                    lat, lon = draft.get("city_lat"), draft.get("city_lon")
+                    if (lat is None or lon is None) and city_name:
+                        # поездку из чата без мастера раньше открывало на
+                        # Калининграде: координат города модель не знает,
+                        # их находит система (каталог → геокодер)
+                        try:
+                            ref = await resolve_city(db, city_name)
+                        except GeocoderUnavailable:
+                            ref = None
+                        if ref is not None:
+                            lat, lon = ref.lat, ref.lon
                     trip = Trip(
                         user_id=user_id,
                         title=action.title,
-                        city=action.city or draft.get("city"),
+                        city=city_name,
                         country=action.country or draft.get("country"),
-                        city_lat=draft.get("city_lat"),
-                        city_lon=draft.get("city_lon"),
+                        city_lat=lat,
+                        city_lon=lon,
+                        timezone=timezone_at(lat, lon) or DEFAULT_TIMEZONE,
                         adults_count=action.adults_count,
                         children_count=action.children_count,
                         children_ages=action.children_ages,

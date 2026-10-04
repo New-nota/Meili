@@ -1,0 +1,11 @@
+# Регионы маршрутизации Valhalla — источник правды для тайлов и покрытия.
+# Формат: имя  URL-источника  south,west,north,east  [cut]
+#   bbox — зона покрытия (ROUTING_COVERAGE); с флагом cut регион вырезается
+#   из источника по этому bbox (osmium), без него источник берётся целиком.
+# Один источник на несколько регионов скачивается один раз.
+# После правки: ./scripts/update_valhalla_tiles.sh — он пересоберёт тайлы и
+# напечатает строку ROUTING_COVERAGE для docker-compose.yml.
+
+kaliningrad  https://download.geofabrik.de/russia/kaliningrad-latest.osm.pbf          54.30,19.60,55.35,23.05
+# Москва с агломерацией: аэропорты (SVO/DME/VKO), Новая Москва, ближние города
+moscow       https://download.geofabrik.de/russia/central-fed-district-latest.osm.pbf 55.35,36.95,56.05,38.15  cut
