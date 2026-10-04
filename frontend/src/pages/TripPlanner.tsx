@@ -7,7 +7,7 @@ import {
     ArrowLeft, CalendarPlus, ChevronRight, Copy, FileDown, Flag, Heart, Plus, RefreshCw, Settings2, X,
 } from 'lucide-react'
 import type { Stop } from '../types/index'
-import { getStops, getDayRoute, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
+import { getStops, dayRouteQuery, legsToCoordinates, getTrip, downloadExport, cloneTrip, likeTrip, unlikeTrip } from '../api/trips'
 import { addLocation, getDays, getLocations, updateDay, reorderDays, type TripDay, type TripLocation } from '../api/days'
 import DayPlan from '../components/trip/DayPlan'
 import DaySwatches from '../components/trip/DaySwatches'
@@ -379,7 +379,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     const dayStops = day.stops.filter(st => st.included_in_route !== false && st.place_lat && st.place_lon)
                     // S16: геометрия берётся из перегонов — у каждого свой транспорт
                     const coords = dayStops.length
-                        ? await getDayRoute(tripId!, day.id)
+                        ? await queryClient.fetchQuery(dayRouteQuery(tripId!, day))
                             .then(r => legsToCoordinates(r.legs)).catch(() => [])
                         : []
                     if (cancelled) return
@@ -410,8 +410,10 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         // исключённые селективным прогоном (S8 WP-4) в линию не входят
         const includedStops = routeStops.filter(s => s.included_in_route !== false)
         // S16: линия дня — геометрия перегонов (учитывает транспорт каждого)
+        // общий кэш с панелью дня (dayRouteKey): повторная отрисовка карты и
+        // DayPlan берут уже полученный маршрут, а не шлют /route заново
         const coordinates = activeDay && includedStops.length
-            ? await getDayRoute(tripId!, activeDay.id)
+            ? await queryClient.fetchQuery(dayRouteQuery(tripId!, activeDay))
                 .then(r => legsToCoordinates(r.legs)).catch(() => [])
             : []
         if (cancelled) return
@@ -487,7 +489,7 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
 
     // activeDay/routeStops — производные от days/expandedDayId/stops со
     // стабильными ссылками; t — подписи попапов при смене языка
-    }, [stops, trip, days, expandedDayId, activeDay, routeStops, tripId, t])
+    }, [stops, trip, days, expandedDayId, activeDay, routeStops, tripId, t, queryClient])
 
     // S16 §1.5: реордер дней — новый порядок id; сервер переставляет содержимое
     // по фиксированному пулу дат и возвращает дни уже в новом порядке

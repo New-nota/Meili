@@ -30,6 +30,28 @@ export interface DayRoute {
 export const getDayRoute = (tripId: string, dayId: string) =>
     apiFetch<DayRoute>(`/trips/${tripId}/route?day_id=${dayId}`)
 
+type RouteDay = Pick<TripDay, 'id' | 'start_location' | 'end_location' | 'stops'>
+
+/** Ключ кэша маршрута дня — от его состава: добавили/убрали/переставили
+ *  точку или сменили транспорт → новый маршрут. Общий для карты
+ *  (TripPlanner) и панели дня (DayPlan). Ревью (прод-сборка): открытие
+ *  планировщика слало /route 4 раза — эффект карты перезапускался на каждое
+ *  обновление состояния, а панель запрашивала тот же маршрут отдельно. */
+export const dayRouteKey = (tripId: string, day: RouteDay) => [
+    'dayRoute', tripId, day.id,
+    [day.start_location?.id, day.end_location?.id,
+        ...day.stops.filter(s => s.included_in_route).map(s => `${s.id}:${s.position}:${s.transport_to_next}`),
+    ].join('|'),
+]
+
+/** Тот же состав — тот же маршрут (Valhalla детерминирована): кэш не протухает. */
+export const dayRouteQuery = (tripId: string, day: RouteDay) => ({
+    queryKey: dayRouteKey(tripId, day),
+    queryFn: () => getDayRoute(tripId, day.id),
+    staleTime: Infinity,
+    retry: false,
+})
+
 /** Координаты всей линии дня — склейка геометрии перегонов. */
 export const legsToCoordinates = (legs: RouteLeg[]): number[][] =>
     legs.flatMap(leg => decodePolyline(leg.geometry))
