@@ -3,6 +3,7 @@
 Каждый тест воспроизводит конкретный найденный баг — до правки он падал.
 Именование по симптому, а не по ручке: понятно, что именно охраняем.
 """
+from datetime import date, timedelta
 from decimal import Decimal
 
 from tests.integration.conftest import D1, D2, register_and_verify
@@ -104,9 +105,13 @@ async def test_place_edit_is_owner_only(client, auth_headers):
     assert mine.status_code == 200, mine.text
 
 
-async def test_raw_valhalla_proxy_requires_auth(client):
-    r = await client.post("/route/", json={"locations": [], "costing": "pedestrian"})
-    assert r.status_code == 401, r.text
+async def test_raw_valhalla_proxy_is_gone(client, auth_headers):
+    """Ревью: сырой прокси POST /route/ на Valhalla фронт не использовал
+    (маршрут дня — GET /trips/{id}/route), а любой залогиненный гонял через
+    него произвольные запросы во внутренний Valhalla. Ручки больше нет."""
+    r = await client.post("/route/", json={"locations": [], "costing": "pedestrian"},
+                          headers=auth_headers)
+    assert r.status_code in (404, 405)
 
 
 async def test_like_unknown_trip_is_404(client, auth_headers):
@@ -149,13 +154,20 @@ async def test_trip_update_rejects_oversized_currency(client, auth_headers):
 async def test_trip_update_caps_day_count(client, auth_headers):
     """MAX_TRIP_DAYS жил только в TripCreate — PATCH генерил тысячи trip_days."""
     trip = await _trip(client, auth_headers)
+    far = (date.fromisoformat(D1) + timedelta(days=200)).isoformat()
     r = await client.patch(
         f"/trips/{trip['id']}",
-        json={"start_date": D1, "end_date": "2099-01-01"},
+        json={"start_date": D1, "end_date": far},
         headers=auth_headers,
     )
     assert r.status_code == 400, r.text
     assert r.json()["detail"] == "trip_too_long"
+    # ревью: даты дальше 5 лет вперёд — сразу 422 (раньше 9999 год принимался)
+    r = await client.patch(
+        f"/trips/{trip['id']}", json={"start_date": D1, "end_date": "2099-01-01"},
+        headers=auth_headers,
+    )
+    assert r.status_code == 422, r.text
 
     days = (await client.get(f"/trips/{trip['id']}/days", headers=auth_headers)).json()
     assert len(days) == 2  # диапазон не поменялся
@@ -313,3 +325,18 @@ async def test_liked_trip_can_still_be_deleted(client, auth_headers):
     assert r.status_code == 204, r.text
     gone = await client.get(f"/trips/{trip['id']}", headers=auth_headers)
     assert gone.status_code == 404
+
+
+async def test_place_name_and_text_are_bounded(client, auth_headers):
+    """Атака на API: место с name="" и мегабайтными строками принималось."""
+    for body in (
+        {"name": "", "lat": 54.7, "lon": 20.5},
+        {"name": "   ", "lat": 54.7, "lon": 20.5},
+        {"name": "x" * 1000, "lat": 54.7, "lon": 20.5},
+        {"name": "ок", "address": "a" * 10_000},
+        {"name": "ок", "osm_id": "../../etc"},
+    ):
+        r = await client.post("/places/", json=body, headers=auth_headers)
+        assert r.status_code == 422, (body, r.text)
+    r = await client.post("/places/", json={"name": "  Собор  ", "osm_id": "way/123"}, headers=auth_headers)
+    assert r.status_code == 200 and r.json()["name"] == "Собор"

@@ -56,3 +56,23 @@ def test_cost_str_localized():
     assert _cost_str(_stop(cost_source="auto"), free_place, None, "EUR") == "бесплатно"
     booked = _cost_str(_stop(), free_place, Decimal("12.50"), "EUR", "en")
     assert booked == "12.50 EUR (booked)"
+
+
+def test_pdf_renderer_never_fetches():
+    """Ревью: WeasyPrint не ходит ни в сеть, ни в файлы — даже если в HTML
+    окажется <img src=…>, рендер не обращается по адресу."""
+    from weasyprint import HTML
+
+    from app.services.export_pdf import offline_fetcher
+
+    html = ('<p>x</p><img src="http://169.254.169.254/latest/meta-data/">'
+            '<img src="file:///etc/passwd">')
+    pdf = HTML(string=html, url_fetcher=offline_fetcher()).write_pdf()
+    assert pdf.startswith(b"%PDF")
+    fetcher = offline_fetcher()
+    for url in ("http://169.254.169.254/", "file:///etc/passwd"):
+        try:
+            fetcher.fetch(url)
+        except Exception:
+            continue
+        raise AssertionError(f"fetcher открыл {url}")

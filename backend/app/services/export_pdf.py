@@ -90,6 +90,16 @@ def _opening_str(opening_hours) -> str | None:
     return None
 
 
+def offline_fetcher():
+    """WeasyPrint без сети и файловой системы: внешних ресурсов в шаблоне нет,
+    а всё пользовательское экранировано. Ревью: запрещаем на корню, чтобы
+    никакая будущая правка шаблона не открыла SSRF/чтение файлов (класс
+    уязвимостей, ради которого WeasyPrint и обновлялся до 70)."""
+    from weasyprint.urls import URLFetcher
+
+    return URLFetcher(allowed_protocols=(), allow_redirects=False)
+
+
 async def render_itinerary_pdf(db: AsyncSession, trip: Trip, lang: Lang = DEFAULT_LANG) -> bytes:
     from weasyprint import HTML  # импорт тут: тяжёлый и нужен только на экспорт
 
@@ -99,4 +109,4 @@ async def render_itinerary_pdf(db: AsyncSession, trip: Trip, lang: Lang = DEFAUL
         trip=trip, days=data["days"], budget=budget,
         lang=lang, t=lambda key, **kw: t(lang, key, **kw),
     )
-    return HTML(string=html).write_pdf()
+    return HTML(string=html, url_fetcher=offline_fetcher()).write_pdf()

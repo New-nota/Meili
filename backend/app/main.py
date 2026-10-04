@@ -28,7 +28,6 @@ from app.api.auth import router as auth_router
 from app.api.trips import router as trip_router
 from app.api.places import router as places_router
 from app.api.stops import router as stops_router
-from app.api.route import router as route_router
 from app.api.optimize import router as optimize_router
 from app.api.recommendations import router as recommendations_router
 from app.api.bookings import router as bookings_router
@@ -88,7 +87,7 @@ def _json_safe(value):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         # форма тела как у дефолтного обработчика FastAPI — клиенты не ломаются
         content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
     )
@@ -168,7 +167,6 @@ app.include_router(auth_router)
 app.include_router(trip_router)
 app.include_router(places_router)
 app.include_router(stops_router)
-app.include_router(route_router)
 app.include_router(optimize_router)
 app.include_router(recommendations_router)
 app.include_router(bookings_router)
