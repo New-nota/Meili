@@ -350,7 +350,8 @@
     "crashText": "Tus datos están a salvo en el servidor. Recarga la página o vuelve a tus viajes.",
     "reload": "Recargar",
     "turn_in_progress": "Meili aún está respondiendo al mensaje anterior",
-    "oauth_failed": "El inicio de sesión con Google no se completó — inténtalo de nuevo"
+    "oauth_failed": "El inicio de sesión con Google no se completó — inténtalo de nuevo",
+    "place_without_location": "El lugar no tiene coordenadas"
   },
   "planner": {
     "day": {
@@ -450,7 +451,50 @@
     "starter1": "¿Qué ver con un niño el primer día?",
     "starter2": "¿Cuánto dura el día a pie?",
     "starter3": "Busca un café cerca del primer lugar",
-    "startersLabel": "Por ejemplo"
+    "startersLabel": "Por ejemplo",
+    "actionSetLodging": "Alojamiento: {{name}}",
+    "actionAddExpense": "Gasto: {{title}}",
+    "actionType_set_lodging": "Alojamiento",
+    "actionType_add_expense": "Gasto",
+    "placesFound": "Lugares encontrados",
+    "cardAddToDay": "Al día",
+    "cardLodging": "Alojarme aquí",
+    "cardAllDays": "Todos los días",
+    "cardShowOnMap": "Ver en el mapa",
+    "cardAdded": "Añadido: {{day}}",
+    "cardLodged": "Alojamiento del viaje",
+    "openNow": "abierto",
+    "closedNow": "cerrado",
+    "distanceM": "{{count}} m",
+    "distanceKm": "{{km}} km",
+    "outsideCity": "en otra localidad",
+    "category": {
+      "hotel": "alojamiento",
+      "museum": "museo",
+      "landmark": "lugar de interés",
+      "attraction": "ocio",
+      "viewpoint": "mirador",
+      "restaurant": "restaurante",
+      "cafe": "cafetería",
+      "bar": "bar",
+      "park": "parque",
+      "theatre": "teatro",
+      "beach": "playa",
+      "shopping": "compras",
+      "historic": "historia"
+    },
+    "subtype": {
+      "hotel": "hotel",
+      "hostel": "albergue",
+      "guest_house": "casa de huéspedes",
+      "apartment": "apartamento",
+      "motel": "motel",
+      "bar": "bar",
+      "pub": "pub",
+      "zoo": "zoo",
+      "aquarium": "acuario",
+      "theme_park": "parque temático"
+    }
   },
   "visited": {
     "rateTitle": "Valoración",

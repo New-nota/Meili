@@ -34,7 +34,11 @@ TOOL_SCHEMAS: list[dict] = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "1–2 слова по названию/описанию, без города"},
-                    "category": {"type": "string", "description": "категория (museum, cafe, park, restaurant…)"},
+                    "category": {
+                        "type": "string",
+                        "enum": ["hotel", "museum", "landmark", "attraction", "viewpoint", "restaurant", "cafe", "bar", "park", "theatre", "beach", "shopping", "historic"],
+                        "description": "категория; hotel — жильё (отели, хостелы, апартаменты)",
+                    },
                     "city": {"type": "string", "description": "город поездки (из снапшота) — только город, район/место передавай в near_place"},
                     "near_place": {
                         "type": "string",

@@ -54,7 +54,7 @@ def _no_real_geo(monkeypatch):
     async def no_city(name):
         return None
 
-    async def no_fill(city):
+    async def no_fill(city, category=None):
         return 0
 
     monkeypatch.setattr(settings, "ROUTING_COVERAGE", [])
@@ -88,9 +88,12 @@ def _no_real_celery(monkeypatch):
     тестовых диалогов из чужой базы. Постановка перехвачена; нужен факт
     постановки — смотри список enqueued в тесте."""
     from app.services.meili import loop
+    from app.services.places import catalog
 
     enqueued: list = []
     monkeypatch.setattr(loop, "_schedule_summarize", lambda cid: enqueued.append(cid))
+    # meili_upgrade: фоновое дозаполнение каталога — туда же
+    monkeypatch.setattr(catalog, "_schedule_area_fill", lambda city: enqueued.append(city))
     return enqueued
 
 

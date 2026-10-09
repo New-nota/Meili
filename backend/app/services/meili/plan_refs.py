@@ -35,6 +35,7 @@ from app.schemas.plan import (
     AddStopAction,
     ProposedPlan,
     RemoveStopAction,
+    SetLodgingAction,
     SetStopCostAction,
 )
 
@@ -89,7 +90,8 @@ async def resolve_references(
     problems: list[str] = []
 
     for action in plan.actions:
-        if not isinstance(action, AddStopAction):
+        # meili_upgrade: set_lodging ссылается на место так же, как add_stop
+        if not isinstance(action, (AddStopAction, SetLodgingAction)):
             continue
 
         if action.place_id is not None:

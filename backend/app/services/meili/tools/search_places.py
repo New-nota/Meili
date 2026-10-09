@@ -70,7 +70,36 @@ CATEGORY_WORDS: dict[str, str] = {
     "парк": "park", "сквер": "park", "сад": "park", "park": "park",
     "театр": "theatre", "theatre": "theatre", "theater": "theatre",
     "достопримечательн": "landmark",
+    # meili_upgrade: новые категории каталога
+    "отел": "hotel", "гостиниц": "hotel", "хостел": "hotel", "жиль": "hotel",
+    "переночева": "hotel", "ночлег": "hotel", "апартамент": "hotel",
+    "мотел": "hotel", "гостев": "hotel", "hotel": "hotel", "hostel": "hotel",
+    "бар": "bar", "бары": "bar", "баров": "bar", "паб": "bar", "пабы": "bar",
+    "выпить": "bar", "pub": "bar", "bar": "bar",
+    "смотров": "viewpoint", "панорам": "viewpoint", "viewpoint": "viewpoint",
+    "пляж": "beach", "beach": "beach",
+    "зоопарк": "attraction", "океанариум": "attraction", "аквариум": "attraction",
+    "аттракцион": "attraction", "zoo": "attraction",
+    "торгов": "shopping", "шопинг": "shopping", "молл": "shopping",
+    "рынок": "shopping", "рынк": "shopping", "mall": "shopping",
 }
+
+# слово-подтип -> метка в places.tags (её ставит каталог из OSM): «хостел» —
+# это категория hotel, но хостелы в выдаче должны идти первыми
+SUBTYPE_WORDS: dict[str, str] = {
+    "хостел": "hostel", "hostel": "hostel", "апартамент": "apartment",
+    "гостев": "guest_house", "мотел": "motel", "паб": "pub", "pub": "pub",
+    "зоопарк": "zoo", "zoo": "zoo", "океанариум": "aquarium", "аквариум": "aquarium",
+}
+
+
+def _subtype_of(word: str | None) -> str | None:
+    if not word:
+        return None
+    for stem, tag in SUBTYPE_WORDS.items():
+        if word == stem or (len(stem) >= 4 and word.startswith(stem)):
+            return tag
+    return None
 
 
 def _category_from_words(words: list[str]) -> tuple[str | None, str | None, list[str]]:
@@ -81,6 +110,26 @@ def _category_from_words(words: list[str]) -> tuple[str | None, str | None, list
             if word == stem or (len(stem) >= 4 and word.startswith(stem)):
                 return cat, word, words[:i] + words[i + 1:]
     return None, None, words
+
+
+# meili_upgrade: «ищу места» по реплике юзера. Маленькие модели (ministral —
+# всё, что доступно из РФ) на «найди отель» отвечали «конечно, могу
+# подобрать!» и не звали поиск вовсе. По этому интенту loop на первом шаге
+# требует вызвать хоть какой-то tool (tool_choice).
+SEARCH_INTENT_STEMS = (
+    "найд", "найти", "наход", "поищ", "ищу", "ищем", "посовет", "подбер",
+    "порекоменд", "покаж", "где ", "куда ", "что посмотреть", "сходить",
+    "find", "recommend", "suggest", "where ",
+)
+
+
+def wants_places(text: str) -> bool:
+    """Реплика просит места: глагол поиска или слово-категория."""
+    low = f"{(text or '').lower()} "
+    if any(stem in low for stem in SEARCH_INTENT_STEMS):
+        return True
+    category, _, _ = _category_from_words(_words(text or ""))
+    return category is not None
 
 
 def _wide_radius(city: CityRef) -> int:
@@ -159,9 +208,10 @@ async def search_places(
     else:
         # QA: query «парк» + category=park — слово-тип дублирует категорию и
         # строгим проходом отсекало «Königsgarten» и скверы без «парк» в имени
-        same, _, rest = _category_from_words(words)
+        same, same_word, rest = _category_from_words(words)
         if same == category:
-            words = rest
+            words, type_word = rest, same_word
+    subtype = _subtype_of(type_word)
 
     # QA: «кафе рядом с Рыбной деревней» — модель клала район в city, город
     # не находился, и поиск уходил «вне запрошенного города» с ответом «там
@@ -178,9 +228,10 @@ async def search_places(
             if city_ref is None and not near_place:
                 near_place, city = city, None
     if city_ref is not None and not (near and "lat" in near and "lon" in near):
-        # новый город — каталог вокруг пуст: один раз подтягиваем места из OSM
+        # meili_upgrade: мало мест этой категории вокруг города — тянем её
+        # из OSM прямо сейчас, остальные категории каталог дозаполнит фоном
         try:
-            await ensure_city_catalog(city_ref)
+            await ensure_city_catalog(city_ref, category or soft_category)
         except Exception:  # noqa: BLE001 — без автозаполнения ищем по тому, что есть
             logger.exception("автозаполнение каталога для %s упало", city_ref.name)
     anchor = None
@@ -233,6 +284,9 @@ async def search_places(
             stmt = stmt.where(_within(city_ref.lat, city_ref.lon, _wide_radius(city_ref)))
         if near and "lat" in near and "lon" in near:
             stmt = stmt.where(_within(near["lat"], near["lon"], radius or 1000))
+        if subtype:
+            # «хостел» — категория hotel, но хостелы первыми
+            stmt = stmt.order_by(Place.tags.any(subtype).desc().nullslast())
         if words and word_mode != "none":
             # QA: сначала — сколько слов запроса буквально есть в названии
             # («Кант» → «Иммануил Кант», а не похожее по буквам «Кано»),
@@ -299,8 +353,8 @@ async def search_places(
         open_now = is_open_at(p.opening_hours, at)
         price = await resolve_price(p)  # ценовой гибрид (M5.1)
         distance = None
-        if near and "lat" in near and "lon" in near and p.location is not None:
-            pt = to_shape(p.location)
+        pt = to_shape(p.location) if p.location is not None else None
+        if near and "lat" in near and "lon" in near and pt is not None:
             distance = round(haversine_m(near["lat"], near["lon"], pt.y, pt.x))
         if anchor is not None and p.name == anchor["name"] and distance is not None and distance < 50:
             continue  # сам ориентир — не «место рядом с ним»
@@ -320,6 +374,10 @@ async def search_places(
             "price": price.label,
             "price_is_estimate": price.is_estimate,
             "duration_minutes": p.duration_minutes,
+            # подтип (hostel/pub/zoo), stars:N, cuisine:X — из OSM (meili_upgrade)
+            **({"tags": p.tags} if p.tags else {}),
+            # координаты — карточке в чате (точка на карте) и для near
+            **({"lat": round(pt.y, 6), "lon": round(pt.x, 6)} if pt is not None else {}),
             # расстояние до точки/ориентира — считает система, не модель
             **({"distance_m": distance} if distance is not None else {}),
             **({"near": anchor["name"]} if anchor is not None else {}),

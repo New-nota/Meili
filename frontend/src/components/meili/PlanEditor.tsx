@@ -81,6 +81,7 @@ export default function PlanEditor({ plan, onSaved, onCancel }: Props) {
                     {/* изменить число: бюджет / стоимость */}
                     {a.type === 'set_budget' && numberInput(a, i, 'amount')}
                     {a.type === 'set_stop_cost' && numberInput(a, i, 'amount')}
+                    {a.type === 'add_expense' && numberInput(a, i, 'amount')}
                     {a.type === 'add_stop' && a.cost_amount != null && numberInput(a, i, 'cost_amount')}
 
                     <button type="button" onClick={() => removeAction(i)} title={t('common.delete')}

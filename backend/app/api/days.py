@@ -12,7 +12,9 @@ from app.core.security import get_current_user
 from app.models.place import Place
 from app.models.trip import TripDay, TripLocation, TripStop
 from app.models.user import User
+from app.services import lodging as lodging_service
 from app.schemas.days import (
+    LodgingSet,
     TripDayResponse,
     TripDaysReorder,
     TripDayUpdate,
@@ -68,6 +70,38 @@ async def add_location(
 
     location = TripLocation(trip_id=trip_id, **data.model_dump())
     db.add(location)
+    await db.commit()
+    await db.refresh(location)
+    return location
+
+
+@router.post("/{trip_id}/lodging", response_model=TripLocationResponse)
+async def set_lodging(
+    trip_id: UUID,
+    data: LodgingSet,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """meili_upgrade: место из каталога (отель) — стартом/финишем дней.
+    Та же логика, что у set_lodging в плане Meili (services/lodging)."""
+    trip = await get_trip_or_404(trip_id, current_user.id, db)
+    place = (await db.execute(select(Place).where(Place.id == data.place_id))).scalar_one_or_none()
+    if place is None:
+        raise HTTPException(status_code=404, detail="place_not_found")
+    positions = None
+    if data.day_ids is not None:
+        positions = list((await db.execute(
+            select(TripDay.position).where(TripDay.trip_id == trip_id, TripDay.id.in_(data.day_ids))
+        )).scalars().all())
+        if len(positions) != len(set(data.day_ids)):
+            raise HTTPException(status_code=404, detail="day_not_found")
+    try:
+        location, _ = await lodging_service.set_lodging(
+            db, trip, place, day_positions=positions, role=data.role,
+        )
+    except lodging_service.LodgingError as e:
+        code = str(e)
+        raise HTTPException(status_code=404 if code == "day_not_found" else 422, detail=code)
     await db.commit()
     await db.refresh(location)
     return location

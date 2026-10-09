@@ -359,7 +359,8 @@
     "crashText": "Your data is safe on the server. Reload the page or go back to your trips.",
     "reload": "Reload",
     "turn_in_progress": "Meili is still answering the previous message",
-    "oauth_failed": "Google sign-in didn't complete — please try again"
+    "oauth_failed": "Google sign-in didn't complete — please try again",
+    "place_without_location": "The place has no coordinates"
   },
   "meili": {
     "title": "Meili",
@@ -403,7 +404,50 @@
     "starter1": "What to see with a child on day one?",
     "starter2": "How long does the day take on foot?",
     "starter3": "Find a café near the first stop",
-    "startersLabel": "You could start with"
+    "startersLabel": "You could start with",
+    "actionSetLodging": "Stay: {{name}}",
+    "actionAddExpense": "Expense: {{title}}",
+    "actionType_set_lodging": "Accommodation",
+    "actionType_add_expense": "Expense",
+    "placesFound": "Places found",
+    "cardAddToDay": "Add to day",
+    "cardLodging": "Stay here",
+    "cardAllDays": "All days",
+    "cardShowOnMap": "Show on map",
+    "cardAdded": "Added: {{day}}",
+    "cardLodged": "Trip accommodation",
+    "openNow": "open",
+    "closedNow": "closed",
+    "distanceM": "{{count}} m",
+    "distanceKm": "{{km}} km",
+    "outsideCity": "in another town",
+    "category": {
+      "hotel": "stay",
+      "museum": "museum",
+      "landmark": "sight",
+      "attraction": "attraction",
+      "viewpoint": "viewpoint",
+      "restaurant": "restaurant",
+      "cafe": "cafe",
+      "bar": "bar",
+      "park": "park",
+      "theatre": "theatre",
+      "beach": "beach",
+      "shopping": "shopping",
+      "historic": "historic"
+    },
+    "subtype": {
+      "hotel": "hotel",
+      "hostel": "hostel",
+      "guest_house": "guest house",
+      "apartment": "apartment",
+      "motel": "motel",
+      "bar": "bar",
+      "pub": "pub",
+      "zoo": "zoo",
+      "aquarium": "aquarium",
+      "theme_park": "theme park"
+    }
   },
   "planner": {
     "day": {

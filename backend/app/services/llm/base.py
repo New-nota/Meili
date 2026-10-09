@@ -60,6 +60,7 @@ class LLMClient(Protocol):
         messages: list[dict],
         tools: list[dict] | None,
         model: str,
+        tool_choice: str = "auto",   # 'auto' | 'required' (обязан вызвать tool)
     ) -> AsyncIterator[LLMEvent]:
         ...
 
@@ -68,6 +69,8 @@ class OpenAICompatibleClient:
     """База для провайдеров с OpenAI-совместимым SSE-стримингом."""
 
     base_url: str  # задаёт наследник
+    # как провайдер называет «обязан вызвать tool»: OpenAI/DeepSeek — required
+    required_tool_choice: str = "required"
 
     def __init__(
         self,
@@ -116,6 +119,7 @@ class OpenAICompatibleClient:
         messages: list[dict],
         tools: list[dict] | None,
         model: str,
+        tool_choice: str = "auto",
     ) -> AsyncIterator[LLMEvent]:
         """Ответ модели событиями.
 
@@ -129,7 +133,7 @@ class OpenAICompatibleClient:
         last_unavailable: ModelUnavailable | None = None
         for candidate in self._chain(model):
             try:
-                async for event in self._stream_with_retry(messages, tools, candidate):
+                async for event in self._stream_with_retry(messages, tools, candidate, tool_choice):
                     yield event
                 if candidate != model:
                     logger.warning("llm_model_fallback requested=%s used=%s", model, candidate)
@@ -152,12 +156,13 @@ class OpenAICompatibleClient:
         messages: list[dict],
         tools: list[dict] | None,
         model: str,
+        tool_choice: str = "auto",
     ) -> AsyncIterator[LLMEvent]:
         last_error: Exception | None = None
         for attempt in range(2):
             started = False
             try:
-                async for event in self._stream_once(messages, tools, model):
+                async for event in self._stream_once(messages, tools, model, tool_choice):
                     started = True
                     yield event
                 return
@@ -172,11 +177,14 @@ class OpenAICompatibleClient:
         messages: list[dict],
         tools: list[dict] | None,
         model: str,
+        tool_choice: str = "auto",
     ) -> AsyncIterator[LLMEvent]:
         payload: dict = {"model": model, "messages": messages, "stream": True}
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            payload["tool_choice"] = (
+                self.required_tool_choice if tool_choice == "required" else "auto"
+            )
 
         # tool-call'ы приходят кусками (index + дельты arguments) — копим до конца
         pending_calls: dict[int, dict] = {}

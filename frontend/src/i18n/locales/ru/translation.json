@@ -366,7 +366,8 @@
     "crashText": "Мы не потеряли ваши данные — они на сервере. Перезагрузите страницу или вернитесь к поездкам.",
     "reload": "Перезагрузить",
     "turn_in_progress": "Meili ещё отвечает на предыдущее сообщение",
-    "oauth_failed": "Вход через Google не завершился — попробуйте ещё раз"
+    "oauth_failed": "Вход через Google не завершился — попробуйте ещё раз",
+    "place_without_location": "У места нет координат"
   },
   "meili": {
     "title": "Meili",
@@ -410,7 +411,50 @@
     "starter1": "Что посмотреть с ребёнком в первый день?",
     "starter2": "Сколько займёт день пешком?",
     "starter3": "Найди кафе рядом с первой точкой",
-    "startersLabel": "Можно начать с"
+    "startersLabel": "Можно начать с",
+    "actionSetLodging": "Жильё: {{name}}",
+    "actionAddExpense": "Расход: {{title}}",
+    "actionType_set_lodging": "Жильё",
+    "actionType_add_expense": "Статья расходов",
+    "placesFound": "Найденные места",
+    "cardAddToDay": "В день",
+    "cardLodging": "Жильё",
+    "cardAllDays": "На все дни",
+    "cardShowOnMap": "Показать на карте",
+    "cardAdded": "Добавлено: {{day}}",
+    "cardLodged": "Жильё поездки",
+    "openNow": "открыто",
+    "closedNow": "закрыто",
+    "distanceM": "{{count}} м",
+    "distanceKm": "{{km}} км",
+    "outsideCity": "в другом городе",
+    "category": {
+      "hotel": "жильё",
+      "museum": "музей",
+      "landmark": "достопримечательность",
+      "attraction": "развлечения",
+      "viewpoint": "смотровая",
+      "restaurant": "ресторан",
+      "cafe": "кафе",
+      "bar": "бар",
+      "park": "парк",
+      "theatre": "театр",
+      "beach": "пляж",
+      "shopping": "шопинг",
+      "historic": "история"
+    },
+    "subtype": {
+      "hotel": "отель",
+      "hostel": "хостел",
+      "guest_house": "гостевой дом",
+      "apartment": "апартаменты",
+      "motel": "мотель",
+      "bar": "бар",
+      "pub": "паб",
+      "zoo": "зоопарк",
+      "aquarium": "океанариум",
+      "theme_park": "парк развлечений"
+    }
   },
   "planner": {
     "day": {

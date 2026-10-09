@@ -341,7 +341,8 @@
     "crashText": "Deine Daten sind sicher auf dem Server. Lade die Seite neu oder geh zurück zu deinen Reisen.",
     "reload": "Neu laden",
     "turn_in_progress": "Meili antwortet noch auf die vorherige Nachricht",
-    "oauth_failed": "Anmeldung mit Google nicht abgeschlossen — bitte erneut versuchen"
+    "oauth_failed": "Anmeldung mit Google nicht abgeschlossen — bitte erneut versuchen",
+    "place_without_location": "Der Ort hat keine Koordinaten"
   },
   "planner": {
     "day": {
@@ -441,7 +442,50 @@
     "starter1": "Was kann man am ersten Tag mit Kind ansehen?",
     "starter2": "Wie lange dauert der Tag zu Fuß?",
     "starter3": "Finde ein Café beim ersten Ort",
-    "startersLabel": "Zum Beispiel"
+    "startersLabel": "Zum Beispiel",
+    "actionSetLodging": "Unterkunft: {{name}}",
+    "actionAddExpense": "Ausgabe: {{title}}",
+    "actionType_set_lodging": "Unterkunft",
+    "actionType_add_expense": "Ausgabe",
+    "placesFound": "Gefundene Orte",
+    "cardAddToDay": "Zum Tag",
+    "cardLodging": "Hier wohnen",
+    "cardAllDays": "Alle Tage",
+    "cardShowOnMap": "Auf der Karte zeigen",
+    "cardAdded": "Hinzugefügt: {{day}}",
+    "cardLodged": "Unterkunft der Reise",
+    "openNow": "geöffnet",
+    "closedNow": "geschlossen",
+    "distanceM": "{{count}} m",
+    "distanceKm": "{{km}} km",
+    "outsideCity": "in einem anderen Ort",
+    "category": {
+      "hotel": "Unterkunft",
+      "museum": "Museum",
+      "landmark": "Sehenswürdigkeit",
+      "attraction": "Freizeit",
+      "viewpoint": "Aussichtspunkt",
+      "restaurant": "Restaurant",
+      "cafe": "Café",
+      "bar": "Bar",
+      "park": "Park",
+      "theatre": "Theater",
+      "beach": "Strand",
+      "shopping": "Shopping",
+      "historic": "Geschichte"
+    },
+    "subtype": {
+      "hotel": "Hotel",
+      "hostel": "Hostel",
+      "guest_house": "Gästehaus",
+      "apartment": "Apartment",
+      "motel": "Motel",
+      "bar": "Bar",
+      "pub": "Pub",
+      "zoo": "Zoo",
+      "aquarium": "Aquarium",
+      "theme_park": "Freizeitpark"
+    }
   },
   "visited": {
     "rateTitle": "Bewertung",

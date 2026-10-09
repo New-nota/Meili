@@ -55,15 +55,48 @@ def test_radius_from_bbox_is_clamped():
 def test_area_query_has_every_category_with_cap():
     q = _build_area_query(48.86, 2.34, 5000)
     for key, value, _, cap in catalog.CATALOG_CATEGORIES:
-        assert (f'["{key}"="{value}"]' if value else f'["{key}"]') in q
+        assert catalog._osm_selector(key, value) in q
         assert f"out center tags {cap};" in q
     assert q.count('["name"]') == 2 * len(catalog.CATALOG_CATEGORIES)  # безымянное не тянем
+    assert '["tourism"~"^(hotel|hostel|guest_house|apartment|motel)$"]' in q
+
+
+def test_category_query_takes_only_its_entries():
+    # museum = музеи + галереи, ничего лишнего
+    q = _build_area_query(48.86, 2.34, 5000, catalog._entries("museum"))
+    assert '"museum"' in q and '"gallery"' in q and "restaurant" not in q
 
 
 def test_category_of_tags():
     assert _category_of({"tourism": "museum"}) == "museum"
     assert _category_of({"historic": "castle"}) == "historic"
     assert _category_of({"shop": "bakery"}) is None
+    assert _category_of({"tourism": "hostel"}) == "hotel"
+    assert _category_of({"amenity": "pub"}) == "bar"
+    assert _category_of({"amenity": "fast_food"}) is None  # осознанно не берём
+    # музей-усадьба — музей, а не просто «историческое»
+    assert _category_of({"tourism": "museum", "historic": "manor"}) == "museum"
+
+
+def test_osmium_filters_cover_tuples():
+    f = catalog.osmium_filters()
+    assert "nwr/tourism=hotel,hostel,guest_house,apartment,motel" in f
+    assert "nwr/historic " in f + " "
+
+
+def test_poi_extras_from_osm_tags():
+    extras = catalog.poi_extras({
+        "tourism": "hostel", "stars": "3", "opening_hours": "24/7",
+    })
+    assert extras["tags"] == ["hostel", "stars:3"]
+    assert extras["opening_hours"]["su"] == [["00:00", "24:00"]]
+    assert extras["pricing_model"] is None
+    park = catalog.poi_extras({"leisure": "park", "fee": "no"})
+    assert park == {"opening_hours": None, "pricing_model": "free", "tags": None}
+    food = catalog.poi_extras({"amenity": "restaurant", "cuisine": "georgian;italian"})
+    assert food["tags"] == ["cuisine:georgian", "cuisine:italian"]
+    # fee=yes — цены всё равно нет: не «бесплатно» и не ноль
+    assert catalog.poi_extras({"tourism": "museum", "fee": "yes"})["pricing_model"] is None
 
 
 class FakeRedis:
@@ -119,27 +152,64 @@ async def test_geocode_city_down_is_unknown_not_none(monkeypatch):
         await geocode_city("Берлин")
 
 
-async def test_fetch_area_survives_failed_category(monkeypatch):
-    """Живой прогон по Москве: тяжёлый запрос Overpass отбивал 504. По
-    категории за запрос — упавшая категория не обнуляет остальные."""
+async def test_fetch_category_is_one_request(monkeypatch):
+    """Одна категория — один запрос; теги OSM доезжают до места."""
     real = httpx.AsyncClient
+    queries = []
 
     def handler(request):
-        q = request.read().decode()
-        if "restaurant" in q:
-            return httpx.Response(504)
-        if "museum" in q:
-            return httpx.Response(200, json={"elements": [
-                {"type": "node", "id": 7, "lat": 55.75, "lon": 37.62,
-                 "tags": {"tourism": "museum", "name": "ГИМ"}},
-            ]})
-        return httpx.Response(200, json={"elements": []})
+        queries.append(request.read().decode())
+        return httpx.Response(200, json={"elements": [
+            {"type": "node", "id": 7, "lat": 55.75, "lon": 37.62,
+             "tags": {"tourism": "hotel", "name": "Метрополь", "stars": "5",
+                      "opening_hours": "24/7"}},
+        ]})
 
     monkeypatch.setattr(catalog.httpx, "AsyncClient",
                         lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
-    pois, complete = await catalog._fetch_area(55.75, 37.62, 5000)
-    assert [p["name"] for p in pois] == ["ГИМ"] and pois[0]["category"] == "museum"
-    assert complete is False  # дотянем позже, а не через месяц
+    pois = await catalog._fetch_category(55.75, 37.62, 5000, "hotel")
+    assert len(queries) == 1 and "restaurant" not in queries[0]
+    assert pois[0]["name"] == "Метрополь" and pois[0]["category"] == "hotel"
+    assert pois[0]["tags"] == ["hotel", "stars:5"] and pois[0]["opening_hours"]["mo"]
+
+
+async def test_ensure_category_overpass_down_is_marked_fail(monkeypatch):
+    """Overpass лёг — метка fail на час, ход не падает."""
+    class Redis(FakeRedis):
+        async def exists(self, key):
+            return int(key in self.data)
+
+        async def set(self, key, value, nx=False, ex=None):
+            if nx and key in self.data:
+                return None
+            self.data[key] = value
+            return True
+
+        async def delete(self, key):
+            self.data.pop(key, None)
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def commit(self):
+            pass
+
+    async def no_places(db, city, category):
+        return 0
+
+    async def down(*a):
+        raise httpx.ConnectError("down")
+
+    redis = Redis()
+    monkeypatch.setattr(catalog, "_category_count", no_places)
+    monkeypatch.setattr(catalog, "_fetch_category", down)
+    city = catalog.CityRef("Тбилиси", 41.69, 44.80)
+    assert await catalog.ensure_category(city, "hotel", factory=Session, redis=redis) == 0
+    assert redis.data[catalog._area_key(city, "hotel")] == "fail"
 
 
 def test_seed_feature_to_poi():
@@ -160,6 +230,11 @@ def test_seed_feature_to_poi():
     assert feature_to_poi(far, moscow) is None
     nameless = {**museum, "properties": {"tourism": "museum"}}
     assert feature_to_poi(nameless, moscow) is None
+    # meili_upgrade: теги OSM из pbf — те же extras, что у Overpass
+    beach = {"id": "w9", "properties": {"natural": "beach", "name": "Серебряный бор", "fee": "no"},
+             "geometry": {"type": "Point", "coordinates": [37.42, 55.78]}}
+    poi = feature_to_poi(beach, moscow)
+    assert poi["category"] == "beach" and poi["pricing_model"] == "free"
 
 
 async def test_valhalla_cache_serves_repeat_and_survives_redis_outage(monkeypatch):
@@ -205,3 +280,21 @@ async def test_valhalla_cache_serves_repeat_and_survives_redis_outage(monkeypatc
     monkeypatch.setattr(redis_mod, "redis_client", DeadRedis())
     assert await valhalla._route_call(pts, "auto")  # без кэша, но работает
     assert len(calls) == 2
+
+
+async def test_fill_area_stops_on_overpass_429(monkeypatch):
+    """Живой смоук: 429 — значит, мы и так долбим публичный сервер; фон
+    останавливается, а не перебирает оставшиеся категории."""
+    from app.workers import catalog_fill
+
+    calls = []
+
+    async def ensure(city, category, factory=None, redis=None):
+        calls.append(category)
+        if len(calls) == 2:
+            raise catalog.OverpassBusy("429")
+        return 1
+
+    monkeypatch.setattr(catalog_fill, "ensure_category", ensure)
+    added = await catalog_fill.fill_area(catalog.CityRef("Тбилиси", 41.69, 44.80), pause_s=0)
+    assert added == 1 and len(calls) == 2

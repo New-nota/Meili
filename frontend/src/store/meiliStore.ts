@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { MeiliMessage, PlanEvent } from '../api/meili'
+import type { MeiliMessage, PlaceCard, PlanEvent } from '../api/meili'
 
 // Zustand-стор чата Meili (ТЗ-Meili M1.6).
 // Токены дописываются в последнее сообщение ассистента по мере стрима.
@@ -16,6 +16,7 @@ interface MeiliState {
     startTurn: (userText: string) => void
     appendToken: (text: string) => void
     setStep: (label: string | null) => void
+    addPlaces: (places: PlaceCard[]) => void
     setPlan: (plan: PlanEvent | null) => void
     finishTurn: () => void
     failTurn: (detail: string) => void
@@ -54,6 +55,19 @@ export const useMeiliStore = create<MeiliState>((set) => ({
     }),
 
     setStep: (label) => set({ stepLabel: label }),
+
+    // meili_upgrade: карточки найденного — к ответу текущего хода; повторный
+    // поиск в том же ходе дописывает новые места, дубли по id не плодим
+    addPlaces: (places) => set(s => {
+        const messages = [...s.messages]
+        const last = messages[messages.length - 1]
+        if (last?.role !== 'assistant') return {}
+        const known = new Set((last.places ?? []).map(p => p.place_id))
+        messages[messages.length - 1] = {
+            ...last, places: [...(last.places ?? []), ...places.filter(p => !known.has(p.place_id))],
+        }
+        return { messages }
+    }),
     setPlan: (plan) => set({ plan }),
     finishTurn: () => set({ streaming: false, stepLabel: null }),
 

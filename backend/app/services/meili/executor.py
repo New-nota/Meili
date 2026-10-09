@@ -19,11 +19,12 @@ from app.core.logging import get_logger
 from app.models.conversation import Conversation
 from app.models.meili_plan import MeiliPlan
 from app.models.place import Place
-from app.models.trip import Trip, TripDay, TripStop
+from app.models.trip import Trip, TripDay, TripExpense, TripStop
 from app.schemas.plan import (
-    AddStopAction, CreateTripAction, OptimizeAction, ProposedPlan,
-    RemoveStopAction, SetBudgetAction, SetStopCostAction,
+    AddExpenseAction, AddStopAction, CreateTripAction, OptimizeAction, ProposedPlan,
+    RemoveStopAction, SetBudgetAction, SetLodgingAction, SetStopCostAction,
 )
+from app.services import lodging as lodging_service
 from app.services import stops as stops_service
 from app.services.budget_estimate import recompute_auto_stops
 from app.services.optimizer import OutOfCoverageError, apply_day_optimization
@@ -257,6 +258,47 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
                     if trip is None:
                         raise ApplyError("no_trip_in_conversation", 400)
                     await _optimize_trip(db, trip)
+
+                case SetLodgingAction():
+                    # meili_upgrade: общий сервис с кнопкой «Жильё» в чате
+                    if trip is None:
+                        raise ApplyError("no_trip_in_conversation", 400)
+                    place = (await db.execute(
+                        select(Place).where(Place.id == action.place_id)
+                    )).scalar_one_or_none()
+                    if place is None:
+                        raise ApplyError("place_not_found", 400)
+                    positions = (
+                        [i + 1 for i in action.day_indexes] if action.day_indexes else None
+                    )
+                    try:
+                        await lodging_service.set_lodging(
+                            db, trip, place, day_positions=positions, role=action.role,
+                        )
+                    except lodging_service.LodgingError as e:
+                        raise ApplyError(str(e), 400)
+
+                case AddExpenseAction():
+                    if trip is None:
+                        raise ApplyError("no_trip_in_conversation", 400)
+                    # одна валюта на поездку, без конвертаций (S9)
+                    if action.currency.upper() != trip.currency:
+                        raise ApplyError("currency_mismatch", 400)
+                    day_id = None
+                    if action.day_index is not None:
+                        day_id = (await db.execute(
+                            select(TripDay.id).where(
+                                TripDay.trip_id == trip.id,
+                                TripDay.position == action.day_index + 1,
+                            )
+                        )).scalar_one_or_none()
+                        if day_id is None:
+                            raise ApplyError("day_not_found", 400)
+                    db.add(TripExpense(
+                        trip_id=trip.id, day_id=day_id, category=action.category,
+                        title=action.title, amount=action.amount,
+                        currency=trip.currency,
+                    ))
 
         # проставляем связь диалога с созданной поездкой (M4.2 шаг 4)
         if trip is not None and conversation.trip_id is None:

@@ -350,7 +350,8 @@
     "crashText": "Vos données sont en sécurité sur le serveur. Rechargez la page ou revenez à vos voyages.",
     "reload": "Recharger",
     "turn_in_progress": "Meili répond encore au message précédent",
-    "oauth_failed": "La connexion avec Google n’a pas abouti — réessayez"
+    "oauth_failed": "La connexion avec Google n’a pas abouti — réessayez",
+    "place_without_location": "Ce lieu n’a pas de coordonnées"
   },
   "planner": {
     "day": {
@@ -450,7 +451,50 @@
     "starter1": "Que voir avec un enfant le premier jour ?",
     "starter2": "Combien de temps dure la journée à pied ?",
     "starter3": "Trouve un café près du premier lieu",
-    "startersLabel": "Par exemple"
+    "startersLabel": "Par exemple",
+    "actionSetLodging": "Hébergement : {{name}}",
+    "actionAddExpense": "Dépense : {{title}}",
+    "actionType_set_lodging": "Hébergement",
+    "actionType_add_expense": "Dépense",
+    "placesFound": "Lieux trouvés",
+    "cardAddToDay": "Au jour",
+    "cardLodging": "Loger ici",
+    "cardAllDays": "Tous les jours",
+    "cardShowOnMap": "Voir sur la carte",
+    "cardAdded": "Ajouté : {{day}}",
+    "cardLodged": "Hébergement du voyage",
+    "openNow": "ouvert",
+    "closedNow": "fermé",
+    "distanceM": "{{count}} m",
+    "distanceKm": "{{km}} km",
+    "outsideCity": "dans une autre ville",
+    "category": {
+      "hotel": "hébergement",
+      "museum": "musée",
+      "landmark": "site",
+      "attraction": "loisirs",
+      "viewpoint": "point de vue",
+      "restaurant": "restaurant",
+      "cafe": "café",
+      "bar": "bar",
+      "park": "parc",
+      "theatre": "théâtre",
+      "beach": "plage",
+      "shopping": "shopping",
+      "historic": "histoire"
+    },
+    "subtype": {
+      "hotel": "hôtel",
+      "hostel": "auberge de jeunesse",
+      "guest_house": "maison d’hôtes",
+      "apartment": "appartement",
+      "motel": "motel",
+      "bar": "bar",
+      "pub": "pub",
+      "zoo": "zoo",
+      "aquarium": "aquarium",
+      "theme_park": "parc d’attractions"
+    }
   },
   "visited": {
     "rateTitle": "Note",

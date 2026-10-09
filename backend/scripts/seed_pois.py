@@ -13,7 +13,8 @@ OSM региона у нас и так лежит в valhalla_data/regions.osm.p
     <geojsonseq> | docker compose exec -T backend python -m scripts.seed_pois \\
         --bbox 55.35,36.95,56.05,38.15
 
-Идемпотентен: get-or-create по osm_id (общий add_pois с автозаполнением).
+Идемпотентен: get-or-create по osm_id (общий add_pois с автозаполнением);
+повторный прогон дописывает известным местам пустые часы/теги.
 """
 import argparse
 import asyncio
@@ -23,7 +24,7 @@ import sys
 from shapely.geometry import shape
 
 from app.core.database import AsyncSessionLocal
-from app.services.places.catalog import _category_of, add_pois
+from app.services.places.catalog import _category_of, add_pois, poi_extras
 
 BATCH = 2000
 OSM_TYPES = {"n": "node", "w": "way", "r": "relation", "a": "area"}
@@ -57,6 +58,8 @@ def feature_to_poi(feature: dict, bbox: tuple[float, float, float, float]) -> di
         # нет addr:city — без города (поиск Meili найдёт по радиусу), а не
         # «Москва» всем подряд: так когда-то мытищинское стало бы московским
         "city": props.get("addr:city"),
+        # часы, «бесплатно», подтип/звёзды/кухня (meili_upgrade)
+        **poi_extras(props),
     }
 
 

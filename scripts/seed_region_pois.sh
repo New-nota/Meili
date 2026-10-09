@@ -19,8 +19,8 @@ IFS=, read -r s w n e <<< "$bbox"
 
 # фильтр osmium из тех же категорий, что у автозаполнения — не разъедутся
 filters="$(docker compose exec -T backend python -c '
-from app.services.places.catalog import CATALOG_CATEGORIES
-print(" ".join(f"nwr/{k}={v}" if v else f"nwr/{k}" for k, v, _, _ in CATALOG_CATEGORIES))
+from app.services.places.catalog import osmium_filters
+print(osmium_filters())
 ' 2>/dev/null)"
 
 echo "[$(date "+%F %T")] $REGION: bbox $bbox, фильтр: $filters"

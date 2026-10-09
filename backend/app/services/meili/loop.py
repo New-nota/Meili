@@ -29,6 +29,7 @@ from app.services.llm.factory import get_client
 from app.services.meili.plan_refs import resolve_references
 from app.services.meili.snapshot import build_snapshot
 from app.services.meili.tools.registry import STEP_LABELS, TOOL_SCHEMAS, run_tool
+from app.services.meili.tools.search_places import wants_places
 
 logger = get_logger("meili.loop")
 
@@ -88,7 +89,18 @@ SYSTEM_PROMPT = (
     "- Цена: если в результате «стоимость неизвестна», не пиши «бесплатно» даже "
     "про парк, сквер или набережную — просто не называй цену.\n"
     "- day_index в плане — с нуля: первый день поездки = 0. Даты дней бери из "
-    "снапшота, не вычисляй."
+    "снапшота, не вычисляй.\n"
+    # meili_upgrade: «могу помочь!» без поиска — главная жалоба
+    "- Просьба найти/посоветовать места, жильё, еду — это вызов search_places "
+    "СЕЙЧАС, а не обещание «могу помочь». Найденное пользователь видит "
+    "карточками под твоим ответом: перечисли 3–5 лучших с короткой причиной.\n"
+    "- Жильё — category=hotel (отели, хостелы, апартаменты; подтип и stars:N "
+    "— в tags). Цен на жильё у системы нет: не называй их. Поселить в отель "
+    "— действие set_lodging в плане (по умолчанию на все дни, старт и финиш "
+    "дня). Сумму за проживание (add_expense, category=lodging) добавляй, "
+    "только если её назвал пользователь.\n"
+    "- Поиск вернул пустой список — так и скажи: «не нашла <что> в <город>», "
+    "и предложи другое: соседнюю категорию, ориентир рядом, другой город."
 )
 
 # propose_plan — псевдо-tool структурированного вывода (M3.3): его аргументы
@@ -227,6 +239,25 @@ def remember_places(conversation: Conversation, tool_result) -> None:
     conversation.recent_places_json = (found + previous)[:RECENT_PLACES_LIMIT]
 
 
+# поля карточки места в чате (meili_upgrade): только факты системы из
+# результата поиска — модель их не пишет и не может исказить
+CARD_FIELDS = (
+    "place_id", "name", "category", "address", "city", "tags", "lat", "lon",
+    "is_open_now", "price", "price_is_estimate", "distance_m",
+    "outside_requested_city",
+)
+
+
+def place_cards(tool_result) -> list[dict]:
+    if not isinstance(tool_result, list):
+        return []
+    return [
+        {k: item[k] for k in CARD_FIELDS if k in item}
+        for item in tool_result
+        if isinstance(item, dict) and item.get("place_id")
+    ]
+
+
 def _schedule_summarize(conversation_id: UUID) -> None:
     """Фоновая суммаризация (M5.3) — best-effort: без брокера ход не падает."""
     try:
@@ -241,7 +272,7 @@ async def run_turn(
 ) -> AsyncIterator[dict]:
     """Один ход диалога: сохранить реплику, прогнать loop c tools, стримить события.
 
-    Событие — {'event': 'token'|'step'|'plan'|'done'|'error', 'data': {...}}.
+    Событие — {'event': 'token'|'step'|'places'|'plan'|'done'|'error', 'data': {...}}.
     Кап LLM_MAX_STEPS: на последнем шаге read-tools не передаются — модель
     обязана ответить тем, что уже собрала. LLM_STEP_TIMEOUT_S — сколько шаг
     может МОЛЧАТЬ (пауза между событиями стрима), а не сколько всего длиться.
@@ -282,6 +313,13 @@ async def run_turn(
             # на нём нельзя — а значит держать его до конца безопасно.
             last_step = step == settings.LLM_MAX_STEPS - 1
             tools = [PROPOSE_PLAN_SCHEMA] if last_step else [*TOOL_SCHEMAS, PROPOSE_PLAN_SCHEMA]
+            # meili_upgrade: юзер просит места — на первом шаге модель ОБЯЗАНА
+            # вызвать tool (поиск или план), а не пообещать текстом. Дальше
+            # свободна: иначе она не смогла бы ответить вовсе
+            tool_choice = (
+                "required" if step == 0 and not last_step and wants_places(user_text)
+                else "auto"
+            )
 
             step_text = ""
             tool_calls: list = []
@@ -296,7 +334,9 @@ async def run_turn(
             # чатов выбирали пул целиком, и вставало всё API. commit отдаёт
             # соединение; следующий запрос сессии возьмёт новое
             await db.commit()
-            events = client.stream(messages, tools=tools, model=client.model_loop)
+            events = client.stream(
+                messages, tools=tools, model=client.model_loop, tool_choice=tool_choice,
+            )
             try:
                 while True:
                     try:
@@ -378,6 +418,8 @@ async def run_turn(
                 # нет ни одного настоящего place_id, только названия из
                 # собственного текста. Отсюда и брались сочинённые UUID.
                 remember_places(conversation, result)
+                if tc.name == "search_places" and (cards := place_cards(result)):
+                    yield {"event": "places", "data": {"places": cards}}
                 audit.append({"name": tc.name, "arguments": tc.arguments, "result": result})
                 messages.append({
                     "role": "tool",
