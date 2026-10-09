@@ -2,7 +2,7 @@
 городу, Meili в чужом городе и автозаполнение каталога из OSM."""
 import json
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.place import Place
