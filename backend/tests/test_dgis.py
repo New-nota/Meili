@@ -11,6 +11,28 @@ from app.core.config import settings
 from app.services.providers import dgis
 
 ITEMS = json.loads((Path(__file__).parent / "fixtures" / "dgis_items.json").read_text())
+# живой ответ 2ГИС (сокращён): ресторан и отель «Метрополь» в одном здании
+METROPOL = json.loads((Path(__file__).parent / "fixtures" / "dgis_metropol.json").read_text())
+
+
+def test_live_format_check_and_lodging_price():
+    restaurant, hotel = (dgis.parse_item(i) for i in METROPOL["result"]["items"])
+    assert restaurant.avg_check == Decimal("1700.00") and restaurant.currency == "RUB"
+    # «Пожить · Цена от 28000 ₽» — цена номера; «Номер: С77…» реестра — не цена
+    assert hotel.lodging_price_from == Decimal("28000.00") and hotel.avg_check is None
+    # число ОЦЕНОК (по ним считан рейтинг), а не текстовых отзывов
+    assert restaurant.rating_count == 40 and hotel.rating_count == 1188
+
+
+def test_match_respects_place_kind():
+    """Живой прогон: отель «Метрополь» сматчился с рестораном того же имени."""
+    items = METROPOL["result"]["items"]
+    assert dgis.best_match("Метрополь", 55.7584, 37.6214, items, "hotel")["id"] == "4504127908550001"
+    assert dgis.best_match("Метрополь", 55.7584, 37.6214, items, "restaurant")["id"] == "4504127908543690"
+
+
+def test_lunch_price_is_not_avg_check():
+    assert dgis.parse_price_attributes(["Ресторан / Кафе Ланч от 1380 ₽"]) == (None, None, None)
 
 
 def test_parse_item_takes_rating_hours_and_avg_check():
@@ -25,6 +47,8 @@ def test_parse_item_takes_rating_hours_and_avg_check():
 @pytest.mark.parametrize("texts, expected", [
     (["Средний счёт до 500 ₽"], (Decimal("500.00"), None, "RUB")),
     (["Номер от 3 500 ₽ за ночь"], (None, Decimal("3500.00"), "RUB")),
+    (["Ресторан / Кафе Чек 7500 ₽"], (Decimal("7500.00"), None, "RUB")),     # живой формат
+    (["Пожить Цена от 28000 ₽"], (None, Decimal("28000.00"), "RUB")),       # живой формат
     (["Средний чек 4000–6000 тенге"], (Decimal("5000.00"), None, "KZT")),
     (["Средний счёт 30–50 бел. руб."], (Decimal("40.00"), None, "BYN")),
     (["Средний счёт 1500"], (None, None, None)),     # без валюты — не факт

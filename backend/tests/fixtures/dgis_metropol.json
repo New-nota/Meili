@@ -1,0 +1,27 @@
+{
+  "meta": {"api_version": "3.0", "code": 200},
+  "result": {
+    "total": 2,
+    "items": [
+      {
+        "id": "4504127908543690",
+        "name": "Метрополь, ресторан",
+        "point": {"lat": 55.758243, "lon": 37.621066},
+        "reviews": {"general_rating": 4.9, "general_review_count": 11, "general_review_count_with_stars": 40},
+        "attribute_groups": [
+          {"name": "Ресторан / Кафе", "attributes": [{"name": "Чек 1700 ₽"}, {"name": "Русская кухня"}, {"name": "До 180 мест"}]}
+        ]
+      },
+      {
+        "id": "4504127908550001",
+        "name": "METROPOL Отель Москва",
+        "point": {"lat": 55.758699, "lon": 37.621639},
+        "reviews": {"general_rating": 5, "general_review_count": 318, "general_review_count_with_stars": 1188},
+        "attribute_groups": [
+          {"name": "Регистрация в реестре", "attributes": [{"name": "Номер: С772024001585"}]},
+          {"name": "Пожить", "attributes": [{"name": "Цена от 28000 ₽"}, {"name": "5 звёзд"}, {"name": "250 номеров"}]}
+        ]
+      }
+    ]
+  }
+}

@@ -122,10 +122,11 @@ i18n).
 - `stops.py` — add_stop/remove_stop без commit: общая логика api/stops.py и
   Meili-executor'а (позиции в хвост дня, смыкание, авто-оценка ТЗ-E).
 - `providers/` (этап B) — внешние факты о местах: `dgis.py` (поиск объекта
-  2ГИС рядом с точкой OSM: имя похоже + ≤150 м; парсер `reviews`/`schedule`/
-  `attribute_groups` — «Средний счёт A–B ₽» → середина, «номер от N»;
-  **написан по документации без живого ключа** — сверять
-  `python -m scripts.dgis_probe`), `enrich.py` (`enrich_places`: зовётся из
+  2ГИС рядом с точкой OSM: имя похоже, в т.ч. через транслит, + ≤150 м + вид
+  совпадает — отель ↔ объект с группой «Пожить», иначе ловился ресторан того
+  же имени в здании; парсер сверен с живым ответом: «Ресторан / Кафе · Чек N ₽»,
+  «Пожить · Цена от N ₽», число оценок — `general_review_count_with_stars`;
+  проверка формата — `python -m scripts.dgis_probe`), `enrich.py` (`enrich_places`: зовётся из
   search_places по показываемым местам, бюджет 3 с, не успели → Celery
   `dgis.enrich_places`; «нет в 2ГИС» — кэш 30 дн.; суточный
   `DGIS_DAILY_LIMIT`; зона `DGIS_COVERAGE`; manual-цену не трогает, часы — только
@@ -392,9 +393,9 @@ places | plan | done | error` (`places` — карточки найденног�
 
 ## Незакрытое / особенности
 
-- Цены мест: 2ГИС-обогащение (этап B) ждёт живого ключа — до него цены
-  только через `PATCH /places/{id}` (ставит `price_source=manual`) или сид.
-  Билетов музеев 2ГИС, похоже, не даёт.
+- Цены мест: 2ГИС-обогащение (этап B) работает с ключом в `.env`
+  (`DGIS_API_KEY`); без него — только `PATCH /places/{id}` (ставит
+  `price_source=manual`) или сид. Билетов музеев 2ГИС, похоже, не даёт.
 - Mistral из РФ (2026-10-02): тем же ключом large → 403 `tier_not_allowed`,
   small/medium/magistral → 429 с `x-ratelimit-limit-req-minute: 0`, а
   `ministral-14b/8b/3b` и codestral отвечают (с сервера в КЗ ключ видит всё).
