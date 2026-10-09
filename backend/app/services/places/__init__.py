@@ -47,6 +47,10 @@ def place_to_dict(place: Place)-> dict:
         "ticket_adult": place.ticket_adult,
         "ticket_child": place.ticket_child,
         "price_currency": place.price_currency,
+        # этап B (2ГИС)
+        "rating_count": place.rating_count,
+        "price_source": place.price_source,
+        "lodging_price_from": place.lodging_price_from,
     }
     if place.location is not None:
         point = to_shape(place.location)

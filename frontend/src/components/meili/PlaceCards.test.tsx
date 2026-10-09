@@ -23,8 +23,21 @@ describe('PlaceCards', () => {
         const html = renderToStaticMarkup(<PlaceCards places={[hostel, cafe]} />)
         expect(html).toContain('Хостел Арбат')
         expect(html).toContain('хостел')
+        expect(html).toContain('2 звезды')
         expect(html).toContain('открыто')
         expect(html).toContain('420 м')
+    })
+
+    it('этап B: рейтинг с отзывами, ≈ средний счёт, «номер от», подпись 2ГИС', () => {
+        const html = renderToStaticMarkup(<PlaceCards places={[
+            { ...cafe, rating: '4.60', rating_count: 231, avg_check: '1750.00', price_currency: 'RUB', price_source: '2gis' },
+            { ...hostel, lodging_price_from: '3500.00', price_currency: 'RUB', price_source: '2gis' },
+        ]} />)
+        expect(html).toContain('4,6')
+        expect(html).toContain('(231)')
+        expect(html).toMatch(/≈ 1\s?750\s?₽ на человека/)
+        expect(html).toMatch(/номер от 3\s?500\s?₽/)
+        expect(html).toContain('2ГИС')
     })
 
     it('без поездки — только карточки, кнопок записи нет', () => {

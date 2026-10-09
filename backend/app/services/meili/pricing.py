@@ -36,7 +36,8 @@ async def resolve_price(place: Place) -> PriceInfo:
         return PriceInfo(
             source="price_level", is_estimate=False,
             amount=Decimal(place.avg_check), currency=place.price_currency,
-            label=f"средний чек {place.avg_check} {place.price_currency or ''}".strip(),
+            label=f"средний чек {place.avg_check} {place.price_currency or ''}".strip()
+            + (" (по данным 2ГИС)" if place.price_source == "2gis" else ""),
         )
     if place.pricing_model == "ticketed" and place.ticket_adult is not None:
         label = f"билет {place.ticket_adult}"

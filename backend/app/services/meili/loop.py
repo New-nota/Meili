@@ -99,6 +99,10 @@ SYSTEM_PROMPT = (
     "— действие set_lodging в плане (по умолчанию на все дни, старт и финиш "
     "дня). Сумму за проживание (add_expense, category=lodging) добавляй, "
     "только если её назвал пользователь.\n"
+    "- rating называй только вместе с rating_count («4,6 — 230 отзывов»). "
+    "lodging_price_from — это «номер от N за ночь» по данным 2ГИС: нижняя "
+    "граница, а не цена проживания — так и говори «от N», в add_expense не "
+    "подставляй. price_source=2gis — говори «по данным 2ГИС».\n"
     "- Поиск вернул пустой список — так и скажи: «не нашла <что> в <город>», "
     "и предложи другое: соседнюю категорию, ориентир рядом, другой город."
 )
@@ -245,6 +249,8 @@ CARD_FIELDS = (
     "place_id", "name", "category", "address", "city", "tags", "lat", "lon",
     "is_open_now", "price", "price_is_estimate", "distance_m",
     "outside_requested_city",
+    # этап B (2ГИС)
+    "rating", "rating_count", "avg_check", "lodging_price_from", "price_currency", "price_source",
 )
 
 

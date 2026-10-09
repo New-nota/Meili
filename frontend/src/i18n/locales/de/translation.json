@@ -485,7 +485,14 @@
       "zoo": "Zoo",
       "aquarium": "Aquarium",
       "theme_park": "Freizeitpark"
-    }
+    },
+    "cardAvgCheck": "≈ {{amount}} pro Person",
+    "cardLodgingFrom": "Zimmer ab {{amount}}",
+    "source2gis": "2GIS",
+    "cardReviews_one": "{{count}} Bewertung",
+    "cardReviews_other": "{{count}} Bewertungen",
+    "hotelStars_one": "{{count}} Stern",
+    "hotelStars_other": "{{count}} Sterne"
   },
   "visited": {
     "rateTitle": "Bewertung",

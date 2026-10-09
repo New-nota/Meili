@@ -12,7 +12,7 @@ celery_app = Celery(
     "meili",
     broker=settings.REDIS_URL,
     # include вместо встречного импорта тасков — иначе циклический импорт
-    include=["app.workers.meili_summarize", "app.workers.catalog_fill"],
+    include=["app.workers.meili_summarize", "app.workers.catalog_fill", "app.workers.dgis_enrich"],
 )
 celery_app.conf.update(
     task_ignore_result=True,      # результаты не читаем — backend не нужен

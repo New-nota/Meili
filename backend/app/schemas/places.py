@@ -81,6 +81,10 @@ class PlaceResponse(BaseModel):
     ticket_adult: Optional[Decimal] = None
     ticket_child: Optional[Decimal] = None
     price_currency: Optional[str] = None
+    # этап B (2ГИС): источник цены, число отзывов, «номер от» (только показ)
+    rating_count: Optional[int] = None
+    price_source: Optional[Literal["osm", "2gis", "manual"]] = None
+    lodging_price_from: Optional[Decimal] = None
 
     class Config:
         from_attributes = True

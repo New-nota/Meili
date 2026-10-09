@@ -35,6 +35,7 @@ from app.services.places.catalog import (
 )
 from app.services.places.geo import haversine_m
 from app.services.places.opening import is_open_at
+from app.services.providers.enrich import enrich_places
 
 logger = logging.getLogger("meili.search")
 
@@ -337,27 +338,38 @@ async def search_places(
         except ValueError:
             pass
 
-    results = []
+    # сначала — какие места покажем (дубли, ориентир, порядок), потом —
+    # обогащение ровно их: 2ГИС спрашиваем только про то, что увидит модель
+    shown: list[tuple[Place, object, int | None]] = []
     seen_keys: set[tuple] = set()
     for p in places:
         # QA: в каталоге бывают дубли одного места (разные osm_id у node/way) —
         # модель показывала «Иммануил Кант» дважды подряд
-        pt_key = None
-        if p.location is not None:
-            pt0 = to_shape(p.location)
-            pt_key = (round(pt0.y, 3), round(pt0.x, 3))
-        key = ((p.name or "").strip().lower(), pt_key)
+        pt = to_shape(p.location) if p.location is not None else None
+        key = ((p.name or "").strip().lower(), (round(pt.y, 3), round(pt.x, 3)) if pt else None)
         if key in seen_keys:
             continue
         seen_keys.add(key)
-        open_now = is_open_at(p.opening_hours, at)
-        price = await resolve_price(p)  # ценовой гибрид (M5.1)
         distance = None
-        pt = to_shape(p.location) if p.location is not None else None
         if near and "lat" in near and "lon" in near and pt is not None:
             distance = round(haversine_m(near["lat"], near["lon"], pt.y, pt.x))
         if anchor is not None and p.name == anchor["name"] and distance is not None and distance < 50:
             continue  # сам ориентир — не «место рядом с ним»
+        shown.append((p, pt, distance))
+    if anchor is not None:
+        shown.sort(key=lambda row: row[2] if row[2] is not None else 10**9)
+    shown = shown[:MAX_RESULTS]
+
+    # этап B: цена/рейтинг/часы из 2ГИС — синхронно с бюджетом, остальное фоном
+    try:
+        await enrich_places(db, [p for p, _, _ in shown])
+    except Exception:  # noqa: BLE001 — без обогащения ищем по тому, что есть
+        logger.exception("обогащение 2ГИС упало")
+
+    results = []
+    for p, pt, distance in shown:
+        open_now = is_open_at(p.opening_hours, at)
+        price = await resolve_price(p)  # ценовой гибрид (M5.1)
         results.append({
             "place_id": str(p.id),
             "name": p.name,
@@ -373,6 +385,16 @@ async def search_places(
             "is_open_now": open_now,  # true/false/null («не знаем»)
             "price": price.label,
             "price_is_estimate": price.is_estimate,
+            # этап B: структурно — для карточки (метку price рисует модель)
+            **({"avg_check": str(p.avg_check), "price_currency": p.price_currency}
+               if p.pricing_model == "per_person" and p.avg_check is not None else {}),
+            **({"price_source": p.price_source} if p.price_source else {}),
+            # «номер от N» — ориентир, НЕ цена проживания (в бюджет не идёт)
+            **({"lodging_price_from": str(p.lodging_price_from),
+                "price_currency": p.price_currency} if p.lodging_price_from is not None else {}),
+            # рейтинг — только вместе с числом отзывов
+            **({"rating": str(p.rating), "rating_count": p.rating_count}
+               if p.rating is not None and p.rating_count else {}),
             "duration_minutes": p.duration_minutes,
             # подтип (hostel/pub/zoo), stars:N, cuisine:X — из OSM (meili_upgrade)
             **({"tags": p.tags} if p.tags else {}),
@@ -382,6 +404,4 @@ async def search_places(
             **({"distance_m": distance} if distance is not None else {}),
             **({"near": anchor["name"]} if anchor is not None else {}),
         })
-    if anchor is not None:
-        results.sort(key=lambda r: r.get("distance_m", 10**9))
-    return results[:MAX_RESULTS]
+    return results

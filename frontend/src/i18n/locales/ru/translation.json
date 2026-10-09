@@ -454,7 +454,18 @@
       "zoo": "зоопарк",
       "aquarium": "океанариум",
       "theme_park": "парк развлечений"
-    }
+    },
+    "cardAvgCheck": "≈ {{amount}} на человека",
+    "cardLodgingFrom": "номер от {{amount}}",
+    "source2gis": "2ГИС",
+    "cardReviews_one": "{{count}} отзыв",
+    "cardReviews_few": "{{count}} отзыва",
+    "cardReviews_many": "{{count}} отзывов",
+    "cardReviews_other": "{{count}} отзыва",
+    "hotelStars_one": "{{count}} звезда",
+    "hotelStars_few": "{{count}} звезды",
+    "hotelStars_many": "{{count}} звёзд",
+    "hotelStars_other": "{{count}} звезды"
   },
   "planner": {
     "day": {

@@ -50,7 +50,7 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 
 ## Тесты
 
-- Бэкенд: `docker compose exec backend python -m pytest` (~380). Тесты не
+- Бэкенд: `docker compose exec backend python -m pytest` (~400). Тесты не
   зависят от личного `.env`: autouse-фикстуры в `tests/conftest.py` гасят
   SMTP_HOST и LLM_API_KEY, ставят покрытие «весь мир», глушат сеть геокодера и
   автозаполнения каталога (нужно — задай в тесте явно). Юнит в `tests/`,
@@ -58,7 +58,7 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   `wanderown_test` (схема из моделей через `create_all`, TRUNCATE после каждого
   теста, скип всего пакета если БД недоступна). Фикстуры `client` (httpx→ASGI,
   подмена `get_db`) и `auth_headers` — в `tests/integration/conftest.py`.
-- Фронт: `npm run test:unit` (vitest, 64), `npm run test:e2e` (Playwright, 27;
+- Фронт: `npm run test:unit` (vitest, 65), `npm run test:e2e` (Playwright, 27;
   `e2e/qa-hardening.spec.ts` — сценарии QA-прогона, Meili там без LLM: план
   замораживается в БД, SSE подменяется; `e2e/world.spec.ts` — мастер по миру,
   Москва с живой Valhalla, точка вне зоны, язык → Accept-Language у PDF;
@@ -95,7 +95,9 @@ i18n).
 - `place.py`: **Place** — POI с PostGIS-геометрией (`location`, POINT 4326),
   `osm_id` с partial-unique индексом (get-or-create в `services/places.create_place`).
   Цены для авто-оценки (ТЗ-E): `pricing_model` per_person|ticketed|free,
-  `avg_check`, `ticket_adult/child`, `price_currency`.
+  `avg_check`, `ticket_adult/child`, `price_currency`. Этап B (2ГИС):
+  `dgis_id` (partial unique), `rating_count`, `price_source` osm|2gis|manual,
+  `enriched_at`, `lodging_price_from` («номер от» — только показ, не бюджет).
 - `booking.py`: **Booking** — deep-link брони (viator/opentable/thefork),
   статусы pending→confirmed/cancelled, факт суммы.
 - `user.py`, `social.py`: юзеры (JWT + Google OAuth), лайки, посещённые места.
@@ -119,6 +121,17 @@ i18n).
 - `trips.py` — `sync_trip_days`: диапазон дат ↔ trip_days.
 - `stops.py` — add_stop/remove_stop без commit: общая логика api/stops.py и
   Meili-executor'а (позиции в хвост дня, смыкание, авто-оценка ТЗ-E).
+- `providers/` (этап B) — внешние факты о местах: `dgis.py` (поиск объекта
+  2ГИС рядом с точкой OSM: имя похоже + ≤150 м; парсер `reviews`/`schedule`/
+  `attribute_groups` — «Средний счёт A–B ₽» → середина, «номер от N»;
+  **написан по документации без живого ключа** — сверять
+  `python -m scripts.dgis_probe`), `enrich.py` (`enrich_places`: зовётся из
+  search_places по показываемым местам, бюджет 3 с, не успели → Celery
+  `dgis.enrich_places`; «нет в 2ГИС» — кэш 30 дн.; суточный
+  `DGIS_DAILY_LIMIT`; зона `DGIS_COVERAGE`; manual-цену не трогает, часы — только
+  если своих нет; стопы не пересчитывает). Без `DGIS_API_KEY` — выключено.
+  Google Places отложен: хранить можно только place_id, нужна карта Google
+  и оплата (нет карты) — встанет сюда же.
 - `lodging.py` (meili_upgrade) — `set_lodging`: место-отель →
   `TripLocation(kind=lodging)` стартом/финишем дней, без commit; общая логика
   `POST /trips/{id}/lodging` (кнопка «Жильё» в чате) и action `set_lodging`.
@@ -379,8 +392,9 @@ places | plan | done | error` (`places` — карточки найденног�
 
 ## Незакрытое / особенности
 
-- Реальный сид цен (2GIS avg_check, билеты) не сделан — цены через
-  `PATCH /places/{id}` или сид-скрипт.
+- Цены мест: 2ГИС-обогащение (этап B) ждёт живого ключа — до него цены
+  только через `PATCH /places/{id}` (ставит `price_source=manual`) или сид.
+  Билетов музеев 2ГИС, похоже, не даёт.
 - Mistral из РФ (2026-10-02): тем же ключом large → 403 `tier_not_allowed`,
   small/medium/magistral → 429 с `x-ratelimit-limit-req-minute: 0`, а
   `ministral-14b/8b/3b` и codestral отвечают (с сервера в КЗ ключ видит всё).
