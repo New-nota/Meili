@@ -10,8 +10,10 @@ from geoalchemy2.shape import to_shape
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from decimal import Decimal
+
 from app.models.place import Place
-from app.models.trip import Trip, TripDay, TripLocation
+from app.models.trip import Trip, TripDay, TripExpense, TripLocation
 from app.services.places.geo import in_coverage
 
 COORD_EPS = 1e-6  # как в api/days.add_location: те же координаты — та же локация
@@ -70,3 +72,45 @@ async def set_lodging(
         if role in ("end", "both"):
             day.end_location_id = location.id
     return location, days
+
+
+def lodging_nights(trip: Trip, days: list[TripDay], all_days: bool) -> int:
+    """Ночей проживания: на всю поездку — ночи поездки, на часть дней — по дню
+    на ночь, но не больше ночей поездки (последний день — уезжаем)."""
+    if not (trip.start_date and trip.end_date):
+        return 0
+    trip_nights = (trip.end_date - trip.start_date).days
+    return trip_nights if all_days else min(len(days), trip_nights)
+
+
+async def estimate_lodging_expense(
+    db: AsyncSession, trip: Trip, place: Place, nights: int,
+) -> TripExpense | None:
+    """Статья проживания-оценка: «номер от N» (2ГИС) × ночи (без commit).
+
+    Живой прогон: поселили в отель — а в бюджете ноль. «От N» — нижняя
+    граница, поэтому статья помечена is_estimate (UI рисует «≈», правка суммы
+    руками снимает пометку). Повторное заселение в то же место обновляет свою
+    оценку, а не плодит статьи; ручную сумму (is_estimate=false) не трогаем.
+    """
+    if place.lodging_price_from is None or nights <= 0:
+        return None
+    if place.price_currency and place.price_currency.upper() != (trip.currency or "").upper():
+        return None  # одна валюта на поездку, конвертаций нет
+    amount = (Decimal(place.lodging_price_from) * nights).quantize(Decimal("0.01"))
+    existing = (await db.execute(
+        select(TripExpense).where(
+            TripExpense.trip_id == trip.id, TripExpense.category == "lodging",
+            TripExpense.title == place.name,
+        )
+    )).scalars().first()
+    if existing is not None:
+        if existing.is_estimate:
+            existing.amount = amount
+        return existing
+    expense = TripExpense(
+        trip_id=trip.id, category="lodging", title=place.name,
+        amount=amount, currency=trip.currency, is_estimate=True,
+    )
+    db.add(expense)
+    return expense

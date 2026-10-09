@@ -48,4 +48,5 @@ class ExpenseResponse(BaseModel):
     title: str
     amount: Decimal
     currency: str
+    is_estimate: bool = False   # оценка (проживание «от» по 2ГИС) — UI рисует «≈»
     created_at: datetime

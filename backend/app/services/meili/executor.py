@@ -26,7 +26,7 @@ from app.schemas.plan import (
 )
 from app.services import lodging as lodging_service
 from app.services import stops as stops_service
-from app.services.budget_estimate import recompute_auto_stops
+from app.services.budget_estimate import estimate_stop_cost, recompute_auto_stops
 from app.services.optimizer import OutOfCoverageError, apply_day_optimization
 from app.services.places.catalog import GeocoderUnavailable, resolve_city
 from app.services.places.geo import DEFAULT_TIMEZONE, timezone_at
@@ -213,7 +213,14 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
                         )
                     except stops_service.StopError as e:
                         raise ApplyError(str(e), 400)
-                    if any(v is not None for v in (
+                    # живой прогон: модель писала cost_amount=400 — средний чек
+                    # НА ОДНОГО — как сумму стопа на двоих. Есть цена у места —
+                    # стоп уже посчитан системой на всю группу (авто-оценка
+                    # ТЗ-E в add_stop), сумма модели не нужна (§0)
+                    system_priced = estimate_stop_cost(
+                        place, trip.adults_count or 1, trip.children_count or 0, trip.currency,
+                    ) is not None
+                    if not system_priced and any(v is not None for v in (
                         action.cost_amount, action.cost_min, action.cost_max,
                     )):
                         _apply_cost_fields(
@@ -272,11 +279,19 @@ async def apply_plan(db: AsyncSession, plan_id: UUID, user_id: UUID) -> ApplyRes
                         [i + 1 for i in action.day_indexes] if action.day_indexes else None
                     )
                     try:
-                        await lodging_service.set_lodging(
+                        _, lodged_days = await lodging_service.set_lodging(
                             db, trip, place, day_positions=positions, role=action.role,
                         )
                     except lodging_service.LodgingError as e:
                         raise ApplyError(str(e), 400)
+                    # цена проживания — оценкой в бюджет, если юзер не назвал
+                    # свою сумму тем же планом (add_expense lodging)
+                    if not any(isinstance(a, AddExpenseAction) and a.category == "lodging"
+                               for a in parsed.actions):
+                        await lodging_service.estimate_lodging_expense(
+                            db, trip, place,
+                            lodging_service.lodging_nights(trip, lodged_days, positions is None),
+                        )
 
                 case AddExpenseAction():
                     if trip is None:

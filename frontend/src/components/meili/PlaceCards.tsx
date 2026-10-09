@@ -11,6 +11,7 @@ import { apiFetch } from '../../api/client'
 import { apiErrorMessage } from '../../utils/apiError'
 import { dayLabelShort } from '../../utils/dayLabel'
 import { formatMoneyCompact } from '../../utils/money'
+import { externalPlaceUrl } from '../../utils/placeLink'
 import Menu, { type MenuEntry } from '../ui/Menu'
 
 // meili_upgrade: карточки найденных мест под ответом Meili. Всё на карточке —
@@ -68,6 +69,16 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
         return day ? `${t('meili.cardLodged')}: ${dayLabelShort(day, t)}` : t('meili.cardLodged')
     })
 
+    // живой прогон: карточки «не кликались» — в чате мастера у них не было ни
+    // кнопок, ни карты. Клик: в планировщике — место на нашей карте, иначе — 2ГИС
+    const open = (p: PlaceCard) => {
+        if (onShowPlace && p.lat != null && p.lon != null) return onShowPlace(p)
+        const url = externalPlaceUrl(p)
+        if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    }
+    const openLabel = (p: PlaceCard) => onShowPlace && p.lat != null
+        ? t('meili.cardShowOnMap') : p.dgis_id ? t('meili.cardOpen2gis') : t('meili.cardOpenMap')
+
     // открытый день — первым пунктом, остальные по порядку
     const orderedDays = [...days].sort((a, b) =>
         (a.id === activeDayId ? -1 : b.id === activeDayId ? 1 : a.position - b.position))
@@ -94,10 +105,18 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
     // именно на ней. «≈» (средний счёт) и «от» (жильё) — не точная сумма
     const priceLine = (p: PlaceCard): string | null => {
         const bits: string[] = []
-        if (p.avg_check && p.price_currency) bits.push(t('meili.cardAvgCheck',
-            { amount: formatMoneyCompact(p.avg_check, p.price_currency, i18n.language) }))
-        if (p.lodging_price_from && p.price_currency) bits.push(t('meili.cardLodgingFrom',
-            { amount: formatMoneyCompact(p.lodging_price_from, p.price_currency, i18n.language) }))
+        const money = (v: string) => formatMoneyCompact(v, p.price_currency, i18n.language)
+        // сумма на группу и проживание за все ночи — те же цифры, что называет Meili
+        if (p.cost_for_group && p.price_currency && (p.group_size ?? 1) > 1) {
+            bits.push(t('meili.cardCostGroup', { amount: money(p.cost_for_group), count: p.group_size }))
+        } else if (p.avg_check && p.price_currency) {
+            bits.push(t('meili.cardAvgCheck', { amount: money(p.avg_check) }))
+        }
+        if (p.lodging_total_from && p.nights && p.price_currency) {
+            bits.push(t('meili.cardLodgingTotal', { amount: money(p.lodging_total_from), count: p.nights }))
+        } else if (p.lodging_price_from && p.price_currency) {
+            bits.push(t('meili.cardLodgingFrom', { amount: money(p.lodging_price_from) }))
+        }
         if (!bits.length) return null
         if (p.price_source === '2gis') bits.push(t('meili.source2gis'))
         return bits.join(' · ')
@@ -120,8 +139,12 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
                     ]
                     : orderedDays.map(d => ({ label: dayLabelShort(d, t), onSelect: () => addToDay(p, d) }))
                 return (
-                    <div key={p.place_id} role="listitem" style={{
-                        display: 'flex', gap: 10, alignItems: 'center',
+                    <div key={p.place_id} role="listitem" className="place-card"
+                        tabIndex={0} title={openLabel(p)} aria-label={`${p.name} — ${openLabel(p)}`}
+                        onClick={() => open(p)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(p) } }}
+                        style={{
+                        display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer',
                         background: 'var(--raised)', boxShadow: 'var(--shadow-1)',
                         borderRadius: 'var(--radius)', padding: '8px 10px',
                     }}>
@@ -153,13 +176,8 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
                                 </div>
                             )}
                         </div>
-                        {onShowPlace && p.lat != null && p.lon != null && (
-                            <button type="button" className="icon-btn sm" onClick={() => onShowPlace(p)}
-                                title={t('meili.cardShowOnMap')} aria-label={t('meili.cardShowOnMap')}>
-                                <MapPin />
-                            </button>
-                        )}
                         {canWrite && (
+                            <div onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
                             <Menu items={items} label={isHotel ? t('meili.cardLodging') : t('meili.cardAddToDay')}
                                 trigger={props => (
                                     <button type="button" {...props} className="btn btn-sm"
@@ -170,6 +188,7 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
                                         {isHotel ? t('meili.cardLodging') : t('meili.cardAddToDay')}
                                     </button>
                                 )} />
+                            </div>
                         )}
                     </div>
                 )

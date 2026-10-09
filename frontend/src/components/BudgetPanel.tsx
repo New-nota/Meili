@@ -237,7 +237,10 @@ export default function BudgetPanel({ tripId, days, onStopsChanged }: Props) {
                             <span>{t(`budget.category_${e.category}`)} · {e.title}</span>
                             {e.day_id && <span style={{ color: 'var(--ink-3)' }}> · {dayLabel(e.day_id)}</span>}
                         </span>
-                        <span style={{ fontWeight: 600 }}>{fmt(e.amount)}</span>
+                        <span style={{ fontWeight: 600, color: e.is_estimate ? 'var(--ink-2)' : undefined }}
+                            title={e.is_estimate ? t('budget.lodgingEstimateHint') : undefined}>
+                            {e.is_estimate ? '≈ ' : ''}{fmt(e.amount)}
+                        </span>
                         <button type="button" onClick={() => safely(async () => { await deleteExpense(tripId, e.id); invalidate() })}
                             disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} className="icon-btn sm">
                             <X />

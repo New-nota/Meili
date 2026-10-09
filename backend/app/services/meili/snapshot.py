@@ -4,6 +4,7 @@
 компактным: у Mistral нет prompt caching, тяжёлый префикс бьёт по стоимости
 каждого шага. Факты модель берёт отсюда, не из текста истории (M5.4).
 """
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
@@ -40,7 +41,7 @@ def draft_lines(draft: dict) -> list[str]:
     if where:
         lines.append(f"Направление: {where}")
     if draft.get("start_date") and draft.get("end_date"):
-        lines.append(f"Даты: {draft['start_date']} — {draft['end_date']}")
+        lines.append(f"Даты: {draft['start_date']} — {draft['end_date']}{_nights_note(draft['start_date'], draft['end_date'])}")
     lines.append(_group_line(
         draft.get("adults_count") or 1,
         draft.get("children_count") or 0,
@@ -55,6 +56,18 @@ def draft_lines(draft: dict) -> list[str]:
         "при create_trip перенеси их как есть."
     )
     return lines
+
+
+def _nights_note(start, end) -> str:
+    """« (2 дн., ночей: 1)». Живой прогон: модель на 17–18 октября посчитала
+    отель «на 2 ночи» — число ночей теперь даёт система."""
+    try:
+        start = date.fromisoformat(str(start))
+        end = date.fromisoformat(str(end))
+    except ValueError:
+        return ""
+    nights = (end - start).days
+    return f" ({nights + 1} дн., ночей: {nights})" if nights >= 0 else ""
 
 
 def recent_places_lines(recent: list | None) -> list[str]:
@@ -105,9 +118,8 @@ async def build_snapshot(
     where = ", ".join(filter(None, (trip.city, trip.country)))
     lines = [f"Поездка «{trip.title}»" + (f", {where}" if where else "")]
     if trip.start_date and trip.end_date:
-        nights = (trip.end_date - trip.start_date).days
         lines.append(
-            f"Даты: {trip.start_date} — {trip.end_date} ({nights + 1} дн.)"
+            f"Даты: {trip.start_date} — {trip.end_date}{_nights_note(trip.start_date, trip.end_date)}"
         )
     if not trip.city:
         lines.append(

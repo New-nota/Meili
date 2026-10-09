@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -262,6 +262,20 @@ export default function DayPlan({
         invalidateRoute()
     }, t('planner.error.transport'))
 
+    // время начала дня: от него считается расписание прибытия и длина дня
+    const changeStartTime = (hhmm: string) => safely(async () => {
+        await updateDay(tripId, day.id, { start_time: `${hhmm}:00` })
+        onChanged()
+    })
+
+    // перегон от старта дня — свой режим у дня (раньше копировал первую точку
+    // и был только для чтения: «от отеля на машине» выбрать было нельзя)
+    const changeStartTransport = (m: TransportMode) => safely(async () => {
+        await updateDay(tripId, day.id, { start_transport: m })
+        onChanged()
+        invalidateRoute()
+    }, t('planner.error.transport'))
+
     // S16 §4.2: время на точке -> меняет расписание и результат оптимизации
     const changeDuration = (stopId: string, minutes: number) => safely(async () => {
         await updateStop(tripId, stopId, { duration_minutes: minutes })
@@ -298,7 +312,8 @@ export default function DayPlan({
         <div>
             <DayBlock day={day} tripId={tripId} readOnly={readOnly} currency={currency}
                 start={start} finish={schedule?.finish ?? null} route={route ?? null}
-                onRenamed={title => onDayRenamed?.(day.id, title)} onError={setError} />
+                onRenamed={title => onDayRenamed?.(day.id, title)} onError={setError}
+                onStartTime={changeStartTime} />
 
             {!readOnly && (
                 <div style={{ marginTop: 14 }}>
@@ -318,7 +333,7 @@ export default function DayPlan({
                 )}
                 {!readOnly && day.start_location && includedStops.length > 0 && (
                     <LegRow leg={legFromStart} loading={legsLoading} columns={columns} railColumn={2}
-                        onChangeTransport={() => {}} readOnly />
+                        onChangeTransport={changeStartTransport} />
                 )}
 
                 <DndContext sensors={stopSensors} collisionDetection={closestCenter} onDragEnd={handleStopsDragEnd}>
@@ -425,9 +440,10 @@ interface DayBlockProps {
     route: { total_distance_meters: number; legs: RouteLeg[] } | null
     onRenamed: (title: string | null) => void
     onError: (message: string) => void
+    onStartTime: (hhmm: string) => void
 }
 
-function DayBlock({ day, tripId, readOnly, currency, start, finish, route, onRenamed, onError }: DayBlockProps) {
+function DayBlock({ day, tripId, readOnly, currency, start, finish, route, onRenamed, onError, onStartTime }: DayBlockProps) {
     const { t, i18n } = useTranslation()
     const { renamingDayId, startRenaming, stopRenaming } = useTripStore()
     const editing = renamingDayId === day.id
@@ -471,11 +487,19 @@ function DayBlock({ day, tripId, readOnly, currency, start, finish, route, onRen
     const date = new Intl.DateTimeFormat(i18n.language, { weekday: 'short', day: 'numeric', month: 'long' })
         .format(new Date(day.date + 'T00:00:00'))
 
-    const fact = (big: string, small: string) => (
+    const fact = (big: ReactNode, small: string) => (
         <div style={{ minWidth: 0 }}>
             <b style={{ display: 'block', fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>{big}</b>
             <span style={{ fontSize: 13, opacity: 0.88 }}>{small}</span>
         </div>
+    )
+    // живой прогон: день всегда начинался в 09:00 — поля для времени не было,
+    // хотя бэк его принимает. Сохраняем по blur/Enter, а не на каждую цифру
+    const startField = readOnly ? start : (
+        <input type="time" className="day-time-input" defaultValue={start} key={start}
+            aria-label={t('planner.day.startTime')} title={t('planner.day.startTime')}
+            onBlur={e => { if (e.target.value && e.target.value !== start) onStartTime(e.target.value) }}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
     )
 
     return (
@@ -503,7 +527,7 @@ function DayBlock({ day, tripId, readOnly, currency, start, finish, route, onRen
                 {!editing && <span style={{ fontWeight: 500, opacity: 0.88, whiteSpace: 'nowrap' }}>· {date}</span>}
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', justifyContent: 'start', gap: '4px 22px', marginTop: 10 }}>
-                {fact(finish ? `${start}–${finish}` : start, t('profile.meta.stops', { count: included.length }))}
+                {fact(<>{startField}{finish ? `–${finish}` : ''}</>, t('profile.meta.stops', { count: included.length }))}
                 {fact(route ? formatDistance(route.total_distance_meters, i18n.language, t('common.km')) : '—',
                     route ? moveWord : t('planner.noRoute'))}
                 {fact(costText, costNote)}

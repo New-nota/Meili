@@ -134,7 +134,8 @@
     "optimizeError": "Ошибка оптимизации",
     "allDays": "Все дни",
     "budgetRequired": "Задайте бюджет времени больше нуля",
-    "dragStop": "Перетащить место"
+    "dragStop": "Перетащить место",
+    "startAndEnd": "Старт и финиш дня"
   },
   "place": {
     "searchPlaceholder": "Найти место...",
@@ -235,7 +236,8 @@
     "fillExpense": "Заполните название и сумму статьи",
     "of": "из",
     "nothingYet": "Пока нет расходов",
-    "category": "Категория"
+    "category": "Категория",
+    "lodgingEstimateHint": "Оценка: «номер от» по данным 2ГИС × ночи. Точную сумму можно внести своей статьёй"
   },
   "profile": {
     "title": "Профиль",
@@ -367,7 +369,8 @@
     "reload": "Перезагрузить",
     "turn_in_progress": "Meili ещё отвечает на предыдущее сообщение",
     "oauth_failed": "Вход через Google не завершился — попробуйте ещё раз",
-    "place_without_location": "У места нет координат"
+    "place_without_location": "У места нет координат",
+    "day_time_order": "Начало дня должно быть раньше его конца"
   },
   "meili": {
     "title": "Meili",
@@ -401,7 +404,6 @@
     "containsEstimates": "содержит оценки",
     "planWith": "Спланировать с Meili",
     "consult": "Посоветоваться с Meili",
-    "draftPrefix": "Хочу спланировать поездку:",
     "rateLimited": "Слишком много запросов к модели — подождите минуту и повторите",
     "providerError": "Модель временно недоступна, попробуйте ещё раз",
     "timeout": "Модель слишком долго думает — попробуйте переспросить короче",
@@ -465,18 +467,28 @@
     "hotelStars_one": "{{count}} звезда",
     "hotelStars_few": "{{count}} звезды",
     "hotelStars_many": "{{count}} звёзд",
-    "hotelStars_other": "{{count}} звезды"
+    "hotelStars_other": "{{count}} звезды",
+    "cardCostGroup_one": "≈ {{amount}} на {{count}} человека",
+    "cardCostGroup_few": "≈ {{amount}} на {{count}} человек",
+    "cardCostGroup_many": "≈ {{amount}} на {{count}} человек",
+    "cardCostGroup_other": "≈ {{amount}} на {{count}} человек",
+    "cardLodgingTotal_one": "от {{amount}} за {{count}} ночь",
+    "cardLodgingTotal_few": "от {{amount}} за {{count}} ночи",
+    "cardLodgingTotal_many": "от {{amount}} за {{count}} ночей",
+    "cardLodgingTotal_other": "от {{amount}} за {{count}} ночи",
+    "cardOpen2gis": "Открыть в 2ГИС",
+    "cardOpenMap": "Открыть на карте"
   },
   "planner": {
     "day": {
       "default": "День {{position}}",
       "rename": "Переименовать день",
-      "nameLabel": "Название дня"
+      "nameLabel": "Название дня",
+      "startTime": "Время начала дня"
     },
     "leg": {
       "walking": "пешком",
       "driving": "на машине",
-      "transit": "на транспорте",
       "unavailable": "Маршрут дня сейчас не строится",
       "change": "Сменить способ"
     },

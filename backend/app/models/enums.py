@@ -7,7 +7,12 @@ from enum import Enum
 
 
 class TransportMode(str, Enum):
-    """Способ перемещения между точками. Ровно три значения (ТЗ S16 §1.6).
+    """Способ перемещения между точками (ТЗ S16 §1.6).
+
+    Был и TRANSIT (costing multimodal): без GTFS-тайлов Valhalla на любой такой
+    перегон отвечала 400 «unconnected regions» — режим выбирался и ломал
+    маршрут. Убран до появления расписаний (миграция d4f9a2b3c5e7 перевела
+    сохранённые transit в walking).
 
     В БД лежит именно это значение; costing Valhalla получается через
     VALHALLA_COSTING (services/valhalla.py) и больше нигде не дублируется.
@@ -15,7 +20,6 @@ class TransportMode(str, Enum):
 
     WALKING = "walking"
     DRIVING = "driving"
-    TRANSIT = "transit"
 
 
 DEFAULT_TRANSPORT = TransportMode.WALKING

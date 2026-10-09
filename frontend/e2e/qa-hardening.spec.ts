@@ -248,6 +248,11 @@ test('Meili: карточка найденного места → «В день�
   const cards = page.getByRole('list', { name: 'Найденные места' })
   await expect(cards.getByText(place.name, { exact: true })).toBeVisible()
 
+  // клик по карточке в планировщике — место на нашей карте (карточка точки)
+  await cards.getByText(place.name, { exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Добавить в маршрут' })).toBeVisible()
+  await page.keyboard.press('Escape')
+
   const added = page.waitForResponse(r => r.url().endsWith('/stops') && r.request().method() === 'POST')
   await cards.getByRole('button', { name: /В день/ }).click()
   await page.locator('.menu-item', { hasText: 'Д1' }).click()
@@ -272,9 +277,13 @@ test('мастер → «Посоветоваться с Meili»: чат с че
   await page.getByRole('button', { name: 'Запланировать поездку' }).click()
   await page.getByPlaceholder('Название поездки').fill('Черновик для Meili')
   await page.getByText('Посоветоваться с Meili').click()
+  const created = page.waitForRequest(r => r.url().endsWith('/api/meili/conversations') && r.method() === 'POST')
   await page.getByRole('button', { name: 'Создать' }).click()
+  // черновик уходит модели фактами, а поле ввода свободно для своего запроса
+  expect((await created).postDataJSON()).toMatchObject({ title: 'Черновик для Meili' })
   const input = page.getByPlaceholder('Спросите Meili…')
-  await expect(input).toHaveValue(/Черновик для Meili/)
+  await expect(input).toHaveValue('')
+  await input.fill('Что посмотреть?')
   await input.press('Enter')
   await expect(page.getByText(/провайдер ИИ отклонил доступ/)).toBeVisible()
   await page.keyboard.press('Escape')

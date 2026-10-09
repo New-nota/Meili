@@ -17,7 +17,6 @@ from app.models.enums import DEFAULT_TRANSPORT, TransportMode
 VALHALLA_COSTING: dict[TransportMode, str] = {
     TransportMode.WALKING: "pedestrian",
     TransportMode.DRIVING: "auto",
-    TransportMode.TRANSIT: "multimodal",
 }
 
 

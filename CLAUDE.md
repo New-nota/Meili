@@ -58,7 +58,7 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   `wanderown_test` (схема из моделей через `create_all`, TRUNCATE после каждого
   теста, скип всего пакета если БД недоступна). Фикстуры `client` (httpx→ASGI,
   подмена `get_db`) и `auth_headers` — в `tests/integration/conftest.py`.
-- Фронт: `npm run test:unit` (vitest, 65), `npm run test:e2e` (Playwright, 27;
+- Фронт: `npm run test:unit` (vitest, 68), `npm run test:e2e` (Playwright, 28;
   `e2e/qa-hardening.spec.ts` — сценарии QA-прогона, Meili там без LLM: план
   замораживается в БД, SSE подменяется; `e2e/world.spec.ts` — мастер по миру,
   Москва с живой Valhalla, точка вне зоны, язык → Accept-Language у PDF;
@@ -79,7 +79,9 @@ i18n).
 - `trip.py`: **Trip** (группа adults/children, `budget_total`+`currency` — одна
   валюта на поездку, `timezone`, `city_lat/lon` — центр карты из мастера S11) →
   **TripDay** (день с датой, именем `title`, 1-based `position`, стартом/финишем,
-  временными рамками; уникальности trip+date и trip+position — **DEFERRABLE**,
+  временными рамками (начало правится в блоке дня; PATCH одного поля сверяется
+  с сохранённым — `day_time_order`), `start_transport` — режим от старта до первой точки,
+  NULL = режим первого стопа; уникальности trip+date и trip+position — **DEFERRABLE**,
   иначе реордер не переставит даты в одной транзакции) → **TripStop**
   (позиция в рамках дня, `day_id` **NOT NULL** — единственный источник даты стопа,
   отдельного `visit_date` больше нет; `duration_minutes` NOT NULL + флаг
@@ -88,9 +90,12 @@ i18n).
   `estimated_cost` + `cost_source` auto/manual — ТЗ-E). **TripLocation** — история
   стартов/финишей (отели, вокзалы). **TripExpense** — статьи расходов
   (lodging/transport/food/other; категория `activity` запрещена — активности
-  считаются из стопов).
-- `enums.py`: **TransportMode** — ровно три режима `walking|driving|transit`
-  (хранятся строкой). Соответствие costing'ам Valhalla — единственный словарь
+  считаются из стопов; `is_estimate` — статья-оценка: проживание «от N» × ночи
+  из 2ГИС, которое сам добавляет set_lodging/кнопка «Жильё», UI рисует «≈»,
+  правка суммы снимает пометку).
+- `enums.py`: **TransportMode** — `walking|driving` (хранятся строкой;
+  `transit` убран: costing multimodal без GTFS-тайлов Valhalla отвечал 400 и
+  ломал маршрут — вернуть вместе с расписаниями). Соответствие costing'ам Valhalla — единственный словарь
   `VALHALLA_COSTING` в `services/valhalla.py`, больше нигде не дублируется.
 - `place.py`: **Place** — POI с PostGIS-геометрией (`location`, POINT 4326),
   `osm_id` с partial-unique индексом (get-or-create в `services/places.create_place`).
@@ -135,7 +140,9 @@ i18n).
   и оплата (нет карты) — встанет сюда же.
 - `lodging.py` (meili_upgrade) — `set_lodging`: место-отель →
   `TripLocation(kind=lodging)` стартом/финишем дней, без commit; общая логика
-  `POST /trips/{id}/lodging` (кнопка «Жильё» в чате) и action `set_lodging`.
+  `POST /trips/{id}/lodging` (кнопка «Жильё» в чате) и action `set_lodging`;
+  `estimate_lodging_expense` — статья-оценка проживания (не дублируется, ручную
+  сумму не трогает; если план несёт свой add_expense lodging — оценки нет).
 - `overpass.py` — поиск POI (кэш 24ч в Redis); `places/` — пакет: get-or-create
   по osm_id (`__init__.py`) + `opening.py` (`is_open_at`: часы работы, дни
   недели, интервалы через полночь; None = «не знаем»; `parse_osm_hours` —
@@ -200,7 +207,25 @@ places | plan | done | error` (`places` — карточки найденног�
   финиш; `add_expense` — сумма только от юзера (цен жилья у системы нет).
   Валидный → заморожен в `meili_plans` + `event: plan`; невалидный → ошибка
   валидации в контекст, модель чинит (в пределах max_steps), в БД не пишется.
-- Ссылки плана резолвит система (`plan_refs`, и при заморозке, и в refreeze):
+- **Суммы считает система** (живой прогон «свидание в Москве»): поиск
+  получает `GroupCtx` (взрослые/дети/валюта/ночи — из поездки или черновика,
+  не из аргументов модели) и отдаёт `cost_for_group` и `lodging_total_from`
+  (за `nights` ночей); `max_price`/`min_price` — диапазон: для жилья ЗА НОЧЬ,
+  для остального на группу; вне диапазона — вон, внутри — дороже выше,
+  без цены — в хвост; отели с уже известной ценой в районе — первыми, а
+  первый поиск отелей ставит фоном обогащение до 100 ближайших
+  (`enrich.queue_area_enrichment`, раз в сутки на район).
+- **Жильё — по правилам системы** (`loop.lodging_gate`): про жильё не
+  спрашивали — поиск отелей блокируется; спросили без бюджета или модель
+  передала цену, которой нет в репликах юзера («11 000»/«11к»/«11 тыс»), —
+  вместо выдачи указание спросить бюджет за ночь.
+  Снапшот пишет «ночей: N». Если у места есть цена системы, executor
+  игнорирует cost_* модели в add_stop — стоп считается авто-оценкой на группу.
+- Карточки (`event: places`) — только места, названные в ответе (`named_cards`),
+  шлются после текста, одноимённые филиалы — один раз.
+- Ссылки плана резолвит система (`plan_refs`, и при заморозке, и в refreeze;
+  имя — сначала среди мест этого диалога, потом ближайшее к городу поездки
+  `plan_center`: «Славянка» из московского поиска стала калининградской):
   `add_stop`/`set_lodging` — place_id или place_name, `remove_stop`/`set_stop_cost` —
   stop_id или stop_name (+ day_index); в снапшоте у дней есть `day_index`.
 - Защита хода: реплика 1..4000 символов, один ход на диалог (Redis-лок →
@@ -225,9 +250,11 @@ places | plan | done | error` (`places` — карточки найденног�
 - **Фронт**: `components/meili/` (MeiliChat — SSE-чат, PlanPreview — карточка
   [✕ закрыть | ✎ изменить | ✔ применить] + итог со значком оценок, PlanEditor —
   виртуальные правки через refreeze: новый plan_id, старый discarded,
-  PlaceCards — карточки найденного под ответом: «на карте», «В день ▾» /
-  у отеля «Жильё ▾»; пишут обычными ручками от имени юзера, без поездки
-  кнопок нет; живут до перезагрузки истории),
+  PlaceCards — карточки названных в ответе мест: клик — в планировщике место
+  на нашей карте, в чате мастера — 2ГИС (`utils/placeLink`, без 2ГИС — OSM);
+  «В день ▾» / у отеля «Жильё ▾» пишут обычными ручками от имени юзера, без
+  поездки кнопок нет; живут до перезагрузки истории). Черновик мастера уходит
+  в Meili только фактами (`draft_json`), поле ввода чата — пустое.
   `store/meiliStore.ts` (Zustand), `api/meili.ts` (fetch + ReadableStream
   SSE-парсер). Вкладка «Meili» в TripPlanner.
 

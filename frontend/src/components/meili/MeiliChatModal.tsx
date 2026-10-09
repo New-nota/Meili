@@ -11,11 +11,10 @@ import type { TripDraft } from '../../api/meili'
 interface Props {
     onClose: () => void
     onTripCreated: (tripId: string) => void
-    initialInput?: string
     draft?: TripDraft | null
 }
 
-export default function MeiliChatModal({ onClose, onTripCreated, initialInput, draft }: Props) {
+export default function MeiliChatModal({ onClose, onTripCreated, draft }: Props) {
     const { t } = useTranslation()
 
     // Escape закрывает чат, как и остальные модалки (мастер, удаление)
@@ -39,7 +38,6 @@ export default function MeiliChatModal({ onClose, onTripCreated, initialInput, d
                 <div style={{ flex: 1, minHeight: 0 }}>
                     <MeiliChat
                         tripId={null}
-                        initialInput={initialInput}
                         draft={draft}
                         onApplied={tripId => { if (tripId) onTripCreated(tripId) }} />
                 </div>

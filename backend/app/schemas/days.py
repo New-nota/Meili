@@ -6,6 +6,8 @@ S16: у дня появились имя и 1-based position. Подпись «�
 from datetime import date, time
 from uuid import UUID
 
+from app.models.enums import TransportMode
+
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -70,6 +72,8 @@ class TripDayUpdate(BaseModel):
     # сравнении с naive ниже TypeError'ом (500)
     start_time: WallTime | None = None
     end_time: WallTime | None = None
+    # от старта до первой точки; null — «как у первой точки»
+    start_transport: TransportMode | None = None
 
     _norm_title = field_validator("title")(_blank_title_is_none)
     # рамки дня — NOT NULL (дефолт 09:00–21:00): «сбросить» null'ом нельзя
@@ -104,5 +108,6 @@ class TripDayResponse(BaseModel):
     end_location: TripLocationResponse | None
     start_time: time
     end_time: time
+    start_transport: str | None = None
     stops: list[StopResponse]
     stops_count: int

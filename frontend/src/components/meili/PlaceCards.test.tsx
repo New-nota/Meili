@@ -40,6 +40,15 @@ describe('PlaceCards', () => {
         expect(html).toContain('2ГИС')
     })
 
+    it('суммы от системы: на группу и за все ночи', () => {
+        const html = renderToStaticMarkup(<PlaceCards places={[
+            { ...cafe, avg_check: '1100.00', cost_for_group: '2200.00', group_size: 2, price_currency: 'RUB' },
+            { ...hostel, lodging_price_from: '3240.00', lodging_total_from: '3240.00', nights: 1, price_currency: 'RUB' },
+        ]} />)
+        expect(html).toMatch(/≈ 2\s?200\s?₽ на 2 человек/)
+        expect(html).toMatch(/от 3\s?240\s?₽ за 1 ночь/)
+    })
+
     it('без поездки — только карточки, кнопок записи нет', () => {
         const html = renderToStaticMarkup(<PlaceCards places={[hostel, cafe]} tripId={null} />)
         expect(html).not.toContain('В день')

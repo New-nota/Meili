@@ -136,3 +136,50 @@ async def test_place_request_forces_tool_on_first_step(client, auth_headers, mon
     conv_id = await _conversation(client, auth_headers)
     await _stream_events(client, auth_headers, conv_id, "спасибо!")
     assert seen == ["auto"]
+
+
+async def test_lodging_price_goes_to_budget_as_estimate(client, auth_headers, monkeypatch):
+    """Живой прогон: поселили в отель — в бюджете ноль. Теперь «от N» × ночи
+    — статья-оценка; правка суммы руками снимает пометку."""
+    from decimal import Decimal
+
+    from sqlalchemy import update
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models.place import Place
+    from tests.integration.conftest import _TEST_ASYNC_URL
+
+    trip_id = await _trip(client, auth_headers)              # D1..D3 — 2 ночи
+    place_id = await _hotel(client, auth_headers)
+    engine = create_async_engine(_TEST_ASYNC_URL)
+    async with async_sessionmaker(engine)() as db:
+        await db.execute(update(Place).where(Place.id == place_id).values(
+            lodging_price_from=Decimal("5500"), price_currency="EUR"))
+        await db.commit()
+    await engine.dispose()
+
+    plan_id = await _freeze_plan(client, auth_headers, monkeypatch, {
+        "actions": [{"type": "set_lodging", "place_id": place_id}], "summary": "x"}, trip_id=trip_id)
+    assert (await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)).status_code == 200
+    expenses = (await client.get(f"/trips/{trip_id}/expenses", headers=auth_headers)).json()
+    assert [(e["category"], e["amount"], e["is_estimate"]) for e in expenses] == [("lodging", "11000.00", True)]
+
+    # кнопка «Жильё» на то же место — та же статья, не вторая
+    await client.post(f"/trips/{trip_id}/lodging", headers=auth_headers, json={"place_id": place_id})
+    assert len((await client.get(f"/trips/{trip_id}/expenses", headers=auth_headers)).json()) == 1
+
+    r = await client.patch(f"/trips/{trip_id}/expenses/{expenses[0]['id']}", headers=auth_headers,
+                         json={"amount": "9000.00"})
+    assert r.json()["is_estimate"] is False
+
+
+async def test_user_lodging_sum_wins_over_estimate(client, auth_headers, monkeypatch):
+    trip_id = await _trip(client, auth_headers)
+    place_id = await _hotel(client, auth_headers)
+    plan_id = await _freeze_plan(client, auth_headers, monkeypatch, {"actions": [
+        {"type": "set_lodging", "place_id": place_id},
+        {"type": "add_expense", "category": "lodging", "title": "Отель", "amount": "7000.00", "currency": "EUR"},
+    ], "summary": "x"}, trip_id=trip_id)
+    await client.post(f"/api/meili/plans/{plan_id}/apply", headers=auth_headers)
+    expenses = (await client.get(f"/trips/{trip_id}/expenses", headers=auth_headers)).json()
+    assert [(e["amount"], e["is_estimate"]) for e in expenses] == [("7000.00", False)]

@@ -26,11 +26,13 @@ ProposedPlan (schemas/plan.py) держит ФОРМУ плана: закрыт�
 """
 from uuid import UUID
 
-from sqlalchemy import String, cast, func, or_, select
+from geoalchemy2 import Geography
+from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
+from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.place import Place
-from app.models.trip import TripDay, TripStop
+from app.models.trip import Trip, TripDay, TripStop
 from app.schemas.plan import (
     AddStopAction,
     ProposedPlan,
@@ -41,29 +43,70 @@ from app.schemas.plan import (
 
 # ниже этого сходства имя считается другим местом, а не опечаткой
 NAME_MATCH_THRESHOLD = 0.45
+# «в городе поездки» для резолва имени: агломерация, не область
+CITY_RADIUS_M = 40_000
 # сколько вариантов показать модели, когда сослаться не на что
 SUGGEST_LIMIT = 12
 
 
-async def _place_by_name(db: AsyncSession, name: str) -> Place | None:
-    """Место по названию: точное вхождение, иначе ближайшее по триграммам."""
+def _same_name(a: str, b: str) -> bool:
+    return " ".join(a.lower().replace("ё", "е").split()) == " ".join(b.lower().replace("ё", "е").split())
+
+
+async def _place_by_name(
+    db: AsyncSession, name: str, recent: list | None = None,
+    center: tuple[float, float] | None = None,
+) -> Place | None:
+    """Место по названию.
+
+    Живой прогон: «поселиться в Славянке» — поиск нашёл московскую
+    «Славянку», а резолв имени по всей базе взял одноимённую в Калининградской
+    области (как и «Хинкальных» в каталоге десятки). Поэтому порядок:
+    1) места, найденные в ЭТОМ диалоге (recent_places) — это они и есть;
+    2) по базе — среди похожих ближайшее к городу поездки;
+    3) без центра — как раньше, по похожести.
+    """
     cleaned = name.strip()
     if not cleaned:
         return None
 
-    exact = (await db.execute(
-        select(Place).where(Place.name.ilike(cleaned)).limit(1)
-    )).scalar_one_or_none()
-    if exact is not None:
-        return exact
+    for item in recent or []:
+        if item.get("id") and _same_name(item.get("name") or "", cleaned):
+            place = await db.get(Place, UUID(str(item["id"])))
+            if place is not None:
+                return place
 
     similarity = func.similarity(cast(Place.name, String), cleaned)
-    return (await db.execute(
-        select(Place)
-        .where(or_(Place.name.ilike(f"%{cleaned}%"), similarity >= NAME_MATCH_THRESHOLD))
-        .order_by(similarity.desc())
-        .limit(1)
-    )).scalar_one_or_none()
+    stmt = select(Place).where(or_(
+        Place.name.ilike(cleaned), Place.name.ilike(f"%{cleaned}%"),
+        similarity >= NAME_MATCH_THRESHOLD,
+    ))
+    exact_first = case((Place.name.ilike(cleaned), 0), else_=1)
+    if center is not None:
+        point = ST_SetSRID(ST_MakePoint(center[1], center[0]), 4326)
+        # в радиусе города — точнее любого «похожего» на другом конце страны
+        near = ST_DWithin(cast(Place.location, Geography), cast(point, Geography), CITY_RADIUS_M)
+        stmt = stmt.order_by(
+            case((near, 0), else_=1), exact_first, similarity.desc(),
+            func.ST_Distance(cast(Place.location, Geography), cast(point, Geography)),
+        )
+    else:
+        stmt = stmt.order_by(exact_first, similarity.desc())
+    return (await db.execute(stmt.limit(1))).scalar_one_or_none()
+
+
+async def plan_center(db: AsyncSession, conversation) -> tuple[float, float] | None:
+    """Центр города поездки (или черновика мастера) — для резолва имён."""
+    if conversation.trip_id is not None:
+        row = (await db.execute(
+            select(Trip.city_lat, Trip.city_lon).where(Trip.id == conversation.trip_id)
+        )).first()
+        if row and row[0] is not None and row[1] is not None:
+            return float(row[0]), float(row[1])
+    draft = conversation.draft_json or {}
+    if draft.get("city_lat") is not None and draft.get("city_lon") is not None:
+        return float(draft["city_lat"]), float(draft["city_lon"])
+    return None
 
 
 def _suggestions(recent: list | None) -> str:
@@ -81,6 +124,7 @@ async def resolve_references(
     plan: ProposedPlan,
     trip_id: UUID | None,
     recent_places: list | None = None,
+    center: tuple[float, float] | None = None,
 ) -> list[str]:
     """Дорезолвить ссылки плана НА МЕСТЕ и вернуть список претензий.
 
@@ -108,7 +152,7 @@ async def resolve_references(
                 )
                 continue
 
-        match = await _place_by_name(db, action.place_name or "")
+        match = await _place_by_name(db, action.place_name or "", recent_places, center)
         if match is None:
             problems.append(
                 f"места «{action.place_name}» нет в базе."

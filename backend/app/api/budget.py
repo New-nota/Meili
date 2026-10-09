@@ -127,6 +127,8 @@ async def update_expense(
         await _day_of_trip_or_404(db, trip_id, updates["day_id"])
     for field, value in updates.items():
         setattr(expense, field, value)
+    if "amount" in updates:
+        expense.is_estimate = False  # сумму назвал юзер — это уже не оценка
     await db.commit()
     await db.refresh(expense)
     return expense

@@ -7,9 +7,10 @@
 """
 import asyncio
 import json
+import re
 
 import httpx
-from datetime import datetime
+from datetime import date, datetime
 from typing import AsyncIterator
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -26,10 +27,10 @@ from app.models.meili_plan import MeiliPlan
 from app.models.message import Message
 from app.schemas.plan import ProposedPlan
 from app.services.llm.factory import get_client
-from app.services.meili.plan_refs import resolve_references
+from app.services.meili.plan_refs import plan_center, resolve_references
 from app.services.meili.snapshot import build_snapshot
 from app.services.meili.tools.registry import STEP_LABELS, TOOL_SCHEMAS, run_tool
-from app.services.meili.tools.search_places import wants_places
+from app.services.meili.tools.search_places import GroupCtx, _category_from_words, _words, wants_places
 
 logger = get_logger("meili.loop")
 
@@ -95,14 +96,24 @@ SYSTEM_PROMPT = (
     "СЕЙЧАС, а не обещание «могу помочь». Найденное пользователь видит "
     "карточками под твоим ответом: перечисли 3–5 лучших с короткой причиной.\n"
     "- Жильё — category=hotel (отели, хостелы, апартаменты; подтип и stars:N "
-    "— в tags). Цен на жильё у системы нет: не называй их. Поселить в отель "
-    "— действие set_lodging в плане (по умолчанию на все дни, старт и финиш "
-    "дня). Сумму за проживание (add_expense, category=lodging) добавляй, "
-    "только если её назвал пользователь.\n"
+    "— в tags). Отели предлагай, только если пользователь сам спросил про "
+    "жильё, и только когда знаешь его бюджет за ночь (max_price/min_price — "
+    "ЗА НОЧЬ); не знаешь — сначала спроси «сколько готов тратить на ночь». "
+    "Поселить в отель — действие set_lodging в плане (по умолчанию "
+    "на все дни, старт и финиш дня). Цену проживания («от N» × ночи) система "
+    "сама добавит в бюджет оценкой при «Применить» — add_expense для жилья "
+    "не нужен, только если пользователь назвал СВОЮ сумму.\n"
+    "- Деньги считает система: cost_for_group — сумма на всю группу "
+    "(group_size человек), lodging_total_from — проживание за nights ночей "
+    "(от). Называй ИМЕННО их («≈ 2200 ₽ на двоих»), сам на людей и ночи не "
+    "умножай; ночей в поездке — из снапшота. Назвал пользователь потолок "
+    "(«отель до 5000 за ночь», «ужин до 3000») — передай его в max_price "
+    "(«от» — в min_price); места дороже потолка не предлагай.\n"
+    "- Предлагай 3–6 мест, не пересказывай всю выдачу: пользователь видит "
+    "карточки только тех мест, что ты назвал, — пиши названия дословно.\n"
     "- rating называй только вместе с rating_count («4,6 — 230 отзывов»). "
     "lodging_price_from — это «номер от N за ночь» по данным 2ГИС: нижняя "
-    "граница, а не цена проживания — так и говори «от N», в add_expense не "
-    "подставляй. price_source=2gis — говори «по данным 2ГИС».\n"
+    "граница — так и говори «от N». price_source=2gis — «по данным 2ГИС».\n"
     "- Поиск вернул пустой список — так и скажи: «не нашла <что> в <город>», "
     "и предложи другое: соседнюю категорию, ориентир рядом, другой город."
 )
@@ -178,6 +189,29 @@ def _window(history: list[Message], budget_tokens: int) -> list[Message]:
     return list(reversed(window))
 
 
+def _nights(start, end) -> int | None:
+    try:
+        nights = (date.fromisoformat(str(end)) - date.fromisoformat(str(start))).days
+    except (TypeError, ValueError):
+        return None
+    return nights if nights > 0 else None
+
+
+async def _group_ctx(db: AsyncSession, conversation: Conversation) -> GroupCtx:
+    """Состав группы, валюта и ночи — из поездки, иначе из черновика мастера."""
+    if conversation.trip_id is not None:
+        from app.models.trip import Trip  # локальный импорт против циклов
+        trip = (await db.execute(
+            select(Trip).where(Trip.id == conversation.trip_id)
+        )).scalar_one_or_none()
+        if trip is not None:
+            return GroupCtx(trip.adults_count or 1, trip.children_count or 0,
+                            trip.currency, _nights(trip.start_date, trip.end_date))
+    draft = conversation.draft_json or {}
+    return GroupCtx(int(draft.get("adults_count") or 1), int(draft.get("children_count") or 0),
+                    draft.get("currency"), _nights(draft.get("start_date"), draft.get("end_date")))
+
+
 async def _trip_timezone(db: AsyncSession, conversation: Conversation) -> str | None:
     if conversation.trip_id is None:
         return None
@@ -248,7 +282,8 @@ def remember_places(conversation: Conversation, tool_result) -> None:
 CARD_FIELDS = (
     "place_id", "name", "category", "address", "city", "tags", "lat", "lon",
     "is_open_now", "price", "price_is_estimate", "distance_m",
-    "outside_requested_city",
+    "outside_requested_city", "group_size", "cost_for_group", "lodging_total_from", "nights",
+    "dgis_id",
     # этап B (2ГИС)
     "rating", "rating_count", "avg_check", "lodging_price_from", "price_currency", "price_source",
 )
@@ -262,6 +297,82 @@ def place_cards(tool_result) -> list[dict]:
         for item in tool_result
         if isinstance(item, dict) and item.get("place_id")
     ]
+
+
+def _norm_name(text: str) -> str:
+    cleaned = re.sub(r"[«»\"'“”„]", "", text.lower()).replace("ё", "е")
+    return " ".join(cleaned.split())
+
+
+def named_cards(cards: list[dict], answer: str) -> list[dict]:
+    """Живой прогон: под ответом висели десятки карточек — всё, что нашли
+    пять поисков, хотя в тексте Meili назвала шесть мест. Теперь карточки —
+    только названным в ответе, в порядке упоминания; одноимённые филиалы
+    («Surf Coffee» ×2) — один, первый найденный."""
+    text = _norm_name(answer)
+    picked: dict[str, tuple[int, dict]] = {}
+    for card in cards:
+        name = _norm_name(card.get("name") or "")
+        if len(name) < 3 or name in picked:
+            continue
+        pos = text.find(name)
+        if pos >= 0:
+            picked[name] = (pos, card)
+    return [card for _, card in sorted(picked.values(), key=lambda pc: pc[0])]
+
+
+def _is_lodging_search(arguments: dict) -> bool:
+    if arguments.get("category") == "hotel":
+        return True
+    category, _, _ = _category_from_words(_words(str(arguments.get("query") or "")))
+    return category == "hotel"
+
+
+_USER_NUMBER = re.compile(r"(\d[\d\s\u00a0\u202f]*(?:[.,]\d+)?)\s*(к|k|тыс\w*)?", re.IGNORECASE)
+
+
+def user_numbers(texts: list[str]) -> set[int]:
+    """Суммы, которые пользователь написал сам: «11 000», «11000», «11к», «11 тыс»."""
+    found: set[int] = set()
+    for text in texts:
+        for raw, thousands in _USER_NUMBER.findall(text or ""):
+            digits = re.sub(r"[\s\u00a0\u202f]", "", raw).replace(",", ".")
+            try:
+                value = float(digits)
+            except ValueError:
+                continue
+            found.add(int(round(value * (1000 if thousands else 1))))
+    return found
+
+
+def lodging_gate(user_texts: list[str], arguments: dict) -> dict | None:
+    """Правила подбора жилья (живой прогон «свидание»), их держит система:
+    - про жильё не спрашивали — отели не ищем и не предлагаем;
+    - спросили, но бюджета на ночь нет — сначала спросить его у пользователя.
+    None — искать можно."""
+    asked = any(
+        _category_from_words(_words(text))[0] == "hotel" for text in user_texts
+    )
+    if not asked:
+        return {"blocked": "Пользователь не спрашивал про жильё — не ищи и не "
+                           "предлагай отели, пока он сам не попросит."}
+    # живой прогон: на «а отель подбери» модель сама придумала 3000–8000.
+    # Бюджет на ночь — только тот, что назвал пользователь (0 — «без нижней границы»)
+    said = user_numbers(user_texts)
+    prices = []
+    for key in ("max_price", "min_price"):
+        try:
+            value = float(arguments.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            prices.append(value)
+    if not prices or any(not any(abs(p - n) <= max(1, n * 0.01) for n in said) for p in prices):
+        return {"ask_user": "Прежде чем подбирать отели, спроси пользователя, "
+                            "сколько он готов тратить на жильё за ночь (от и до). "
+                            "Отели пока не предлагай. Если он уже назвал сумму — "
+                            "повтори поиск с max_price/min_price (за ночь)."}
+    return None
 
 
 def _schedule_summarize(conversation_id: UUID) -> None:
@@ -301,6 +412,8 @@ async def run_turn(
     try:
         client = get_client()
         trip_tz = await _trip_timezone(db, conversation)
+        group = await _group_ctx(db, conversation)
+        found_cards: list[dict] = []
         now, tz_name = resolve_now(trip_tz, client_tz)
         # история уже включает свежую реплику юзера (сохранена выше)
         messages, uncovered = await build_context(db, conversation, now, tz_name)
@@ -386,6 +499,7 @@ async def run_turn(
                         problems = await resolve_references(
                             db, plan, conversation.trip_id,
                             conversation.recent_places_json,
+                            await plan_center(db, conversation),
                         )
                         if problems:
                             raise ValueError("; ".join(problems))
@@ -417,15 +531,20 @@ async def run_turn(
 
                 label = STEP_LABELS.get(tc.name, tc.name)
                 yield {"event": "step", "data": {"label": label}}
-                result = await run_tool(db, now, tc.name, tc.arguments)
+                gate = None
+                if tc.name == "search_places" and _is_lodging_search(tc.arguments):
+                    gate = lodging_gate(
+                        [m["content"] for m in messages if m.get("role") == "user"], tc.arguments,
+                    )
+                result = gate or await run_tool(db, now, tc.name, tc.arguments, group=group)
                 # Ревью: найденное кладём В ДИАЛОГ. Результат инструмента живёт
                 # только внутри своего хода, а план модель предлагает обычно
                 # СЛЕДУЮЩИМ ходом («готов» -> propose_plan) — и там у неё уже
                 # нет ни одного настоящего place_id, только названия из
                 # собственного текста. Отсюда и брались сочинённые UUID.
                 remember_places(conversation, result)
-                if tc.name == "search_places" and (cards := place_cards(result)):
-                    yield {"event": "places", "data": {"places": cards}}
+                if tc.name == "search_places":
+                    found_cards += place_cards(result)
                 audit.append({"name": tc.name, "arguments": tc.arguments, "result": result})
                 messages.append({
                     "role": "tool",
@@ -436,6 +555,10 @@ async def run_turn(
 
             if plan_frozen:
                 break  # план показан карточкой — ход завершён
+
+        # карточки — только того, что Meili назвала (а не всего найденного)
+        if cards := named_cards(found_cards, assistant_text):
+            yield {"event": "places", "data": {"places": cards}}
 
         assistant_message = Message(
             conversation_id=conversation.id,
