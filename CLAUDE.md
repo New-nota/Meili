@@ -30,9 +30,14 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   только в миграции = дрейф: объявляй их и в модели.
 - Места (POI) региона с картами — из того же pbf, что тайлы, без Overpass:
   `./scripts/seed_region_pois.sh moscow` (bbox из `scripts/valhalla_regions.txt`,
-  osmium → `scripts/seed_pois.py`, идемпотентен; Москва — ~16,8 тыс. мест за
-  ~15 с). Города без карт Meili заполняет сам через Overpass (по категории
-  за запрос — общий запрос по мегаполису публичный Overpass отбивает 504).
+  osmium → `scripts/seed_pois.py`, идемпотентен; Москва — ~22 тыс. мест за
+  ~15 с; повторный прогон дописывает известным местам пустые часы/теги).
+  Категории сида и автозаполнения — один список `catalog.CATALOG_CATEGORIES`
+  (meili_upgrade: + жильё, бары, смотровые, развлечения, пляжи, шопинг;
+  fast_food осознанно нет). Города без карт Meili заполняет сам через
+  Overpass: спрошенную категорию — прямо в ходе, остальные — Celery-таск
+  `catalog.fill_area` (один город за раз, на 429 стоп). Публичный Overpass
+  капризен (429/504, зеркала часто лежат) — это best effort.
   Старый сид Калининграда через Overpass: `python -m scripts.seed_places`.
 - **Один `.env` в корне** на весь проект (`cp .env.example .env`, впиши
   пустые строки — это личные секреты). Его читают compose (`${…}` + `env_file`
@@ -45,7 +50,7 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
 
 ## Тесты
 
-- Бэкенд: `docker compose exec backend python -m pytest` (~336). Тесты не
+- Бэкенд: `docker compose exec backend python -m pytest` (~380). Тесты не
   зависят от личного `.env`: autouse-фикстуры в `tests/conftest.py` гасят
   SMTP_HOST и LLM_API_KEY, ставят покрытие «весь мир», глушат сеть геокодера и
   автозаполнения каталога (нужно — задай в тесте явно). Юнит в `tests/`,
@@ -53,7 +58,7 @@ WanderOwn / fastrip — в git-истории и БД `wanderown_*` это од�
   `wanderown_test` (схема из моделей через `create_all`, TRUNCATE после каждого
   теста, скип всего пакета если БД недоступна). Фикстуры `client` (httpx→ASGI,
   подмена `get_db`) и `auth_headers` — в `tests/integration/conftest.py`.
-- Фронт: `npm run test:unit` (vitest, 59), `npm run test:e2e` (Playwright, 26;
+- Фронт: `npm run test:unit` (vitest, 64), `npm run test:e2e` (Playwright, 27;
   `e2e/qa-hardening.spec.ts` — сценарии QA-прогона, Meili там без LLM: план
   замораживается в БД, SSE подменяется; `e2e/world.spec.ts` — мастер по миру,
   Москва с живой Valhalla, точка вне зоны, язык → Accept-Language у PDF;
@@ -114,12 +119,18 @@ i18n).
 - `trips.py` — `sync_trip_days`: диапазон дат ↔ trip_days.
 - `stops.py` — add_stop/remove_stop без commit: общая логика api/stops.py и
   Meili-executor'а (позиции в хвост дня, смыкание, авто-оценка ТЗ-E).
+- `lodging.py` (meili_upgrade) — `set_lodging`: место-отель →
+  `TripLocation(kind=lodging)` стартом/финишем дней, без commit; общая логика
+  `POST /trips/{id}/lodging` (кнопка «Жильё» в чате) и action `set_lodging`.
 - `overpass.py` — поиск POI (кэш 24ч в Redis); `places/` — пакет: get-or-create
   по osm_id (`__init__.py`) + `opening.py` (`is_open_at`: часы работы, дни
-  недели, интервалы через полночь; None = «не знаем») + `geo.py`
+  недели, интервалы через полночь; None = «не знаем»; `parse_osm_hours` —
+  простое подмножество OSM-синтаксиса, сложное → None) + `geo.py`
   (`in_coverage`, `timezone_at` через tzfpy) + `catalog.py` (`resolve_city`:
-  каталог → Nominatim с кэшем; `ensure_city_catalog`: пустой город — один
-  раз тянем POI из Overpass, метка области в Redis на месяц),
+  каталог → Nominatim с кэшем; `ensure_city_catalog(city, category)`: мало
+  мест ЭТОЙ категории вокруг города — тянем её из Overpass, метка
+  «область × категория» в Redis на месяц, fail — 5 мин; `poi_extras` — из
+  OSM-тегов часы, `fee=no` → free, подтип/stars/cuisine → `places.tags`),
   `booking.py`, `export_pdf.py` (WeasyPrint + Jinja2 из `templates/`; рендер
   без сети и файлов — `offline_fetcher`, не ослаблять),
   `export_ics.py`, `storage.py` (R2/boto3), `recommendations.py` (collaborative
@@ -143,7 +154,8 @@ FastAPI 0.14x держит include_router обёртками, `app.routes` их 
 
 Поток: `POST /api/meili/conversations/{id}/messages` → SSE-стрим → agent loop
 в запросе (`services/meili/loop.py`, `run_turn`) → события `token | step |
-plan | done | error`. Контекст хода: системный промпт + summary + окно
+places | plan | done | error` (`places` — карточки найденного: факты из
+результата search_places, не текст модели). Контекст хода: системный промпт + summary + окно
 последних сообщений (токен-бюджет `MEILI_WINDOW_TOKENS`) + свежий снапшот
 поездки из БД (`snapshot.py`) + локальное время юзера (tz клиента > tz поездки).
 
@@ -153,6 +165,12 @@ plan | done | error`. Контекст хода: системный промпт
   `mistral-small-2603`), `deepseek.py` (запасной, `deepseek-v4-pro`/`-flash`).
   Смена провайдера = env `LLM_PROVIDER`; ID проверять по офиц. докам, не по
   памяти. Без `LLM_API_KEY` чат отвечает 501. Проба: `python -m scripts.llm_probe`.
+  `stream(..., tool_choice='auto'|'required')`: 'required' провайдер
+  называет по-своему (`required_tool_choice`, у Mistral — 'any').
+- **Принудительный поиск** (meili_upgrade): маленькие модели на «найди отель»
+  обещали «могу помочь» и не звали tool. Реплика с интентом мест
+  (`search_places.wants_places`: глагол поиска или слово-категория) → на
+  первом шаге `tool_choice=required`, дальше модель свободна.
 - **Read-tools** (`services/meili/tools/`): registry.py (JSON-схемы + диспетчер,
   только чтение), search_places (аннотирует `is_open_now` через `is_open_at` и
   цену через `pricing.resolve_price`; `near_place` — ориентир по названию,
@@ -163,11 +181,13 @@ plan | done | error`. Контекст хода: системный промпт
   без tools), таймаут шага `LLM_STEP_TIMEOUT_S`.
 - **План**: псевдо-tool `propose_plan` в loop; аргументы валидируются
   `schemas/plan.py` (`ProposedPlan`, discriminated union по закрытому enum:
-  create_trip | add_stop | remove_stop | set_budget | set_stop_cost | optimize).
+  create_trip | add_stop | remove_stop | set_budget | set_stop_cost | optimize |
+  set_lodging | add_expense). `set_lodging` — по умолчанию все дни, старт и
+  финиш; `add_expense` — сумма только от юзера (цен жилья у системы нет).
   Валидный → заморожен в `meili_plans` + `event: plan`; невалидный → ошибка
   валидации в контекст, модель чинит (в пределах max_steps), в БД не пишется.
 - Ссылки плана резолвит система (`plan_refs`, и при заморозке, и в refreeze):
-  `add_stop` — place_id или place_name, `remove_stop`/`set_stop_cost` —
+  `add_stop`/`set_lodging` — place_id или place_name, `remove_stop`/`set_stop_cost` —
   stop_id или stop_name (+ day_index); в снапшоте у дней есть `day_index`.
 - Защита хода: реплика 1..4000 символов, один ход на диалог (Redis-лок →
   409 `turn_in_progress`), не больше 10 ходов в минуту на юзера (429).
@@ -190,7 +210,10 @@ plan | done | error`. Контекст хода: системный промпт
   напрямую), Celery-таск — обёртка со своим engine.
 - **Фронт**: `components/meili/` (MeiliChat — SSE-чат, PlanPreview — карточка
   [✕ закрыть | ✎ изменить | ✔ применить] + итог со значком оценок, PlanEditor —
-  виртуальные правки через refreeze: новый plan_id, старый discarded),
+  виртуальные правки через refreeze: новый plan_id, старый discarded,
+  PlaceCards — карточки найденного под ответом: «на карте», «В день ▾» /
+  у отеля «Жильё ▾»; пишут обычными ручками от имени юзера, без поездки
+  кнопок нет; живут до перезагрузки истории),
   `store/meiliStore.ts` (Zustand), `api/meili.ts` (fetch + ReadableStream
   SSE-парсер). Вкладка «Meili» в TripPlanner.
 

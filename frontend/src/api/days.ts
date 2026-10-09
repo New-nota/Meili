@@ -43,6 +43,16 @@ export const addLocation = (
     body: JSON.stringify(data),
 })
 
+// meili_upgrade: место из каталога (отель) — стартом/финишем дней;
+// day_ids не задан — все дни. Та же логика, что у set_lodging в плане Meili
+export const setLodging = (
+    tripId: string,
+    data: { place_id: string; day_ids?: string[]; role?: 'start' | 'end' | 'both' },
+) => apiFetch<TripLocation>(`/trips/${tripId}/lodging`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+})
+
 export const updateDay = (
     tripId: string,
     dayId: string,

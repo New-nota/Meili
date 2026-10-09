@@ -7,7 +7,7 @@ import {
 import { apiFetch } from '../../api/client'
 import { costText, planTotal } from '../../utils/planCost'
 import { formatMoney } from '../../utils/money'
-import { Banknote, Check, Dot, Luggage, MapPin, MapPinOff, Pencil, Route as RouteIcon, Wallet, X } from 'lucide-react'
+import { Banknote, BedDouble, Check, Dot, Luggage, MapPin, MapPinOff, Pencil, Receipt, Route as RouteIcon, Wallet, X } from 'lucide-react'
 
 // Карточка превью плана Meili (ТЗ-Meili M3.4):
 // [ закрыть | изменить руками | применить ]
@@ -22,6 +22,7 @@ interface Props {
 const ICONS: Record<string, typeof MapPin> = {
     create_trip: Luggage, add_stop: MapPin, remove_stop: MapPinOff,
     set_budget: Wallet, set_stop_cost: Banknote, optimize: RouteIcon,
+    set_lodging: BedDouble, add_expense: Receipt,
 }
 
 export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Props) {
@@ -35,7 +36,7 @@ export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Pr
     useEffect(() => {
         const ids = [...new Set(
             plan.plan_json.actions
-                .filter(a => a.type === 'add_stop' && a.place_id)
+                .filter(a => (a.type === 'add_stop' || a.type === 'set_lodging') && a.place_id)
                 .map(a => a.place_id as string),
         )]
         if (ids.length === 0) return
@@ -67,6 +68,14 @@ export default function PlanPreview({ plan, onDiscarded, onEdit, onApplied }: Pr
             case 'set_stop_cost': return a.stop_name
                 ? `${t('meili.actionSetStopCost')}: ${a.stop_name as string}` : t('meili.actionSetStopCost')
             case 'optimize': return t('meili.actionOptimize')
+            case 'set_lodging': {
+                const name = placeNames[a.place_id as string] ?? (a.place_name as string) ?? '…'
+                const idx = a.day_indexes as number[] | null | undefined
+                const days = idx?.length
+                    ? ` (${idx.map(i => t('day.dayShort', { num: i + 1 })).join(', ')})` : ''
+                return t('meili.actionSetLodging', { name }) + days
+            }
+            case 'add_expense': return t('meili.actionAddExpense', { title: a.title as string })
             default: return a.type
         }
     }

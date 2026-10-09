@@ -16,11 +16,31 @@ export interface MeiliMessage {
     content: string
     created_at: string
     error?: boolean     // локальное сообщение об ошибке хода (рисуется брусникой со значком)
+    places?: PlaceCard[] // meili_upgrade: найденное в этом ходе (живёт до перезагрузки истории)
+}
+
+// meili_upgrade: карточка места из event: places — факты системы из
+// результата search_places, модель их не пишет
+export interface PlaceCard {
+    place_id: string
+    name: string
+    category: string | null
+    address?: string | null
+    city?: string | null
+    tags?: string[]
+    lat?: number
+    lon?: number
+    is_open_now?: boolean | null
+    price?: string | null
+    price_is_estimate?: boolean
+    distance_m?: number
+    outside_requested_city?: boolean
 }
 
 // План появляется в M3; тип объявлен здесь, чтобы SSE-клиент был полным
 export interface PlanAction {
     type: 'create_trip' | 'add_stop' | 'remove_stop' | 'set_budget' | 'set_stop_cost' | 'optimize'
+        | 'set_lodging' | 'add_expense'
     [key: string]: unknown
 }
 
@@ -94,6 +114,7 @@ export interface StreamHandlers {
     onToken: (text: string) => void
     onStep?: (label: string) => void
     onPlan?: (plan: PlanEvent) => void
+    onPlaces?: (places: PlaceCard[]) => void
     onDone: () => void
     onError: (detail: string) => void
 }
@@ -138,6 +159,7 @@ export async function streamMessage(
         if (event === 'token') handlers.onToken(data.text)
         else if (event === 'step') handlers.onStep?.(data.label)
         else if (event === 'plan') handlers.onPlan?.(data as PlanEvent)
+        else if (event === 'places') handlers.onPlaces?.(data.places as PlaceCard[])
         else if (event === 'done') handlers.onDone()
         else if (event === 'error') handlers.onError(data.detail)
     }

@@ -87,7 +87,7 @@ async def test_meili_does_not_hold_db_connection_while_model_thinks(client, auth
     seen_during_llm: list[int] = []
     fake = install_fake(monkeypatch, [])
 
-    async def stream(messages, tools, model):
+    async def stream(messages, tools, model, tool_choice="auto"):
         seen_during_llm.append(checked_out["n"])
         for e in (LLMEvent(type="token", text="ок"), LLMEvent(type="end")):
             yield e

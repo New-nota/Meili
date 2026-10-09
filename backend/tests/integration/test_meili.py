@@ -17,7 +17,7 @@ class FakeLLM:
         self.scripts = list(scripts)
         self.calls: list[dict] = []  # что реально ушло в "модель" (для ассертов)
 
-    async def stream(self, messages, tools, model):
+    async def stream(self, messages, tools, model, tool_choice="auto"):
         self.calls.append({"messages": list(messages), "tools": tools, "model": model})
         script = self.scripts.pop(0) if self.scripts else [LLMEvent(type="end")]
         for event in script:
@@ -126,7 +126,7 @@ class SlowLLM:
     def __init__(self, gaps: list[float]):
         self.gaps = gaps
 
-    async def stream(self, messages, tools, model):
+    async def stream(self, messages, tools, model, tool_choice="auto"):
         import asyncio
         for gap in self.gaps:
             await asyncio.sleep(gap)
@@ -254,8 +254,12 @@ async def test_tool_call_roundtrip(client, auth_headers, monkeypatch):
     events = await _stream_events(client, auth_headers, conv_id, "что за музеи есть?")
 
     kinds = [e for e, _ in events]
-    assert kinds == ["step", "token", "done"]
+    assert kinds == ["step", "places", "token", "done"]
     assert events[0][1]["label"] == "ищу места"
+    # meili_upgrade: карточки — факты системы из результата поиска
+    card = events[1][1]["places"][0]
+    assert card["place_id"] == place_id and card["name"] == "Музей Мирового океана"
+    assert round(card["lat"], 3) == 54.706
 
     # результат tool'а ушёл в контекст второго шага: role=tool с найденным местом
     second_context = fake.calls[1]["messages"]
@@ -1165,7 +1169,7 @@ async def test_rate_limit_is_reported_distinctly(client, auth_headers, monkeypat
     class RateLimited:
         model_loop = model_summary = "fake"
 
-        async def stream(self, messages, tools, model):
+        async def stream(self, messages, tools, model, tool_choice="auto"):
             response = httpx.Response(429, request=httpx.Request("POST", "http://llm"))
             raise httpx.HTTPStatusError("429", request=response.request, response=response)
             yield  # pragma: no cover — делает функцию генератором
@@ -1230,7 +1234,7 @@ async def test_stream_retries_once_on_dropped_connection(monkeypatch):
             super().__init__("k", "loop", "sum")
             self.attempts = 0
 
-        async def _stream_once(self, messages, tools, model):
+        async def _stream_once(self, messages, tools, model, tool_choice="auto"):
             self.attempts += 1
             if self.attempts == 1:
                 raise httpx.RemoteProtocolError("Server disconnected")
@@ -1257,7 +1261,7 @@ async def test_stream_does_not_retry_after_first_token(monkeypatch):
             super().__init__("k", "loop", "sum")
             self.attempts = 0
 
-        async def _stream_once(self, messages, tools, model):
+        async def _stream_once(self, messages, tools, model, tool_choice="auto"):
             self.attempts += 1
             yield LLMEvent(type="token", text="нача")
             raise httpx.RemoteProtocolError("оборвалось на середине")

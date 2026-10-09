@@ -207,6 +207,58 @@ test('Meili: карточка плана → «Применить» пишет �
 })
 
 
+// meili_upgrade: карточки найденного под ответом. Место — настоящее из
+// каталога (сид области), SSE подменяем; «В день» идёт в обычную ручку стопов
+function catalogPlace(): { place_id: string; name: string; lat: number; lon: number } {
+  const py = [
+    'import asyncio, json',
+    'from sqlalchemy import select, func',
+    'from app.core.database import AsyncSessionLocal',
+    'from app.models.place import Place',
+    'async def main():',
+    '    async with AsyncSessionLocal() as db:',
+    '        p, lat, lon = (await db.execute(select(Place, func.ST_Y(Place.location), func.ST_X(Place.location))'
+    + '.where(Place.city == "Калининград", Place.category == "museum", Place.location.is_not(None)).limit(1))).one()',
+    '        print(json.dumps({"place_id": str(p.id), "name": p.name, "lat": lat, "lon": lon}))',
+    'asyncio.run(main())',
+  ].join('\n')
+  return JSON.parse(compose('exec -T backend python -', py))
+}
+
+test('Meili: карточка найденного места → «В день» добавляет стоп', async ({ page }) => {
+  await mockNominatim(page)
+  await login(page)
+  await createTrip(page, 'E2E Meili карточки')
+  const place = catalogPlace()
+  const card = { ...place, category: 'museum', address: null, is_open_now: null }
+
+  await page.route('**/api/meili/conversations/*/messages', route => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    return route.fulfill({
+      contentType: 'text/event-stream',
+      body: `event: step\ndata: {"label": "ищу места"}\n\n`
+        + `event: places\ndata: ${JSON.stringify({ places: [card] })}\n\n`
+        + `event: token\ndata: {"text": "Нашла музей"}\n\n`
+        + `event: done\ndata: {"message_id": "${'0'.repeat(8)}-0000-0000-0000-000000000000"}\n\n`,
+    })
+  })
+  await page.getByRole('tab', { name: 'Meili' }).click()
+  await page.getByPlaceholder('Спросите Meili…').fill('Найди музей')
+  await page.getByPlaceholder('Спросите Meili…').press('Enter')
+  const cards = page.getByRole('list', { name: 'Найденные места' })
+  await expect(cards.getByText(place.name, { exact: true })).toBeVisible()
+
+  const added = page.waitForResponse(r => r.url().endsWith('/stops') && r.request().method() === 'POST')
+  await cards.getByRole('button', { name: /В день/ }).click()
+  await page.locator('.menu-item', { hasText: 'Д1' }).click()
+  expect((await added).ok()).toBe(true)
+  await expect(cards.getByText('Добавлено: Д1')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Маршрут' }).click()
+  await expect(page.getByText(place.name, { exact: true }).first()).toBeVisible()
+})
+
+
 test('мастер → «Посоветоваться с Meili»: чат с черновиком; отказ провайдера — честный текст', async ({ page }) => {
   await mockNominatim(page)
   await login(page)

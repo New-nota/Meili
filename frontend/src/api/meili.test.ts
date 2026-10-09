@@ -52,6 +52,18 @@ describe('streamMessage', () => {
         expect(ctx.errors).toEqual([])
     })
 
+    it('places отдаёт карточки найденного (meili_upgrade)', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([
+            'event: places\ndata: {"places":[{"place_id":"p1","name":"Метрополь","category":"hotel"}]}\n\n',
+            'event: done\ndata: {}\n\n',
+        ])))
+        const ctx = handlers()
+        const got: string[] = []
+        await streamMessage('conv-1', 'q', { ...ctx.h, onPlaces: ps => got.push(...ps.map(p => p.name)) })
+        expect(got).toEqual(['Метрополь'])
+        expect(ctx.done).toBe(1)
+    })
+
     it('событие, разрезанное границей чанка, склеивается буфером', async () => {
         const event = 'event: token\ndata: {"text":"целиком"}\n\n'
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([

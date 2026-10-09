@@ -16,3 +16,5 @@ MODEL_FALLBACKS = ("ministral-14b-2512", "ministral-8b-2512")
 
 class MistralClient(OpenAICompatibleClient):
     base_url = "https://api.mistral.ai/v1"
+    # у Mistral «обязан вызвать tool» — 'any' (docs.mistral.ai, function calling)
+    required_tool_choice = "any"

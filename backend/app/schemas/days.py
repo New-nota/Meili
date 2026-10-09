@@ -29,6 +29,13 @@ class TripLocationCreate(BaseModel):
     kind: Literal["lodging", "address", "station", "custom"] = "lodging"
 
 
+class LodgingSet(BaseModel):
+    """meili_upgrade: кнопка «Жильё» на карточке места в чате."""
+    place_id: UUID
+    day_ids: list[UUID] | None = Field(default=None, max_length=61)  # None — все дни
+    role: Literal["start", "end", "both"] = "both"
+
+
 class TripLocationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

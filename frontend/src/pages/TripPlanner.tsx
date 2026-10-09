@@ -25,6 +25,7 @@ import PlaceSearch from '../components/PlaceSearch'
 import StartPoint from '../components/StartPoint'
 import StopDetailPanel from '../components/StopDetailPanel'
 import MeiliChat from '../components/meili/MeiliChat'
+import type { PlaceCard } from '../api/meili'
 import { apiFetch, ApiError } from '../api/client'
 import { apiErrorMessage } from '../utils/apiError'
 import { inCoverage } from '../utils/geocode'
@@ -556,6 +557,14 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
         }
     }
 
+    // meili_upgrade: «на карте» из карточки Meili — та же карточка точки,
+    // что и по клику (добавить в маршрут / сделать стартом), плюс перелёт
+    const showPlaceOnMap = (p: PlaceCard) => {
+        if (p.lat == null || p.lon == null) return
+        setClickedPoint({ lat: p.lat, lng: p.lon, label: p.name, address: p.address ?? null, osmId: null })
+        mapRef.current?.easeTo({ center: [p.lon, p.lat], zoom: Math.max(mapRef.current.getZoom(), 15) })
+    }
+
     const makeClickedStart = async () => {
         // Fix 2: создать локацию из точки и сделать её стартом активного дня
         if (!clickedPoint || !activeDay) return
@@ -723,7 +732,9 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                 {panelTab === 'meili' ? (
                     /* AI-ассистент (ТЗ-Meili): диалог привязан к открытой поездке */
                     <div className="planner-chat">
-                        <MeiliChat tripId={tripId} onApplied={reloadStops} />
+                        <MeiliChat tripId={tripId} onApplied={reloadStops}
+                            days={readOnly ? [] : days} activeDayId={expandedDayId}
+                            onTripChanged={reloadStops} onShowPlace={showPlaceOnMap} />
                     </div>
                 ) : panelTab === 'budget' ? (
                     <div style={{ padding: '18px 24px 32px' }} className="planner-pad">

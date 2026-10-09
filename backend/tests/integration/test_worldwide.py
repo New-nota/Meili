@@ -128,38 +128,106 @@ class FakeRedis:
         self.data.pop(key, None)
 
 
-async def test_city_catalog_autofill_is_idempotent(client, monkeypatch):
-    """Пустой город — один запрос в Overpass, места в каталоге с городом;
-    повтор — ни запроса, ни дублей."""
+async def test_city_catalog_autofill_is_idempotent(client, monkeypatch, _no_real_celery):
+    """Спрошенная категория — один запрос в Overpass прямо в ходе, места в
+    каталоге с городом; остальные категории — в фон (один раз); повтор — ни
+    запроса, ни дублей."""
     engine = create_async_engine(_TEST_ASYNC_URL)
     monkeypatch.setattr(catalog, "session_factory", async_sessionmaker(engine, expire_on_commit=False))
     monkeypatch.setattr(catalog, "redis_client", FakeRedis())
     fetches = []
 
-    async def fake_fetch(lat, lon, radius):
-        fetches.append(radius)
+    async def fake_fetch(lat, lon, radius, category):
+        fetches.append((radius, category))
         return [
             {"osm_id": "node/1", "name": "Opera House", "lat": -33.8568, "lon": 151.2153,
              "address": "", "city": None, "category": "theatre"},
-            {"osm_id": "way/2", "name": "Royal Botanic Garden", "lat": -33.8642, "lon": 151.2166,
-             "address": "Mrs Macquaries Rd", "city": "Sydney", "category": "park"},
-        ], True
+            {"osm_id": "way/2", "name": "Sydney Theatre", "lat": -33.8642, "lon": 151.2166,
+             "address": "Hickson Rd", "city": "Sydney", "category": "theatre",
+             "opening_hours": {"mo": [["10:00", "22:00"]]}, "tags": None, "pricing_model": None},
+        ]
 
-    monkeypatch.setattr(catalog, "_fetch_area", fake_fetch)
+    monkeypatch.setattr(catalog, "_fetch_category", fake_fetch)
     sydney = CityRef("Сидней", -33.8688, 151.2093, 20_000)
     try:
-        assert await ensure_city_catalog(sydney) == 2
-        assert fetches == [catalog.MAX_FETCH_RADIUS_M]  # агломерацию целиком не тянем
-        assert await ensure_city_catalog(sydney) == 0   # метка области
-        assert len(fetches) == 1
+        assert await ensure_city_catalog(sydney, "theatre") == 2
+        assert fetches == [(catalog.MAX_FETCH_RADIUS_M, "theatre")]  # агломерацию не тянем
+        assert _no_real_celery == [sydney]  # остальные категории — фоном
+        assert await ensure_city_catalog(sydney, "theatre") == 0   # метка «область × категория»
+        assert len(fetches) == 1 and len(_no_real_celery) == 1     # и фон повторно не ставим
         async with engine.connect() as conn:
             rows = (await conn.execute(
-                select(Place.name, Place.city, Place.category).order_by(Place.name)
+                select(Place.name, Place.city, Place.category, Place.opening_hours).order_by(Place.name)
             )).all()
             assert [tuple(r) for r in rows] == [
-                ("Opera House", "Сидней", "theatre"),  # addr:city нет — город запроса
-                ("Royal Botanic Garden", "Sydney", "park"),
+                ("Opera House", "Сидней", "theatre", None),  # addr:city нет — город запроса
+                ("Sydney Theatre", "Sydney", "theatre", {"mo": [["10:00", "22:00"]]}),
             ]
-            assert (await conn.execute(select(func.count()).select_from(Place))).scalar() == 2
+    finally:
+        await engine.dispose()
+
+
+async def test_category_missing_in_full_city_is_fetched(client, monkeypatch):
+    """meili_upgrade: в городе тысячи кафе, но ни одного отеля — раньше метка
+    области («мест >= 40») не пускала отели никогда. Теперь мало ИМЕННО этой
+    категории — тянем её; кафе при этом не трогаем."""
+    engine = create_async_engine(_TEST_ASYNC_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(catalog, "session_factory", factory)
+    monkeypatch.setattr(catalog, "redis_client", FakeRedis())
+    moscow = CityRef("Москва", 55.75, 37.62, 10_000)
+    cafes = [
+        {"osm_id": f"node/{i}", "name": f"Кафе {i}", "lat": 55.75, "lon": 37.62 + i / 10_000,
+         "category": "cafe"}
+        for i in range(10)
+    ]
+    fetched = []
+
+    async def fake_fetch(lat, lon, radius, category):
+        fetched.append(category)
+        return [{"osm_id": "way/77", "name": "Хостел Арбат", "lat": 55.751, "lon": 37.59,
+                 "category": "hotel", "tags": ["hostel", "stars:2"]}]
+
+    monkeypatch.setattr(catalog, "_fetch_category", fake_fetch)
+    try:
+        async with factory() as db:
+            await catalog.add_pois(db, cafes, "Москва")
+            await db.commit()
+        assert await catalog.ensure_category(moscow, "cafe") == 0      # кафе хватает
+        assert await catalog.ensure_category(moscow, "hotel") == 1     # отелей не было
+        assert fetched == ["hotel"]
+        async with engine.connect() as conn:
+            tags = (await conn.execute(select(Place.tags).where(Place.osm_id == "way/77"))).scalar_one()
+            assert tags == ["hostel", "stars:2"]
+    finally:
+        await engine.dispose()
+
+
+async def test_reseed_fills_empty_fields_but_keeps_manual(client, monkeypatch):
+    """Повторный сид дописывает известному месту часы/«бесплатно», но ручную
+    правку (часы через PATCH /places) не затирает."""
+    engine = create_async_engine(_TEST_ASYNC_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    base = {"lat": 54.71, "lon": 20.51, "category": "park"}
+    try:
+        async with factory() as db:
+            await catalog.add_pois(db, [
+                {**base, "osm_id": "way/1", "name": "Парк Юности"},
+                {**base, "osm_id": "way/2", "name": "Центральный парк",
+                 "opening_hours": {"open": "08:00", "close": "20:00"}},
+            ], "Калининград")
+            await db.commit()
+            added = await catalog.add_pois(db, [
+                {**base, "osm_id": "way/1", "name": "Парк Юности", "pricing_model": "free",
+                 "opening_hours": {"mo": [["00:00", "24:00"]]}},
+                {**base, "osm_id": "way/2", "name": "Центральный парк",
+                 "opening_hours": {"mo": []}},
+            ], "Калининград")
+            await db.commit()
+            assert added == 0
+            rows = {r.osm_id: r for r in (await db.execute(select(Place))).scalars().all()}
+            assert rows["way/1"].pricing_model == "free"
+            assert rows["way/1"].opening_hours == {"mo": [["00:00", "24:00"]]}
+            assert rows["way/2"].opening_hours == {"open": "08:00", "close": "20:00"}
     finally:
         await engine.dispose()

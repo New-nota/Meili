@@ -29,6 +29,8 @@ class ActionType(str, Enum):
     set_budget = "set_budget"
     set_stop_cost = "set_stop_cost"
     optimize = "optimize"
+    set_lodging = "set_lodging"
+    add_expense = "add_expense"
 
 
 # 'viator' | 'price_level' | 'estimate' | 'manual' — источник цены (M5.1);
@@ -126,10 +128,40 @@ class OptimizeAction(BaseModel):
     type: Literal[ActionType.optimize]
 
 
+class SetLodgingAction(BaseModel):
+    """meili_upgrade: поселить поездку в место (отель) — старт/финиш дней.
+
+    Ссылка на место — как у add_stop: place_id или place_name, резолвит
+    система (plan_refs). day_indexes с нуля; не задано — все дни."""
+    type: Literal[ActionType.set_lodging]
+    place_id: Optional[UUID] = None
+    place_name: Optional[str] = Field(None, max_length=200)
+    day_indexes: Optional[list[Annotated[int, Field(ge=0, le=60)]]] = Field(None, max_length=61)
+    role: Literal["start", "end", "both"] = "both"
+
+    @model_validator(mode="after")
+    def _needs_a_reference(self) -> "SetLodgingAction":
+        if self.place_id is None and not (self.place_name or "").strip():
+            raise ValueError("укажи place_id или place_name")
+        return self
+
+
+class AddExpenseAction(BaseModel):
+    """meili_upgrade: статья расходов (проживание, транспорт…). Сумму модель
+    берёт только у пользователя — цен жилья у системы нет (§0)."""
+    type: Literal[ActionType.add_expense]
+    category: Literal["lodging", "transport", "food", "other"]
+    title: str = Field(min_length=1, max_length=200)
+    amount: PositiveMoney
+    currency: str = Field(min_length=3, max_length=3)
+    day_index: Optional[int] = Field(None, ge=0, le=60)
+
+
 Action = Annotated[
     Union[
         CreateTripAction, AddStopAction, RemoveStopAction,
         SetBudgetAction, SetStopCostAction, OptimizeAction,
+        SetLodgingAction, AddExpenseAction,
     ],
     Field(discriminator="type"),
 ]

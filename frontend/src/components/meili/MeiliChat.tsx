@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createConversation, getMeiliMessages, streamMessage, type TripDraft } from '../../api/meili'
+import { createConversation, getMeiliMessages, streamMessage, type PlaceCard, type TripDraft } from '../../api/meili'
+import type { TripDay } from '../../api/days'
 import { useMeiliStore } from '../../store/meiliStore'
 import { renderChatText } from '../../utils/chatText'
 import { CircleAlert, LoaderCircle, SendHorizontal } from 'lucide-react'
 import Logo from '../Logo'
 import PlanPreview from './PlanPreview'
 import PlanEditor from './PlanEditor'
+import PlaceCards from './PlaceCards'
 
 // Чат с ассистентом Meili (ТЗ-Meili M1.6): список сообщений + ввод,
 // токены дописываются в реальном времени через SSE.
@@ -17,13 +19,20 @@ interface Props {
     initialInput?: string   // S17: заготовка первого сообщения (не отправляется)
     // S17: черновик мастера — уходит в диалог фактами, а не пересказом
     draft?: TripDraft | null
+    // meili_upgrade: карточки найденного — «в день» / «жильё» / «на карте»
+    days?: TripDay[]
+    activeDayId?: string | null
+    onTripChanged?: () => void
+    onShowPlace?: (place: PlaceCard) => void
 }
 
-export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Props) {
+export default function MeiliChat({
+    tripId, onApplied, initialInput, draft, days, activeDayId, onTripChanged, onShowPlace,
+}: Props) {
     const { t } = useTranslation()
     const {
         conversationId, tripId: boundTripId, messages, streaming, stepLabel, plan,
-        setConversation, startTurn, appendToken, setStep, setPlan, finishTurn, failTurn, reset,
+        setConversation, startTurn, appendToken, setStep, addPlaces, setPlan, finishTurn, failTurn, reset,
     } = useMeiliStore()
     const [input, setInput] = useState(initialInput ?? '')
     const [editing, setEditing] = useState(false)
@@ -75,6 +84,7 @@ export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Pr
             await streamMessage(cid, text, {
                 onToken: appendToken,
                 onStep: label => setStep(label),
+                onPlaces: addPlaces,
                 onPlan: plan => setPlan(plan),
                 onDone: finishTurn,
                 // ревью: сбои провайдера отличимы — «подождите минуту»
@@ -122,7 +132,8 @@ export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Pr
                     </div>
                 )}
                 {messages.map(m => (
-                    <div key={m.id} style={{
+                    <div key={m.id} style={{ display: 'contents' }}>
+                    <div style={{
                         alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                         maxWidth: '88%',
                         display: 'flex', alignItems: 'flex-end', gap: 8,
@@ -148,6 +159,11 @@ export default function MeiliChat({ tripId, onApplied, initialInput, draft }: Pr
                                 ? (m.role === 'assistant' && !m.error ? renderChatText(m.content) : m.content)
                                 : (streaming ? '…' : '')}
                         </div>
+                    </div>
+                    {m.places && m.places.length > 0 && (
+                        <PlaceCards places={m.places} tripId={tripId} days={days}
+                            activeDayId={activeDayId} onChanged={onTripChanged} onShowPlace={onShowPlace} />
+                    )}
                     </div>
                 ))}
                 {stepLabel && (

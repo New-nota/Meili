@@ -87,3 +87,90 @@ def is_open_at(opening_hours: dict | None, at: datetime) -> bool | None:
 
     # интервалы сегодняшнего дня известны, ни один не подошёл -> закрыто
     return False if today_intervals is not None else None
+
+
+# --- meili_upgrade: часы из OSM-строки ---------------------------------------
+# Сид из pbf и Overpass раньше выкидывали тег opening_hours, и is_open_now у
+# всех OSM-мест был «не знаем». Разбираем только простое подмножество
+# синтаксиса OSM; всё хитрое (праздники с часами, sunrise, месяцы, недели,
+# «+», комментарии) -> None: лучше «не знаем», чем угаданное «открыто».
+
+_OSM_DAYS = {"mo": 0, "tu": 1, "we": 2, "th": 3, "fr": 4, "sa": 5, "su": 6}
+_OSM_OFF = {"off", "closed"}
+
+
+def _osm_days(spec: str) -> list[int] | None:
+    """«Mo-Fr,Su» -> [0..4, 6]; диапазон через воскресенье («Fr-Mo») тоже."""
+    days: list[int] = []
+    for part in spec.split(","):
+        bounds = part.strip().lower().split("-")
+        if len(bounds) == 1 and bounds[0] in _OSM_DAYS:
+            days.append(_OSM_DAYS[bounds[0]])
+        elif len(bounds) == 2 and bounds[0] in _OSM_DAYS and bounds[1] in _OSM_DAYS:
+            a, b = _OSM_DAYS[bounds[0]], _OSM_DAYS[bounds[1]]
+            days.extend((a + i) % 7 for i in range((b - a) % 7 + 1))
+        else:
+            return None
+    return days
+
+
+def _osm_time(value: str) -> str | None:
+    """«9:00» -> «09:00»; «26:00» (после полуночи) -> «02:00»."""
+    try:
+        h, m = (int(x) for x in value.split(":"))
+    except ValueError:
+        return None
+    if not (0 <= m < 60 and 0 <= h <= 48):
+        return None
+    if h == 24 and m == 0:
+        return "24:00"
+    return f"{h % 24:02d}:{m:02d}"
+
+
+def _osm_intervals(spec: str) -> list[list[str]] | None:
+    if spec.strip().lower() in _OSM_OFF:
+        return []
+    intervals = []
+    for part in spec.split(","):
+        bounds = part.strip().split("-")
+        if len(bounds) != 2:
+            return None
+        start, end = _osm_time(bounds[0]), _osm_time(bounds[1])
+        if start is None or end is None:
+            return None
+        intervals.append([start, end])
+    return intervals
+
+
+def parse_osm_hours(raw: str | None) -> dict | None:
+    """OSM opening_hours -> формат 2 (по дням недели) или None.
+
+    Правила через «;», более позднее правило перекрывает дни более раннего
+    (семантика OSM). Дни, не упомянутые ни одним правилом, по OSM закрыты.
+    «PH off» / «SH off» пропускаем: про будни это ничего не меняет.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if text == "24/7":
+        return {d: [["00:00", "24:00"]] for d in WEEKDAYS}
+    week: dict[str, list] = {}
+    for rule in filter(None, (r.strip() for r in text.split(";"))):
+        head, _, rest = rule.partition(" ")
+        if head.upper() in ("PH", "SH") and rest.strip().lower() in _OSM_OFF:
+            continue
+        days = _osm_days(head) if head[:2].lower() in _OSM_DAYS else None
+        if days is None:
+            # правило без дней — на всю неделю («10:00-22:00»)
+            if head[:1].isdigit() or head.lower() in _OSM_OFF:
+                days, rest = list(range(7)), rule
+            else:
+                return None
+        intervals = _osm_intervals(rest)
+        if intervals is None:
+            return None
+        for day in days:
+            week[WEEKDAYS[day]] = intervals
+    if not week:
+        return None
+    return {d: week.get(d, []) for d in WEEKDAYS}

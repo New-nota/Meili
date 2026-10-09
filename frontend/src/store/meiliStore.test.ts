@@ -67,4 +67,16 @@ describe('meiliStore', () => {
         expect(store().tripId).toBeNull()
         expect(store().plan).toBeNull()
     })
+
+    it('addPlaces цепляет карточки к ответу хода и не дублирует места', () => {
+        store().startTurn('найди отель')
+        store().addPlaces([{ place_id: 'p1', name: 'Отель', category: 'hotel' }])
+        store().addPlaces([
+            { place_id: 'p1', name: 'Отель', category: 'hotel' },
+            { place_id: 'p2', name: 'Хостел', category: 'hotel' },
+        ])
+        const last = store().messages[store().messages.length - 1]
+        expect(last.places?.map(p => p.place_id)).toEqual(['p1', 'p2'])
+        expect(store().messages[0].places).toBeUndefined()  // реплика юзера не трогается
+    })
 })
