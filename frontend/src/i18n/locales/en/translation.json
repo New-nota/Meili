@@ -134,7 +134,8 @@
     "optimizeError": "Optimization failed",
     "allDays": "All days",
     "budgetRequired": "Set a time budget above zero",
-    "dragStop": "Drag place"
+    "dragStop": "Drag place",
+    "startAndEnd": "Start and end of the day"
   },
   "place": {
     "searchPlaceholder": "Find a place...",
@@ -233,7 +234,8 @@
     "fillExpense": "Fill in the item title and amount",
     "of": "of",
     "nothingYet": "No expenses yet",
-    "category": "Category"
+    "category": "Category",
+    "lodgingEstimateHint": "Estimate: “room from” by 2GIS × nights. Add your own item for the exact amount"
   },
   "profile": {
     "title": "Profile",
@@ -360,7 +362,8 @@
     "reload": "Reload",
     "turn_in_progress": "Meili is still answering the previous message",
     "oauth_failed": "Google sign-in didn't complete — please try again",
-    "place_without_location": "The place has no coordinates"
+    "place_without_location": "The place has no coordinates",
+    "day_time_order": "The day must start before it ends"
   },
   "meili": {
     "title": "Meili",
@@ -394,7 +397,6 @@
     "containsEstimates": "contains estimates",
     "planWith": "Plan with Meili",
     "consult": "Ask Meili for advice",
-    "draftPrefix": "I want to plan a trip:",
     "rateLimited": "Too many requests to the model — wait a minute and try again",
     "providerError": "The model is temporarily unavailable, please try again",
     "timeout": "The model is taking too long — try a shorter question",
@@ -454,18 +456,24 @@
     "cardReviews_one": "{{count}} review",
     "cardReviews_other": "{{count}} reviews",
     "hotelStars_one": "{{count}} star",
-    "hotelStars_other": "{{count}} stars"
+    "hotelStars_other": "{{count}} stars",
+    "cardCostGroup_one": "≈ {{amount}} for {{count}} person",
+    "cardCostGroup_other": "≈ {{amount}} for {{count}} people",
+    "cardLodgingTotal_one": "from {{amount}} for {{count}} night",
+    "cardLodgingTotal_other": "from {{amount}} for {{count}} nights",
+    "cardOpen2gis": "Open in 2GIS",
+    "cardOpenMap": "Open on the map"
   },
   "planner": {
     "day": {
       "default": "Day {{position}}",
       "rename": "Rename day",
-      "nameLabel": "Day name"
+      "nameLabel": "Day name",
+      "startTime": "Day start time"
     },
     "leg": {
       "walking": "on foot",
       "driving": "by car",
-      "transit": "by transit",
       "unavailable": "The day route can't be built right now",
       "change": "Change mode"
     },

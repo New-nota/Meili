@@ -62,7 +62,9 @@ interface Props {
     // открываем чат, передав туда черновик из заполненных полей.
     // Ревью: текст — только заготовка реплики пользователя; факты уходят
     // вторым аргументом структурно, иначе модель их теряет
-    onPlanWithMeili?: (text: string, draft: TripDraft) => void
+    // черновик уходит в Meili только фактами (draft_json): текст-заготовка в
+    // поле ввода мешала юзеру написать свой запрос (живой прогон)
+    onPlanWithMeili?: (draft: TripDraft) => void
 }
 
 export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }: Props) {
@@ -186,24 +188,6 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
         return budgetError()
     }
 
-    /** S17: черновик поездки словами — заготовка первого сообщения Meili.
-     *  Одной строкой: поле ввода чата однострочное, переносы в нём теряются. */
-    const meiliDraft = (): string => {
-        const parts: string[] = []
-        if (city) parts.push(city.name)
-        if (startDate && endDate) parts.push(`${startDate} — ${endDate}`)
-        parts.push(t('profile.meta.adults', { count: adults }))
-        if (children > 0) {
-            parts.push(t('profile.meta.children', { count: children })
-                + (ages.length ? ` (${ages.join(', ')})` : ''))
-        }
-        if (budget.trim()) parts.push(`${t('trip.wizard.budget')}: ${budget.trim()} ${currency}`)
-        const head = title.trim()
-            ? `${t('meili.draftPrefix')} «${title.trim()}»`
-            : t('meili.draftPrefix')
-        return parts.length ? `${head} — ${parts.join(', ')}` : head
-    }
-
     /** S17: те же поля, что уйдут в POST /trips/, но фактами — для диалога. */
     const meiliDraftFields = (): TripDraft => ({
         ...(title.trim() ? { title: title.trim() } : {}),
@@ -223,7 +207,7 @@ export default function CreateTripModal({ onClose, onCreated, onPlanWithMeili }:
         // S17: с тумблером поездку не создаём — идём обсуждать её с Meili,
         // поездку потом создаст сам план через «Применить»
         if (withMeili) {
-            onPlanWithMeili?.(meiliDraft(), meiliDraftFields())
+            onPlanWithMeili?.(meiliDraftFields())
             return
         }
         if (busy) return

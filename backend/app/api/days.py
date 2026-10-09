@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.api.stops import booked_amounts, get_trip_or_404, get_trip_readable, stop_to_dict
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.enums import TransportMode
 from app.models.place import Place
 from app.models.trip import TripDay, TripLocation, TripStop
 from app.models.user import User
@@ -96,8 +97,11 @@ async def set_lodging(
         if len(positions) != len(set(data.day_ids)):
             raise HTTPException(status_code=404, detail="day_not_found")
     try:
-        location, _ = await lodging_service.set_lodging(
+        location, lodged = await lodging_service.set_lodging(
             db, trip, place, day_positions=positions, role=data.role,
+        )
+        await lodging_service.estimate_lodging_expense(
+            db, trip, place, lodging_service.lodging_nights(trip, lodged, positions is None),
         )
     except lodging_service.LodgingError as e:
         code = str(e)
@@ -197,6 +201,7 @@ def _day_dict(day: TripDay, stops: list[dict], owner: bool) -> dict:
         "end_location": day.end_location if owner else None,
         "start_time": day.start_time,
         "end_time": day.end_time,
+        "start_transport": day.start_transport if owner else None,
         "stops": stops,
         "stops_count": len(stops),
     }
@@ -292,6 +297,14 @@ async def update_day(
                 raise HTTPException(
                     status_code=404, detail=f"Location for {field} not found"
                 )
+    # схема сверяет порядок, только если пришли оба поля; одно — против
+    # сохранённого: «начало 22:00» при конце 21:00 дало бы день минусовой длины
+    new_start = updates.get("start_time", day.start_time)
+    new_end = updates.get("end_time", day.end_time)
+    if new_end <= new_start:
+        raise HTTPException(status_code=422, detail="day_time_order")
+    if updates.get("start_transport") is not None:
+        updates["start_transport"] = TransportMode(updates["start_transport"]).value
     for field, value in updates.items():
         setattr(day, field, value)
     await db.commit()

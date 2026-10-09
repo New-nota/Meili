@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date, time
 from decimal import Decimal
-from sqlalchemy import String, Integer, Boolean, ARRAY, TIMESTAMP, DATE, TIME, TEXT, ForeignKey, Index, Numeric, UniqueConstraint, func
+from sqlalchemy import String, Integer, Boolean, ARRAY, TIMESTAMP, DATE, TIME, TEXT, ForeignKey, Index, Numeric, UniqueConstraint, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.place import Place
@@ -72,6 +72,9 @@ class TripExpense(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)  # = trips.currency
+    # оценка (проживание «от N» × ночи по 2ГИС) — бюджет рисует «≈»;
+    # правка суммы руками снимает пометку
+    is_estimate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow)
 
 
@@ -106,6 +109,9 @@ class TripDay(Base):
     end_location_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trip_locations.id"), nullable=True)
     start_time: Mapped[time] = mapped_column(TIME, nullable=False, default=time(9, 0), server_default="09:00")
     end_time: Mapped[time] = mapped_column(TIME, nullable=False, default=time(21, 0), server_default="21:00")
+    # от старта дня до первой точки (живой прогон: своего режима не было).
+    # NULL — режим первого стопа / дефолт поездки
+    start_transport: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 

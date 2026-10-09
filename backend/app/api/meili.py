@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import acquire_turn_lock, release_turn_lock, take_meili_turn_slot
 from app.core.security import get_current_user
-from app.services.meili.plan_refs import resolve_references
+from app.services.meili.plan_refs import plan_center, resolve_references
 from app.models.conversation import Conversation
 from app.models.meili_plan import MeiliPlan
 from app.models.message import Message
@@ -187,6 +187,7 @@ async def refreeze_plan(
     conversation = await db.get(Conversation, old.conversation_id)
     problems = await resolve_references(
         db, data, conversation.trip_id, conversation.recent_places_json,
+        await plan_center(db, conversation),
     )
     if problems:
         raise HTTPException(status_code=422, detail="; ".join(problems))

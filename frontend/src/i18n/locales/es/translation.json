@@ -136,7 +136,8 @@
     "dragDay": "Arrastra para reordenar los días",
     "allDays": "Todos los días",
     "budgetRequired": "Indica un presupuesto de tiempo mayor que cero",
-    "dragStop": "Mover lugar"
+    "dragStop": "Mover lugar",
+    "startAndEnd": "Inicio y fin del día"
   },
   "place": {
     "searchPlaceholder": "Buscar un lugar...",
@@ -219,7 +220,8 @@
     "fillExpense": "Rellena el título y el importe del gasto",
     "of": "de",
     "nothingYet": "Aún no hay gastos",
-    "category": "Categoría"
+    "category": "Categoría",
+    "lodgingEstimateHint": "Estimación: «habitación desde» según 2GIS × noches. Puedes añadir tu propio gasto con el importe exacto"
   },
   "profile": {
     "title": "Perfil",
@@ -351,18 +353,19 @@
     "reload": "Recargar",
     "turn_in_progress": "Meili aún está respondiendo al mensaje anterior",
     "oauth_failed": "El inicio de sesión con Google no se completó — inténtalo de nuevo",
-    "place_without_location": "El lugar no tiene coordenadas"
+    "place_without_location": "El lugar no tiene coordenadas",
+    "day_time_order": "El día debe empezar antes de terminar"
   },
   "planner": {
     "day": {
       "default": "Día {{position}}",
       "rename": "Renombrar el día",
-      "nameLabel": "Nombre del día"
+      "nameLabel": "Nombre del día",
+      "startTime": "Hora de inicio del día"
     },
     "leg": {
       "walking": "a pie",
       "driving": "en coche",
-      "transit": "en transporte",
       "unavailable": "Ahora mismo no se puede calcular la ruta del día",
       "change": "Cambiar modo"
     },
@@ -412,7 +415,6 @@
   "meili": {
     "planWith": "Planificar con Meili",
     "consult": "Consultar con Meili",
-    "draftPrefix": "Quiero planificar un viaje:",
     "title": "Meili",
     "intro": "¡Hola! Soy Meili y te ayudo a planificar tu viaje. Cuéntame a dónde vas y con quién.",
     "placeholder": "Pregunta a Meili…",
@@ -503,7 +505,15 @@
     "cardReviews_other": "{{count}} reseñas",
     "hotelStars_one": "{{count}} estrella",
     "hotelStars_many": "{{count}} estrellas",
-    "hotelStars_other": "{{count}} estrellas"
+    "hotelStars_other": "{{count}} estrellas",
+    "cardCostGroup_one": "≈ {{amount}} para {{count}} persona",
+    "cardCostGroup_many": "≈ {{amount}} para {{count}} personas",
+    "cardCostGroup_other": "≈ {{amount}} para {{count}} personas",
+    "cardLodgingTotal_one": "desde {{amount}} por {{count}} noche",
+    "cardLodgingTotal_many": "desde {{amount}} por {{count}} noches",
+    "cardLodgingTotal_other": "desde {{amount}} por {{count}} noches",
+    "cardOpen2gis": "Abrir en 2GIS",
+    "cardOpenMap": "Abrir en el mapa"
   },
   "visited": {
     "rateTitle": "Valoración",

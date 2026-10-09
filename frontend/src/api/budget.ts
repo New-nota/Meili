@@ -21,6 +21,7 @@ export interface Expense {
     title: string
     amount: string
     currency: string
+    is_estimate?: boolean   // оценка (проживание «от» по 2ГИС) — рисуем «≈»
     created_at: string
 }
 

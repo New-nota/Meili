@@ -175,6 +175,9 @@ svg.lucide { flex-shrink: 0; }
 
 /* строки дня (components/trip/DayPlan) */
 .stop-row { transition: background-color .15s ease-out; }
+/* карточка места в чате Meili: вся кликабельна (карта / 2ГИС) */
+.place-card { transition: box-shadow .15s ease-out, background-color .15s ease-out; }
+.place-card:hover { box-shadow: var(--shadow-2); }
 .stop-row:hover { background: var(--surface); }
 .grip {
   width: 20px; height: 32px; display: grid; place-items: center; border: 0; padding: 0;
@@ -199,6 +202,14 @@ svg.lucide { flex-shrink: 0; }
   background: rgba(255, 255, 255, .16); padding: 2px 8px; outline: 2px solid rgba(255, 255, 255, .55);
 }
 .dayname-input::placeholder { color: rgba(255, 253, 248, .7); }
+/* время начала дня в зелёном блоке: выглядит как текст, по клику — выбор времени */
+.day-time-input {
+  font: inherit; color: inherit; background: transparent; border: 0; padding: 0 2px; margin: 0 -2px;
+  border-radius: 6px; border-bottom: 1.5px dashed rgba(255, 253, 248, .55); cursor: pointer;
+  font-variant-numeric: tabular-nums; width: auto;
+}
+.day-time-input:hover { background: rgba(255, 255, 255, .12); }
+.day-time-input::-webkit-calendar-picker-indicator { display: none; }
 
 /* переключатель дней — образцы */
 .swatches { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px; scrollbar-width: none; }

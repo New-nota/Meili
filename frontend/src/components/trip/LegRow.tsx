@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Car, ChevronDown, Footprints, TramFront } from 'lucide-react'
+import { Car, ChevronDown, Footprints } from 'lucide-react'
 import type { RouteLeg } from '../../api/trips'
 import { TRANSPORT_MODES, type TransportMode } from '../../types'
 import { formatDistance, formatDuration } from '../../utils/format'
@@ -12,7 +12,7 @@ import Menu from '../ui/Menu'
 // смена способа — общим меню.
 
 const MODE_ICON: Record<TransportMode, typeof Footprints> = {
-    walking: Footprints, driving: Car, transit: TramFront,
+    walking: Footprints, driving: Car,
 }
 
 interface Props {

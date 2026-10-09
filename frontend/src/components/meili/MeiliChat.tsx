@@ -16,7 +16,6 @@ interface Props {
     tripId?: string | null
     // M4: план применён; S17: id созданной поездки — чтобы открыть её сразу
     onApplied?: (appliedTripId: string | null) => void
-    initialInput?: string   // S17: заготовка первого сообщения (не отправляется)
     // S17: черновик мастера — уходит в диалог фактами, а не пересказом
     draft?: TripDraft | null
     // meili_upgrade: карточки найденного — «в день» / «жильё» / «на карте»
@@ -27,14 +26,14 @@ interface Props {
 }
 
 export default function MeiliChat({
-    tripId, onApplied, initialInput, draft, days, activeDayId, onTripChanged, onShowPlace,
+    tripId, onApplied, draft, days, activeDayId, onTripChanged, onShowPlace,
 }: Props) {
     const { t } = useTranslation()
     const {
         conversationId, tripId: boundTripId, messages, streaming, stepLabel, plan,
         setConversation, startTurn, appendToken, setStep, addPlaces, setPlan, finishTurn, failTurn, reset,
     } = useMeiliStore()
-    const [input, setInput] = useState(initialInput ?? '')
+    const [input, setInput] = useState('')
     const [editing, setEditing] = useState(false)
     const bottomRef = useRef<HTMLDivElement>(null)
     // создание в полёте: ключ цели + сам промис. Ключ строкой, потому что

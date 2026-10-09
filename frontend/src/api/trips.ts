@@ -30,7 +30,7 @@ export interface DayRoute {
 export const getDayRoute = (tripId: string, dayId: string) =>
     apiFetch<DayRoute>(`/trips/${tripId}/route?day_id=${dayId}`)
 
-type RouteDay = Pick<TripDay, 'id' | 'start_location' | 'end_location' | 'stops'>
+type RouteDay = Pick<TripDay, 'id' | 'start_location' | 'end_location' | 'stops' | 'start_transport'>
 
 /** Ключ кэша маршрута дня — от его состава: добавили/убрали/переставили
  *  точку или сменили транспорт → новый маршрут. Общий для карты
@@ -39,7 +39,7 @@ type RouteDay = Pick<TripDay, 'id' | 'start_location' | 'end_location' | 'stops'
  *  обновление состояния, а панель запрашивала тот же маршрут отдельно. */
 export const dayRouteKey = (tripId: string, day: RouteDay) => [
     'dayRoute', tripId, day.id,
-    [day.start_location?.id, day.end_location?.id,
+    [day.start_location?.id, day.end_location?.id, day.start_transport,
         ...day.stops.filter(s => s.included_in_route).map(s => `${s.id}:${s.position}:${s.transport_to_next}`),
     ].join('|'),
 ]

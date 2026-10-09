@@ -1,6 +1,7 @@
 // S16: три доменных режима перемещения (costing Valhalla — забота бэкенда)
-export type TransportMode = 'walking' | 'driving' | 'transit'
-export const TRANSPORT_MODES: TransportMode[] = ['walking', 'driving', 'transit']
+// transit убран: без GTFS-тайлов Valhalla не строит такие маршруты
+export type TransportMode = 'walking' | 'driving'
+export const TRANSPORT_MODES: TransportMode[] = ['walking', 'driving']
 
 export interface Stop {
     id: string

@@ -18,7 +18,6 @@ export default function Discover() {
     const [isCreating, setIsCreating] =  useState(false)
     // S17: null — чат закрыт; строка — заготовка первого сообщения Meili
     // S17: заготовка реплики + факты мастера (ревью: факты уходят структурно)
-    const [meiliDraft, setMeiliDraft] = useState<string | null>(null)
     const [meiliDraftFields, setMeiliDraftFields] = useState<TripDraft | null>(null)
     const navigate = useNavigate()
     const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -76,17 +75,16 @@ export default function Discover() {
                 <CreateTripModal
                     onClose={() => setIsCreating(false)}
                     onCreated={trip => navigate(`/trips/${trip.id}`)}
-                    onPlanWithMeili={(text, fields) => {
-                        setIsCreating(false); setMeiliDraft(text); setMeiliDraftFields(fields)
+                    onPlanWithMeili={fields => {
+                        setIsCreating(false); setMeiliDraftFields(fields)
                     }} />
             )}
             {/* S17: чат с Meili прямо с Discover — поездки ещё нет, её создаст план */}
-            {meiliDraft !== null && (
+            {meiliDraftFields !== null && (
                 <MeiliChatModal
-                    initialInput={meiliDraft || undefined}
                     draft={meiliDraftFields}
-                    onClose={() => { setMeiliDraft(null); setMeiliDraftFields(null) }}
-                    onTripCreated={id => { setMeiliDraft(null); setMeiliDraftFields(null); navigate(`/trips/${id}`) }} />
+                    onClose={() => setMeiliDraftFields(null)}
+                    onTripCreated={id => { setMeiliDraftFields(null); navigate(`/trips/${id}`) }} />
             )}
 
             {/* S17: свои поездки — сеткой, крестик в углу ячейки */}

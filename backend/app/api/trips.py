@@ -232,8 +232,9 @@ async def get_day_route(
     if owner and day.start_location is not None:
         points.append({
             "lat": day.start_location.lat, "lon": day.start_location.lon,
-            # от старта дня едем режимом первого стопа (или дефолтом поездки)
-            "mode": (stops[0].transport_to_next if stops else None) or trip.transport_default,
+            # свой режим старта дня; не задан — режимом первого стопа (или дефолтом)
+            "mode": day.start_transport
+                    or (stops[0].transport_to_next if stops else None) or trip.transport_default,
         })
         ids.append(None)
     for stop in stops:

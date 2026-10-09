@@ -16,6 +16,8 @@
 """
 import logging
 import re
+from dataclasses import dataclass
+from decimal import Decimal
 from datetime import datetime
 
 from geoalchemy2 import Geography
@@ -26,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2.shape import to_shape
 
 from app.models.place import Place
+from app.services.budget_estimate import estimate_stop_cost
 from app.services.meili.pricing import resolve_price
 from app.services.places.catalog import (
     CityRef,
@@ -35,7 +38,7 @@ from app.services.places.catalog import (
 )
 from app.services.places.geo import haversine_m
 from app.services.places.opening import is_open_at
-from app.services.providers.enrich import enrich_places
+from app.services.providers.enrich import enrich_places, queue_area_enrichment
 
 logger = logging.getLogger("meili.search")
 
@@ -133,6 +136,54 @@ def wants_places(text: str) -> bool:
     return category is not None
 
 
+@dataclass(frozen=True)
+class GroupCtx:
+    """Кто едет — из поездки или черновика мастера (факт системы, не модели).
+
+    Живой прогон: модель называла средний чек на одного как цену ужина
+    «на двоих» и считала отель на 17–18 октября «на 2 ночи». Суммы на
+    группу и за проживание теперь считает система."""
+    adults: int = 1
+    children: int = 0
+    currency: str | None = None
+    nights: int | None = None
+
+    @property
+    def size(self) -> int:
+        return self.adults + self.children
+
+
+def _lodging_total(place: Place, group: GroupCtx) -> Decimal | None:
+    """«Номер от N» × ночи — нижняя граница проживания (один номер)."""
+    if place.lodging_price_from is None or not group.nights:
+        return None
+    if group.currency and place.price_currency and place.price_currency.upper() != group.currency.upper():
+        return None
+    return Decimal(place.lodging_price_from) * group.nights
+
+
+def _compare_price(place: Place, group: GroupCtx) -> Decimal | None:
+    """Цена для фильтра «от–до»: жильё — ЗА НОЧЬ (так говорят о гостиницах:
+    «до 11 000 за ночь»), остальное — на всю группу."""
+    if place.lodging_price_from is not None:
+        if group.currency and place.price_currency and place.price_currency.upper() != group.currency.upper():
+            return None
+        return Decimal(place.lodging_price_from)
+    return estimate_stop_cost(place, group.adults, group.children, group.currency)
+
+
+def _group_costs(place: Place, group: GroupCtx) -> dict:
+    out: dict = {"group_size": group.size}
+    cost = estimate_stop_cost(place, group.adults, group.children, group.currency)
+    if cost is not None and place.pricing_model != "free":
+        out["cost_for_group"] = str(cost)
+    lodging = _lodging_total(place, group)
+    if lodging is not None:
+        out["lodging_total_from"] = str(lodging.quantize(Decimal("0.01")))
+        out["nights"] = group.nights
+    return out
+
+
 def _wide_radius(city: CityRef) -> int:
     return max(MIN_WIDE_RADIUS_M, min(city.radius_m * WIDE_RADIUS_FACTOR, MAX_WIDE_RADIUS_M))
 
@@ -199,6 +250,9 @@ async def search_places(
     radius: int | None = None,       # метры, с near
     day: str | None = None,          # ISO-дата: открытость смотрим в полдень этого дня
     near_place: str | None = None,   # QA: ориентир по названию — координаты ищет система
+    max_price: float | None = None,  # потолок: на группу (еда), за ночь (жильё)
+    min_price: float | None = None,  # «от» — для жилья: показать уровень, а не самое дешёвое
+    group: GroupCtx | None = None,
 ) -> list[dict]:
     words = _words(query or "")
     # категория из слова запроса — мягкая: место С категорией матчится по
@@ -331,6 +385,35 @@ async def search_places(
             relaxed = bool(words) and word_mode != "all"
             break
 
+    ceiling = Decimal(str(max_price)) if max_price else None
+    floor = Decimal(str(min_price)) if min_price else None
+    lodging_search = (category or soft_category) == "hotel"
+    center = ((near["lat"], near["lon"]) if near and "lat" in near and "lon" in near
+              else (city_ref.lat, city_ref.lon) if city_ref is not None else None)
+    area_radius = (radius or NEAR_PLACE_RADIUS_M) if near else (city_ref.radius_m if city_ref else None)
+    if lodging_search and center is not None and (ceiling is not None or floor is not None):
+        # живой прогон: «отель до 11 000» — а в выдаче 3000–5500: из 1130
+        # московских отелей цену знали 14, и в выборку по имени попадали они же.
+        # Отели с уже известной ценой в диапазоне — первыми, дороже — выше
+        price_stmt = select(Place).where(
+            Place.category == "hotel", Place.lodging_price_from.is_not(None),
+            _within(center[0], center[1], area_radius),
+        )
+        if ceiling is not None:
+            price_stmt = price_stmt.where(Place.lodging_price_from <= ceiling)
+        if floor is not None:
+            price_stmt = price_stmt.where(Place.lodging_price_from >= floor)
+        priced = (await db.execute(
+            price_stmt.order_by(Place.lodging_price_from.desc()).limit(MAX_RESULTS)
+        )).scalars().all()
+        places = list(priced) + [p for p in places if p not in priced]
+    if lodging_search and center is not None:
+        # цены отелей города — фоном из 2ГИС: следующий запрос выбирает из многих
+        try:
+            await queue_area_enrichment(db, "hotel", center[0], center[1], area_radius)
+        except Exception:  # noqa: BLE001 — фон не важнее ответа
+            logger.exception("фоновое обогащение отелей не поставилось")
+
     at = now
     if day:
         try:
@@ -358,13 +441,32 @@ async def search_places(
         shown.append((p, pt, distance))
     if anchor is not None:
         shown.sort(key=lambda row: row[2] if row[2] is not None else 10**9)
-    shown = shown[:MAX_RESULTS]
+    group = group or GroupCtx()
+    priced_filter = ceiling is not None or floor is not None
+    # с фильтром цены кандидатов берём с запасом: лишние отсеются после
+    # обогащения (цену многих знаем только после 2ГИС)
+    shown = shown[:FETCH_LIMIT if priced_filter else MAX_RESULTS]
 
     # этап B: цена/рейтинг/часы из 2ГИС — синхронно с бюджетом, остальное фоном
     try:
         await enrich_places(db, [p for p, _, _ in shown])
     except Exception:  # noqa: BLE001 — без обогащения ищем по тому, что есть
         logger.exception("обогащение 2ГИС упало")
+
+    if priced_filter:
+        # живой прогон: «на отель 5000» — а в выдаче Four Seasons от 50 000.
+        # Цена вне диапазона — вон; в диапазоне — дороже выше (лучшее, что
+        # влезает в бюджет); неизвестная — в хвост (вдруг подходит)
+        known, unknown = [], []
+        for row in shown:
+            price = _compare_price(row[0], group)
+            if price is None:
+                unknown.append(row)
+            elif (ceiling is None or price <= ceiling) and (floor is None or price >= floor):
+                known.append((price, row))
+        known.sort(key=lambda pr: pr[0], reverse=True)
+        shown = [row for _, row in known] + unknown
+    shown = shown[:MAX_RESULTS]
 
     results = []
     for p, pt, distance in shown:
@@ -389,9 +491,13 @@ async def search_places(
             **({"avg_check": str(p.avg_check), "price_currency": p.price_currency}
                if p.pricing_model == "per_person" and p.avg_check is not None else {}),
             **({"price_source": p.price_source} if p.price_source else {}),
+            # клик по карточке в чате без карты — место в 2ГИС
+            **({"dgis_id": p.dgis_id} if p.dgis_id else {}),
             # «номер от N» — ориентир, НЕ цена проживания (в бюджет не идёт)
             **({"lodging_price_from": str(p.lodging_price_from),
                 "price_currency": p.price_currency} if p.lodging_price_from is not None else {}),
+            # суммы на всю группу / за всё проживание — считает система
+            **_group_costs(p, group),
             # рейтинг — только вместе с числом отзывов
             **({"rating": str(p.rating), "rating_count": p.rating_count}
                if p.rating is not None and p.rating_count else {}),

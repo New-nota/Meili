@@ -1,5 +1,5 @@
 import { apiFetch } from "./client"
-import type { Stop } from "../types"
+import type { Stop, TransportMode } from "../types"
 
 // S8 WP-3: мульти-день
 export interface TripLocation {
@@ -20,6 +20,8 @@ export interface TripDay {
     end_location: TripLocation | null
     start_time: string
     end_time: string
+    // от старта дня до первой точки; null — режим первой точки / поездки
+    start_transport?: TransportMode | null
     stops: Stop[]
     stops_count: number
 }
@@ -62,6 +64,7 @@ export const updateDay = (
         end_location_id: string
         start_time: string
         end_time: string
+        start_transport: TransportMode
     }>,
 ) => apiFetch<TripDay>(`/trips/${tripId}/days/${dayId}`, {
     method: 'PATCH',

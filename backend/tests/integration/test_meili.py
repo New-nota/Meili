@@ -247,17 +247,17 @@ async def test_tool_call_roundtrip(client, auth_headers, monkeypatch):
         [LLMEvent(type="tool_call", name="search_places",
                   arguments={"query": "музей"}, id="call_1"),
          LLMEvent(type="end")],
-        [LLMEvent(type="token", text="Нашла музей!"), LLMEvent(type="end")],
+        [LLMEvent(type="token", text="Нашла: Музей Мирового океана!"), LLMEvent(type="end")],
     ])
 
     conv_id = await _conversation(client, auth_headers)
     events = await _stream_events(client, auth_headers, conv_id, "что за музеи есть?")
 
     kinds = [e for e, _ in events]
-    assert kinds == ["step", "places", "token", "done"]
+    assert kinds == ["step", "token", "places", "done"]
     assert events[0][1]["label"] == "ищу места"
-    # meili_upgrade: карточки — факты системы из результата поиска
-    card = events[1][1]["places"][0]
+    # карточки — факты системы, и только названные в ответе (после текста)
+    card = events[2][1]["places"][0]
     assert card["place_id"] == place_id and card["name"] == "Музей Мирового океана"
     assert round(card["lat"], 3) == 54.706
 
@@ -272,7 +272,7 @@ async def test_tool_call_roundtrip(client, auth_headers, monkeypatch):
     assert fake.calls[0]["tools"] is not None
     history = (await client.get(f"/api/meili/conversations/{conv_id}/messages",
                                 headers=auth_headers)).json()
-    assert history[-1]["content"] == "Нашла музей!"
+    assert history[-1]["content"] == "Нашла: Музей Мирового океана!"
 
 
 async def test_search_marks_closed_places(client, auth_headers, monkeypatch):

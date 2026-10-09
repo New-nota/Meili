@@ -43,6 +43,12 @@ export interface PlaceCard {
     lodging_price_from?: string
     price_currency?: string
     price_source?: 'osm' | '2gis' | 'manual'
+    // суммы от системы: на всю группу / за всё проживание (от)
+    group_size?: number
+    cost_for_group?: string
+    lodging_total_from?: string
+    nights?: number
+    dgis_id?: string
 }
 
 // План появляется в M3; тип объявлен здесь, чтобы SSE-клиент был полным

@@ -464,8 +464,13 @@ export default function TripPlanner({ readOnly = false }: { readOnly?: boolean }
                     new maplibregl.Marker({element: el}).setLngLat([loc.lon, loc.lat]).setPopup(popup).addTo(map))
             }
             // S13: депо старта/финиша и «дом» в превью не рисуем (Q9)
-            if (!readOnlyRef.current && activeDay?.start_location) depotMarker(activeDay.start_location, t('day.startOfDay'), ICON_HOUSE)
-            if (!readOnlyRef.current && activeDay?.end_location) depotMarker(activeDay.end_location, t('day.endOfDay'), ICON_FLAG)
+            // отель — и старт, и финиш дня: один маркер (флажок закрывал домик,
+            // и точка отеля на карте выглядела «не той»)
+            const sameDepot = activeDay?.start_location && activeDay.start_location.id === activeDay.end_location?.id
+            if (!readOnlyRef.current && activeDay?.start_location) {
+                depotMarker(activeDay.start_location, sameDepot ? t('day.startAndEnd') : t('day.startOfDay'), ICON_HOUSE)
+            }
+            if (!readOnlyRef.current && activeDay?.end_location && !sameDepot) depotMarker(activeDay.end_location, t('day.endOfDay'), ICON_FLAG)
             if (!readOnlyRef.current && !activeDay && trip?.start_lat && trip?.start_lon) {
                 depotMarker({ lat: trip.start_lat, lon: trip.start_lon, name: trip.start_address }, t('place.home'), ICON_HOUSE)
             }

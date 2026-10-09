@@ -20,7 +20,9 @@ from datetime import date, datetime, timedelta
 
 import httpx
 from geoalchemy2.shape import to_shape
-from sqlalchemy import select
+from geoalchemy2 import Geography
+from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
+from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -92,6 +94,35 @@ def apply(place: Place, found: Enrichment, now: datetime, claim_id: bool = True)
             place.lodging_price_from = found.lodging_price_from
             place.price_currency = place.price_currency or found.currency
             place.price_source = place.price_source or "2gis"
+
+
+AREA_QUEUE_LIMIT = 100
+AREA_QUEUE_TTL = 24 * 3600
+
+
+async def queue_area_enrichment(db: AsyncSession, category: str, lat: float, lon: float,
+                                radius_m: int, redis=None) -> int:
+    """Фоном обогатить места категории вокруг точки (ближайшие, ещё не
+    спрошенные). Живой прогон: из 1130 отелей Москвы цену знали 14, и фильтр
+    «до 11 000» выбирал из них. Раз в сутки на область, в пределах лимита."""
+    if not enabled():
+        return 0
+    redis = redis or redis_client
+    key = f"dgis:area:{category}:{lat:.2f}:{lon:.2f}"
+    if not await redis.set(key, "1", nx=True, ex=AREA_QUEUE_TTL):
+        return 0
+    point = ST_SetSRID(ST_MakePoint(lon, lat), 4326)
+    ids = list((await db.execute(
+        select(Place.id).where(
+            Place.category == category, Place.enriched_at.is_(None),
+            Place.location.is_not(None),
+            ST_DWithin(cast(Place.location, Geography), cast(point, Geography), radius_m),
+        ).order_by(func.ST_Distance(cast(Place.location, Geography), cast(point, Geography)))
+        .limit(AREA_QUEUE_LIMIT)
+    )).scalars().all())
+    if ids:
+        _schedule_background(ids)
+    return len(ids)
 
 
 def _schedule_background(place_ids: list) -> None:

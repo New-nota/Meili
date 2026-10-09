@@ -8,7 +8,15 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.meili.tools.place_details import get_place_details
-from app.services.meili.tools.search_places import search_places
+from app.services.meili.tools.search_places import GroupCtx, search_places
+
+
+def _number(value) -> float | None:
+    try:
+        return float(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
 
 # OpenAI-совместимые описания — единый формат Mistral/DeepSeek (§4)
 TOOL_SCHEMAS: list[dict] = [
@@ -56,6 +64,17 @@ TOOL_SCHEMAS: list[dict] = [
                     },
                     "radius": {"type": "integer", "description": "радиус в метрах (с near)"},
                     "day": {"type": "string", "description": "ISO-дата — открытость на этот день"},
+                    "max_price": {
+                        "type": "number",
+                        "description": (
+                            "потолок цены, который назвал пользователь: для жилья — "
+                            "ЗА НОЧЬ, для еды и развлечений — на всю группу"
+                        ),
+                    },
+                    "min_price": {
+                        "type": "number",
+                        "description": "нижняя граница цены (для жилья — за ночь), если пользователь её назвал",
+                    },
                 },
                 "required": ["query"],
             },
@@ -84,8 +103,10 @@ STEP_LABELS = {
 }
 
 
-async def run_tool(db: AsyncSession, now: datetime, name: str, arguments: dict):
-    """Выполнить read-tool. Неизвестное имя — мягкая ошибка в контекст модели."""
+async def run_tool(db: AsyncSession, now: datetime, name: str, arguments: dict,
+                   group: GroupCtx | None = None):
+    """Выполнить read-tool. Неизвестное имя — мягкая ошибка в контекст модели.
+    group — состав группы и ночи от системы (не из аргументов модели)."""
     if name == "search_places":
         return await search_places(
             db, now,
@@ -96,6 +117,9 @@ async def run_tool(db: AsyncSession, now: datetime, name: str, arguments: dict):
             radius=arguments.get("radius"),
             day=arguments.get("day"),
             near_place=arguments.get("near_place"),
+            max_price=_number(arguments.get("max_price")),
+            min_price=_number(arguments.get("min_price")),
+            group=group,
         )
     if name == "get_place_details":
         return await get_place_details(db, now, place_id=arguments.get("place_id", ""))
