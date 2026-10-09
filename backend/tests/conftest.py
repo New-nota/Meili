@@ -58,6 +58,8 @@ def _no_real_geo(monkeypatch):
         return 0
 
     monkeypatch.setattr(settings, "ROUTING_COVERAGE", [])
+    # этап B: 2ГИС по умолчанию выключен — ключ из .env разработчика тестам не нужен
+    monkeypatch.setattr(settings, "DGIS_API_KEY", None)
     monkeypatch.setattr(catalog, "geocode_city", no_city)
     monkeypatch.setattr(search_module, "ensure_city_catalog", no_fill)
 
@@ -94,6 +96,8 @@ def _no_real_celery(monkeypatch):
     monkeypatch.setattr(loop, "_schedule_summarize", lambda cid: enqueued.append(cid))
     # meili_upgrade: фоновое дозаполнение каталога — туда же
     monkeypatch.setattr(catalog, "_schedule_area_fill", lambda city: enqueued.append(city))
+    from app.services.providers import enrich
+    monkeypatch.setattr(enrich, "_schedule_background", lambda ids: enqueued.append(("dgis", ids)))
     return enqueued
 
 

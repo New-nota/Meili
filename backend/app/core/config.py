@@ -88,6 +88,21 @@ class Settings(BaseSettings):
     # публичный Nominatim требует User-Agent и ≤1 запроса/с — всё кэшируем
     NOMINATIM_URL: str = "https://nominatim.openstreetmap.org"
 
+    # Этап B: 2ГИС — цены (средний счёт, «номер от»), рейтинг, часы для мест
+    # из OSM. Без ключа обогащение молча выключено (паттерн R2/SMTP).
+    DGIS_API_KEY: str | None = None
+    DGIS_BASE_URL: str = "https://catalog.api.2gis.com/3.0"
+    # где спрашивать 2ГИС: [south, west, north, east]. Грубо — РФ и Беларусь,
+    # Кавказ, Средняя Азия, ОАЭ; лишний запрос за границей зоны ловит
+    # отрицательный кэш. Пусто — везде
+    DGIS_COVERAGE: list[tuple[float, float, float, float]] = [
+        (41.0, 19.0, 82.0, 180.0),
+        (35.0, 39.0, 56.0, 88.0),
+        (22.0, 51.0, 26.5, 56.5),
+    ]
+    # потолок запросов в сутки — бережём ключ (у демо-ключа лимиты не описаны)
+    DGIS_DAILY_LIMIT: int = 1000
+
     model_config = SettingsConfigDict(
         env_file=ROOT_ENV,
         # в общем .env есть ключи compose (POSTGRES_*) и Vite (VITE_*) — не наши

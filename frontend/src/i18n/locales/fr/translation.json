@@ -494,7 +494,16 @@
       "zoo": "zoo",
       "aquarium": "aquarium",
       "theme_park": "parc d’attractions"
-    }
+    },
+    "cardAvgCheck": "≈ {{amount}} par personne",
+    "cardLodgingFrom": "chambre dès {{amount}}",
+    "source2gis": "2GIS",
+    "cardReviews_one": "{{count}} avis",
+    "cardReviews_many": "{{count}} avis",
+    "cardReviews_other": "{{count}} avis",
+    "hotelStars_one": "{{count}} étoile",
+    "hotelStars_many": "{{count}} étoiles",
+    "hotelStars_other": "{{count}} étoiles"
   },
   "visited": {
     "rateTitle": "Note",

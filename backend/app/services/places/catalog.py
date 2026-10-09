@@ -329,6 +329,7 @@ async def add_pois(db: AsyncSession, pois: list[dict], default_city: str | None)
                     setattr(place, field, poi[field])
             if poi.get("pricing_model") == "free" and place.pricing_model == "unknown":
                 place.pricing_model = "free"
+                place.price_source = place.price_source or "osm"
             continue
         place = Place(
             name=poi["name"],
@@ -339,6 +340,7 @@ async def add_pois(db: AsyncSession, pois: list[dict], default_city: str | None)
             osm_id=poi["osm_id"],
             location=ST_SetSRID(ST_MakePoint(poi["lon"], poi["lat"]), 4326),
             pricing_model=poi.get("pricing_model") or "unknown",
+            price_source="osm" if poi.get("pricing_model") else None,
             # None не передаём: JSON-колонка записала бы JSON null вместо SQL NULL
             **{f: poi[f] for f in _EXTRA_FIELDS if poi.get(f)},
         )

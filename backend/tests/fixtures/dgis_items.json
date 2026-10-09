@@ -1,0 +1,36 @@
+{
+  "meta": {"api_version": "3.0", "code": 200, "issue_date": "20261009"},
+  "result": {
+    "total": 2,
+    "items": [
+      {
+        "id": "70000001023456789",
+        "name": "Рыбный клуб, ресторан",
+        "address_name": "Октябрьская, 4а",
+        "point": {"lat": 54.70595, "lon": 20.51321},
+        "reviews": {"general_rating": 4.6, "general_review_count": 231, "org_rating": 4.6, "org_review_count": 231},
+        "schedule": {
+          "Mon": {"working_hours": [{"from": "12:00", "to": "23:00"}]},
+          "Tue": {"working_hours": [{"from": "12:00", "to": "23:00"}]},
+          "Wed": {"working_hours": [{"from": "12:00", "to": "23:00"}]},
+          "Thu": {"working_hours": [{"from": "12:00", "to": "23:00"}]},
+          "Fri": {"working_hours": [{"from": "12:00", "to": "01:00"}]},
+          "Sat": {"working_hours": [{"from": "12:00", "to": "01:00"}]},
+          "Sun": {"working_hours": [{"from": "12:00", "to": "23:00"}]},
+          "is_24x7": false
+        },
+        "attribute_groups": [
+          {"name": "Средний счёт", "is_primary": true, "rubric_ids": ["164"],
+           "attributes": [{"id": "1", "name": "1500–2000 ₽", "tag": "food_service_avg_price_1500_2000"}]},
+          {"name": "Кухня", "attributes": [{"id": "2", "name": "Рыбная", "tag": "cuisine_fish"}]}
+        ]
+      },
+      {
+        "id": "70000001099999999",
+        "name": "Рыбная деревня, этнографический центр",
+        "point": {"lat": 54.70610, "lon": 20.51290},
+        "reviews": {"general_rating": 4.4, "general_review_count": 12}
+      }
+    ]
+  }
+}

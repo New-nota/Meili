@@ -447,7 +447,14 @@
       "zoo": "zoo",
       "aquarium": "aquarium",
       "theme_park": "theme park"
-    }
+    },
+    "cardAvgCheck": "≈ {{amount}} per person",
+    "cardLodgingFrom": "room from {{amount}}",
+    "source2gis": "2GIS",
+    "cardReviews_one": "{{count}} review",
+    "cardReviews_other": "{{count}} reviews",
+    "hotelStars_one": "{{count}} star",
+    "hotelStars_other": "{{count}} stars"
   },
   "planner": {
     "day": {

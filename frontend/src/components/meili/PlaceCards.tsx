@@ -10,6 +10,7 @@ import { setLodging } from '../../api/days'
 import { apiFetch } from '../../api/client'
 import { apiErrorMessage } from '../../utils/apiError'
 import { dayLabelShort } from '../../utils/dayLabel'
+import { formatMoneyCompact } from '../../utils/money'
 import Menu, { type MenuEntry } from '../ui/Menu'
 
 // meili_upgrade: карточки найденных мест под ответом Meili. Всё на карточке —
@@ -34,7 +35,7 @@ const ICONS: Record<string, typeof MapPin> = {
 const SUBTYPES = new Set(['hotel', 'hostel', 'guest_house', 'apartment', 'motel', 'pub', 'zoo', 'aquarium', 'theme_park'])
 
 export default function PlaceCards({ places, tripId, days = [], activeDayId, onChanged, onShowPlace }: Props) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const [busy, setBusy] = useState<string | null>(null)
     const [done, setDone] = useState<Record<string, string>>({})
     const [error, setError] = useState<string | null>(null)
@@ -75,6 +76,9 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
         const bits: string[] = []
         const subtype = p.tags?.find(tag => SUBTYPES.has(tag))
         bits.push(subtype ? t(`meili.subtype.${subtype}`) : p.category ? t(`meili.category.${p.category}`) : '')
+        // класс отеля из OSM — словами: звёздочка рядом с рейтингом 2ГИС читалась как вторая оценка
+        const stars = p.tags?.find(tag => tag.startsWith('stars:'))?.slice(6)
+        if (stars) bits.push(t('meili.hotelStars', { count: Number(stars) }))
         // короткие факты — до адреса: на узкой панели хвост строки обрезается
         if (p.distance_m != null) bits.push(p.distance_m < 1000
             ? t('meili.distanceM', { count: p.distance_m })
@@ -86,6 +90,19 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
         return bits.filter(Boolean)
     }
 
+    // этап B: цена — своей строкой: на узкой панели хвост общей строки обрезался
+    // именно на ней. «≈» (средний счёт) и «от» (жильё) — не точная сумма
+    const priceLine = (p: PlaceCard): string | null => {
+        const bits: string[] = []
+        if (p.avg_check && p.price_currency) bits.push(t('meili.cardAvgCheck',
+            { amount: formatMoneyCompact(p.avg_check, p.price_currency, i18n.language) }))
+        if (p.lodging_price_from && p.price_currency) bits.push(t('meili.cardLodgingFrom',
+            { amount: formatMoneyCompact(p.lodging_price_from, p.price_currency, i18n.language) }))
+        if (!bits.length) return null
+        if (p.price_source === '2gis') bits.push(t('meili.source2gis'))
+        return bits.join(' · ')
+    }
+
     return (
         <div role="list" aria-label={t('meili.placesFound')}
             // minmax(0, 1fr): иначе длинная строка с nowrap растягивает трек,
@@ -93,7 +110,7 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
             style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6, marginLeft: 28, minWidth: 0 }}>
             {places.map(p => {
                 const Icon = ICONS[p.category ?? ''] ?? MapPin
-                const stars = p.tags?.find(tag => tag.startsWith('stars:'))?.slice(6)
+                const price = priceLine(p)
                 const isHotel = p.category === 'hotel'
                 const items: MenuEntry[] = isHotel
                     ? [
@@ -112,12 +129,21 @@ export default function PlaceCards({ places, tripId, days = [], activeDayId, onC
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 14.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                                {stars && (
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 500 }}>
-                                        {stars}<Star size={12} aria-label="stars" />
+                                {p.rating && p.rating_count ? (
+                                    <span title={t('meili.cardReviews', { count: p.rating_count })}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12.5, color: 'var(--ink-2)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                        <Star size={12} fill="currentColor" aria-hidden />
+                                        {Number(p.rating).toLocaleString(i18n.language, { maximumFractionDigits: 1 })}
+                                        <span style={{ color: 'var(--ink-3)' }}>({p.rating_count})</span>
                                     </span>
-                                )}
+                                ) : null}
+
                             </div>
+                            {price && (
+                                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {price}
+                                </div>
+                            )}
                             <div style={{ fontSize: 12.5, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {subline(p).join(' · ')}
                             </div>

@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Integer, Boolean, ARRAY, DECIMAL, JSON, Numeric, Index, text
+from sqlalchemy import String, Integer, Boolean, ARRAY, DECIMAL, JSON, Numeric, Index, TIMESTAMP, text
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
 from app.core.database import Base
@@ -15,6 +16,8 @@ class Place(Base):
         # следующей ревизии молча его бы удалил (поиск по 20к мест — seq scan)
         Index("ix_places_name_trgm", "name", postgresql_using="gin",
               postgresql_ops={"name": "gin_trgm_ops"}),
+        # этап B: объект 2ГИС — не больше одного места на него
+        Index("uq_places_dgis_id", "dgis_id", unique=True, postgresql_where=text("dgis_id IS NOT NULL")),
     )
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     osm_id: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -54,3 +57,11 @@ class Place(Base):
     ticket_adult: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     ticket_child: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     price_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # Этап B (2ГИС). price_source: osm (fee=no) | 2gis | manual — 2ГИС не
+    # перезаписывает manual. lodging_price_from — «номер от N»: ориентир для
+    # показа, в бюджет не пишется (нижняя граница — не цена, §0)
+    dgis_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    rating_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    enriched_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, nullable=True)
+    lodging_price_from: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)

@@ -35,6 +35,14 @@ export interface PlaceCard {
     price_is_estimate?: boolean
     distance_m?: number
     outside_requested_city?: boolean
+    // этап B (2ГИС): рейтинг — только с числом отзывов; lodging_price_from —
+    // «номер от», ориентир для показа, не цена проживания
+    rating?: string
+    rating_count?: number
+    avg_check?: string
+    lodging_price_from?: string
+    price_currency?: string
+    price_source?: 'osm' | '2gis' | 'manual'
 }
 
 // План появляется в M3; тип объявлен здесь, чтобы SSE-клиент был полным

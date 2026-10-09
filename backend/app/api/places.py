@@ -59,8 +59,12 @@ async def update_place(
         raise HTTPException(status_code=404, detail="Place not found")
     if place.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="place_not_yours")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(place, field, value)
+    # этап B: цена руками главнее 2ГИС — обогащение её больше не тронет
+    if updates.keys() & {"pricing_model", "avg_check", "ticket_adult", "ticket_child", "price_currency"}:
+        place.price_source = "manual"
     await db.commit()
     await db.refresh(place)
     return place_to_dict(place)
