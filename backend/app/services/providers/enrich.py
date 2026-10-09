@@ -127,16 +127,17 @@ async def enrich_places(
         return 0
 
     # координаты/имена — до commit: дальше ждём сеть без соединения из пула
-    targets = [(p, p.name, to_shape(p.location)) for p in todo]
+    targets = [(p, p.name, p.category, to_shape(p.location)) for p in todo]
     await db.commit()
 
     sem = asyncio.Semaphore(MAX_PARALLEL)
     async with httpx.AsyncClient(timeout=dgis.REQUEST_TIMEOUT_S) as client:
-        async def one(name, point):
+        async def one(name, category, point):
             async with sem:
-                return await dgis.find(client, name, point.y, point.x)
+                return await dgis.find(client, name, point.y, point.x, category)
 
-        tasks = {asyncio.create_task(one(name, point)): place for place, name, point in targets}
+        tasks = {asyncio.create_task(one(name, category, point)): place
+                 for place, name, category, point in targets}
         done, pending = await asyncio.wait(tasks, timeout=budget_s)
         for task in pending:
             task.cancel()

@@ -5,11 +5,14 @@
 `schedule {Mon: {working_hours: [{from, to}]}, …, is_24x7}` и
 `attribute_groups [{name, attributes: [{name, tag}]}]`.
 
-ВАЖНО: на момент написания живого ключа не было — парсер написан по
-документации и примерам, а не по живым ответам. Особенно гипотетичны
-атрибуты цены («Средний счёт 1000–1500 ₽», «Номер от 3500 ₽»): разбираем
-текст названий, а не теги. Первый живой прогон — `python -m scripts.dgis_probe`,
-он печатает сырые атрибуты; правь парсер по нему.
+Парсер сверен с живым ответом (`python -m scripts.dgis_probe`, 2026-10-09):
+- средний чек — «Ресторан / Кафе · Чек 7500 ₽» (бывает и диапазон);
+- жильё — группа «Пожить» · «Цена от 28000 ₽»; там же «Номер: С77…» из
+  реестра отелей — без валюты, поэтому не цена;
+- «Ланч от 1380 ₽» — не средний чек, не берём;
+- рейтинг считается по оценкам со звёздами (`general_review_count_with_stars`),
+  а `general_review_count` — только текстовые отзывы: показываем первое.
+Разбираем текст названий, а не теги — теги в ответе не стабильны.
 """
 import re
 from decimal import Decimal
@@ -38,7 +41,8 @@ CURRENCY_MARKERS: list[tuple[str, str]] = [
     ("aed", "AED"), ("дирхам", "AED"),
 ]
 CHECK_WORDS = ("чек", "счёт", "счет")
-LODGING_WORDS = ("номер", "ночь", "проживан", "сутки")
+# живой ответ: цена жилья — в группе «Пожить» («Цена от 28000 ₽»)
+LODGING_WORDS = ("пожить", "номер", "ночь", "проживан", "сутки")
 _NUMBER = re.compile(r"\d[\d\s  ]*")
 
 
@@ -116,7 +120,8 @@ def attribute_texts(item: dict) -> list[str]:
 def parse_item(item: dict) -> Enrichment:
     reviews = item.get("reviews") or {}
     rating = reviews.get("general_rating")
-    count = reviews.get("general_review_count")
+    # рейтинг посчитан по оценкам со звёздами; текстовых отзывов меньше
+    count = reviews.get("general_review_count_with_stars") or reviews.get("general_review_count")
     texts = attribute_texts(item)
     avg_check, lodging, currency = parse_price_attributes(texts)
     return Enrichment(
@@ -138,8 +143,17 @@ def _norm(name: str) -> str:
     return " ".join(cleaned.split())
 
 
-def name_similarity(a: str, b: str) -> float:
-    a, b = _norm(a), _norm(b)
+# живой прогон: OSM «Метрополь» ↔ 2ГИС «METROPOL Отель Москва» — сравниваем
+# ещё и в латинице (упрощённая транслитерация, только для сравнения)
+_TRANSLIT = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh", "з": "z",
+    "и": "i", "й": "i", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p",
+    "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts", "ч": "ch",
+    "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+})
+
+
+def _similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     if a in b or b in a:  # «Пушкин» и «Кафе Пушкин»
@@ -147,18 +161,45 @@ def name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def best_match(name: str, lat: float, lon: float, items: list[dict]) -> dict | None:
-    """Свой объект: похож по имени и рядом. Без точки — не матчим (не проверить)."""
-    best, best_score = None, 0.0
+def name_similarity(a: str, b: str) -> float:
+    a, b = _norm(a), _norm(b)
+    return max(_similarity(a, b), _similarity(a.translate(_TRANSLIT), b.translate(_TRANSLIT)))
+
+
+LODGING_NAME_WORDS = ("отель", "гостиниц", "хостел", "hotel", "hostel", "апартамент", "гостевой")
+
+
+def is_lodging(item: dict) -> bool:
+    """Объект 2ГИС — жильё: группа «Пожить» или слово в имени."""
+    if any((g.get("name") or "").lower() == "пожить" for g in item.get("attribute_groups") or []):
+        return True
+    name = (item.get("name") or "").lower()
+    return any(w in name for w in LODGING_NAME_WORDS)
+
+
+def best_match(name: str, lat: float, lon: float, items: list[dict],
+               category: str | None = None) -> dict | None:
+    """Свой объект: похож по имени и рядом. Без точки — не матчим (не проверить).
+
+    Живой прогон: «Метрополь»-отель сматчился с рестораном «Метрополь» в том
+    же здании — имена совпадают на 100 %. Поэтому вид объекта (жильё или нет)
+    должен совпадать с категорией места; при равенстве — ближайший."""
+    best, best_key = None, None
     for item in items:
         point = item.get("point") or {}
         if "lat" not in point or "lon" not in point:
             continue
-        if haversine_m(lat, lon, point["lat"], point["lon"]) > MATCH_RADIUS_M:
+        distance = haversine_m(lat, lon, point["lat"], point["lon"])
+        if distance > MATCH_RADIUS_M:
             continue
         score = name_similarity(name, item.get("name") or "")
-        if score >= MIN_NAME_SIMILARITY and score > best_score:
-            best, best_score = item, score
+        if score < MIN_NAME_SIMILARITY:
+            continue
+        if category is not None and (category == "hotel") != is_lodging(item):
+            continue
+        key = (score, -distance)
+        if best_key is None or key > best_key:
+            best, best_key = item, key
     return best
 
 
@@ -182,7 +223,8 @@ async def search_near(client: httpx.AsyncClient, name: str, lat: float, lon: flo
     return (data.get("result") or {}).get("items") or []
 
 
-async def find(client: httpx.AsyncClient, name: str, lat: float, lon: float) -> Enrichment | None:
+async def find(client: httpx.AsyncClient, name: str, lat: float, lon: float,
+               category: str | None = None) -> Enrichment | None:
     """Факты 2ГИС о месте или None («в 2ГИС такого нет»)."""
-    match = best_match(name, lat, lon, await search_near(client, name, lat, lon))
+    match = best_match(name, lat, lon, await search_near(client, name, lat, lon), category)
     return parse_item(match) if match else None

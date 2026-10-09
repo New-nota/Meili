@@ -5,7 +5,7 @@
 сверь и поправь парсер (особенно «Средний счёт» и «номер от»).
 
     docker compose exec backend python -m scripts.dgis_probe
-    docker compose exec backend python -m scripts.dgis_probe "Хофбург" 54.7065 20.5126
+    docker compose exec backend python -m scripts.dgis_probe "Хофбург" 54.7065 20.5126 restaurant
 """
 import asyncio
 import json
@@ -16,10 +16,11 @@ import httpx
 from app.core.config import settings
 from app.services.providers import dgis
 
+# (имя, lat, lon, категория места) — категория влияет на сопоставление
 SAMPLES = [
-    ("Рыбный клуб", 54.7059, 20.5133),    # Калининград, ресторан
-    ("Кафе Пушкин", 55.7637, 37.6046),    # Москва, ресторан
-    ("Метрополь", 55.7584, 37.6214),      # Москва, отель
+    ("Кафе Пушкин", 55.7637, 37.6046, "restaurant"),
+    ("Метрополь", 55.7584, 37.6214, "hotel"),    # в здании есть и ресторан «Метрополь»
+    ("Метрополь", 55.7584, 37.6214, "restaurant"),
 ]
 
 
@@ -27,15 +28,15 @@ async def main(samples):
     if not settings.DGIS_API_KEY:
         sys.exit("DGIS_API_KEY не задан в .env")
     async with httpx.AsyncClient(timeout=dgis.REQUEST_TIMEOUT_S) as client:
-        for name, lat, lon in samples:
-            print(f"\n=== {name} ({lat}, {lon})")
+        for name, lat, lon, category in samples:
+            print(f"\n=== {name} ({lat}, {lon}) [{category}]")
             items = await dgis.search_near(client, name, lat, lon)
             print(f"кандидатов: {len(items)}")
             for item in items[:3]:
                 print("-", item.get("name"), item.get("point"), "reviews:", item.get("reviews"))
                 for text in dgis.attribute_texts(item):
                     print("    атрибут:", text)
-            match = dgis.best_match(name, lat, lon, items)
+            match = dgis.best_match(name, lat, lon, items, category)
             if match is None:
                 print("совпадения нет")
                 continue
@@ -49,4 +50,7 @@ async def main(samples):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    asyncio.run(main([(args[0], float(args[1]), float(args[2]))] if len(args) == 3 else SAMPLES))
+    asyncio.run(main(
+        [(args[0], float(args[1]), float(args[2]), args[3] if len(args) > 3 else None)]
+        if len(args) >= 3 else SAMPLES
+    ))

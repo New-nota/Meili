@@ -50,7 +50,7 @@ def dgis_on(monkeypatch):
     known: dict[str, Enrichment] = {}
     calls: list[str] = []
 
-    async def fake_find(client, name, lat, lon):
+    async def fake_find(client, name, lat, lon, category=None):
         calls.append(name)
         if name == "Медленное кафе":
             await asyncio.sleep(10)
